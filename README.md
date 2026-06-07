@@ -39,6 +39,7 @@ POST   /api/accounts/{id}/channels/sync
 GET    /api/channels
 GET    /api/channels/{id}
 POST   /api/channels/sync
+POST   /api/channels/web-access/check
 POST   /api/channels/{id}/sync
 GET    /api/watch-rules
 POST   /api/watch-rules

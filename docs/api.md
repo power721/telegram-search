@@ -330,6 +330,8 @@ curl -s 'http://127.0.0.1:6000/api/channels?account_id=1'
       "type": "channel",
       "last_message_id": 100,
       "last_sync_time": "2026-06-07T12:00:00Z",
+      "web_access": true,
+      "web_access_checked_at": "2026-06-07T12:05:00Z",
       "created_at": "2026-06-07T12:00:00Z",
       "updated_at": "2026-06-07T12:00:00Z"
     }
@@ -342,6 +344,8 @@ curl -s 'http://127.0.0.1:6000/api/channels?account_id=1'
 - `channel`
 - `supergroup`
 - `saved_messages`
+
+`web_access` 和 `web_access_checked_at` 只在执行过 Web 访问检测后返回。未检测频道不会包含这两个字段。
 
 ### GET `/api/channels/{id}`
 
@@ -366,10 +370,65 @@ curl -s http://127.0.0.1:6000/api/channels/1
   "type": "channel",
   "last_message_id": 100,
   "last_sync_time": "2026-06-07T12:00:00Z",
+  "web_access": true,
+  "web_access_checked_at": "2026-06-07T12:05:00Z",
   "created_at": "2026-06-07T12:00:00Z",
   "updated_at": "2026-06-07T12:00:00Z"
 }
 ```
+
+### POST `/api/channels/web-access/check`
+
+检测一个或多个本地频道是否可以通过 Telegram Web 页面访问，并把结果保存到数据库。只接受本地 `channel_ids`，不接受 `@username` 或 `t.me` 链接。
+
+请求体：
+
+```json
+{
+  "channel_ids": [1, 2, 3]
+}
+```
+
+示例：
+
+```bash
+curl -s -X POST http://127.0.0.1:6000/api/channels/web-access/check \
+  -H 'content-type: application/json' \
+  -d '{"channel_ids":[1,2,3]}'
+```
+
+响应 `200`：
+
+```json
+{
+  "items": [
+    {
+      "channel_id": 1,
+      "web_access": true,
+      "checked_at": "2026-06-07T12:05:00Z"
+    },
+    {
+      "channel_id": 2,
+      "web_access": false,
+      "checked_at": "2026-06-07T12:05:01Z"
+    }
+  ]
+}
+```
+
+检测规则：
+
+- 有 `username` 且不是 `saved_messages` 的频道会请求 `https://t.me/s/{username}`。
+- HTTP `2xx` 或 `3xx` 记录为 `web_access=true`。
+- HTTP `4xx`、`5xx`、超时、DNS 或其他网络错误记录为 `web_access=false`。
+- 没有 `username` 或类型为 `saved_messages` 的频道直接记录为 `web_access=false`。
+
+校验：
+
+- `channel_ids` 必填。
+- `channel_ids` 不能是空数组。
+- 每个频道 ID 必须大于 0。
+- 任一频道 ID 不存在时返回错误，并且不会写入部分检测结果。
 
 ### POST `/api/channels/{id}/sync`
 

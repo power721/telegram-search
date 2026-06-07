@@ -1,0 +1,239 @@
+package telegram
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/gotd/td/session"
+	gotdtelegram "github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/tg"
+	"go.uber.org/zap"
+)
+
+type GotdClient struct {
+	apiID   int
+	apiHash string
+	logger  *zap.Logger
+}
+
+func NewGotdClient(apiID int, apiHash string, logger *zap.Logger) *GotdClient {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &GotdClient{apiID: apiID, apiHash: apiHash, logger: logger}
+}
+
+func (g *GotdClient) SendCode(ctx context.Context, phone string, sessionPath string) (SentCode, error) {
+	var result SentCode
+	err := g.withClient(ctx, sessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		sent, err := client.Auth().SendCode(ctx, phone, auth.SendCodeOptions{})
+		if err != nil {
+			return err
+		}
+		code, ok := sent.(*tg.AuthSentCode)
+		if !ok {
+			return fmt.Errorf("unexpected send-code result %T", sent)
+		}
+		result.PhoneCodeHash = code.PhoneCodeHash
+		return nil
+	})
+	return result, err
+}
+
+func (g *GotdClient) SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (Profile, error) {
+	var profile Profile
+	err := g.withClient(ctx, sessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		authorization, err := client.Auth().SignIn(ctx, phone, code, phoneCodeHash)
+		if err != nil {
+			if err == auth.ErrPasswordAuthNeeded {
+				return ErrPasswordRequired
+			}
+			return err
+		}
+		profile = profileFromAuthorization(authorization)
+		return nil
+	})
+	return profile, err
+}
+
+func (g *GotdClient) Password(ctx context.Context, password string, sessionPath string) (Profile, error) {
+	var profile Profile
+	err := g.withClient(ctx, sessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		authorization, err := client.Auth().Password(ctx, password)
+		if err != nil {
+			return err
+		}
+		profile = profileFromAuthorization(authorization)
+		return nil
+	})
+	return profile, err
+}
+
+func (g *GotdClient) ListChannels(ctx context.Context, account AccountSession) ([]Channel, error) {
+	var out []Channel
+	err := g.withClient(ctx, account.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		self, err := client.Self(ctx)
+		if err != nil {
+			return err
+		}
+		out = append(out, Channel{
+			TelegramChannelID: self.ID,
+			Title:             "Saved Messages",
+			Type:              "saved_messages",
+		})
+
+		dialogs, err := client.API().MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
+			OffsetPeer: &tg.InputPeerEmpty{},
+			Limit:      200,
+		})
+		if err != nil {
+			return err
+		}
+		for _, chat := range dialogChats(dialogs) {
+			channel, ok := chat.(*tg.Channel)
+			if !ok || channel.Left {
+				continue
+			}
+			accessHash, _ := channel.GetAccessHash()
+			username, _ := channel.GetUsername()
+			typ := "channel"
+			if channel.Megagroup {
+				typ = "supergroup"
+			}
+			out = append(out, Channel{
+				TelegramChannelID: channel.ID,
+				AccessHash:        accessHash,
+				Title:             channel.Title,
+				Username:          username,
+				Type:              typ,
+			})
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (g *GotdClient) FetchHistory(ctx context.Context, account AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error) {
+	var out []Message
+	err := g.withClient(ctx, account.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		result, err := client.API().MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
+			Peer:     inputPeer(channel),
+			OffsetID: int(offsetID),
+			Limit:    limit,
+		})
+		if err != nil {
+			return err
+		}
+		for _, item := range historyMessages(result) {
+			message, ok := item.(*tg.Message)
+			if !ok {
+				continue
+			}
+			out = append(out, convertMessage(message))
+		}
+		return nil
+	})
+	return out, err
+}
+
+func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func(context.Context, *gotdtelegram.Client) error) error {
+	client := gotdtelegram.NewClient(g.apiID, g.apiHash, gotdtelegram.Options{
+		SessionStorage: &session.FileStorage{Path: sessionPath},
+		Logger:         g.logger,
+		NoUpdates:      true,
+	})
+	return client.Run(ctx, func(ctx context.Context) error {
+		return fn(ctx, client)
+	})
+}
+
+func profileFromAuthorization(authorization *tg.AuthAuthorization) Profile {
+	user, ok := authorization.User.(*tg.User)
+	if !ok {
+		return Profile{}
+	}
+	return profileFromUser(user)
+}
+
+func profileFromUser(user *tg.User) Profile {
+	first, _ := user.GetFirstName()
+	last, _ := user.GetLastName()
+	username, _ := user.GetUsername()
+	return Profile{
+		TelegramUserID: user.ID,
+		FirstName:      first,
+		LastName:       last,
+		Username:       username,
+	}
+}
+
+func dialogChats(dialogs tg.MessagesDialogsClass) []tg.ChatClass {
+	switch d := dialogs.(type) {
+	case *tg.MessagesDialogs:
+		return d.Chats
+	case *tg.MessagesDialogsSlice:
+		return d.Chats
+	default:
+		return nil
+	}
+}
+
+func historyMessages(messages tg.MessagesMessagesClass) []tg.MessageClass {
+	switch m := messages.(type) {
+	case *tg.MessagesMessages:
+		return m.Messages
+	case *tg.MessagesMessagesSlice:
+		return m.Messages
+	case *tg.MessagesChannelMessages:
+		return m.Messages
+	default:
+		return nil
+	}
+}
+
+func inputPeer(channel ChannelRef) tg.InputPeerClass {
+	if channel.Type == "saved_messages" {
+		return &tg.InputPeerSelf{}
+	}
+	return &tg.InputPeerChannel{
+		ChannelID:  channel.TelegramChannelID,
+		AccessHash: channel.AccessHash,
+	}
+}
+
+func convertMessage(message *tg.Message) Message {
+	var editDate *time.Time
+	if raw, ok := message.GetEditDate(); ok && raw > 0 {
+		t := time.Unix(int64(raw), 0).UTC()
+		editDate = &t
+	}
+	rawJSON, _ := json.Marshal(map[string]any{
+		"id":      message.ID,
+		"date":    message.Date,
+		"message": message.Message,
+	})
+	return Message{
+		TelegramMessageID: int64(message.ID),
+		SenderID:          peerID(message.FromID),
+		Text:              message.Message,
+		RawJSON:           string(rawJSON),
+		Date:              time.Unix(int64(message.Date), 0).UTC(),
+		EditDate:          editDate,
+	}
+}
+
+func peerID(peer tg.PeerClass) int64 {
+	switch p := peer.(type) {
+	case *tg.PeerUser:
+		return p.UserID
+	case *tg.PeerChat:
+		return p.ChatID
+	case *tg.PeerChannel:
+		return p.ChannelID
+	default:
+		return 0
+	}
+}

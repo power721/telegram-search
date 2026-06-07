@@ -1,0 +1,46 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+)
+
+type executor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type SearchParams struct {
+	Query     string
+	AccountID int64
+	ChannelID int64
+	LinkType  string
+	Limit     int
+	Offset    int
+}
+
+type LatestParams struct {
+	AccountID int64
+	ChannelID int64
+	Limit     int
+}
+
+type LinkSearchParams struct {
+	Type      string
+	AccountID int64
+	ChannelID int64
+	Keyword   string
+	Limit     int
+	Offset    int
+}
+
+func clampLimit(limit int, fallback int) int {
+	if limit <= 0 {
+		return fallback
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
+}

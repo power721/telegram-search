@@ -1,0 +1,117 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"tg-provider/internal/model"
+)
+
+type ChannelRepository struct {
+	db *sql.DB
+}
+
+func NewChannelRepository(db *sql.DB) *ChannelRepository {
+	return &ChannelRepository{db: db}
+}
+
+func (r *ChannelRepository) Save(ctx context.Context, channel model.Channel) (int64, error) {
+	now := time.Now().UTC()
+	if channel.Type == "" {
+		channel.Type = model.ChannelTypeChannel
+	}
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
+INSERT INTO telegram_channels
+  (account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at)
+VALUES
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
+  access_hash = excluded.access_hash,
+  title = excluded.title,
+  username = excluded.username,
+  updated_at = excluded.updated_at
+RETURNING id`,
+		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.LastMessageID, channel.LastSyncTime, now, now,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("save channel: %w", err)
+	}
+	return id, nil
+}
+
+func (r *ChannelRepository) UpdateCursor(ctx context.Context, channelID int64, lastMessageID int64, syncTime time.Time) error {
+	return r.updateCursor(ctx, r.db, channelID, lastMessageID, syncTime)
+}
+
+func (r *ChannelRepository) UpdateCursorTx(ctx context.Context, tx *sql.Tx, channelID int64, lastMessageID int64, syncTime time.Time) error {
+	return r.updateCursor(ctx, tx, channelID, lastMessageID, syncTime)
+}
+
+func (r *ChannelRepository) updateCursor(ctx context.Context, exec executor, channelID int64, lastMessageID int64, syncTime time.Time) error {
+	res, err := exec.ExecContext(ctx, `
+UPDATE telegram_channels
+SET last_message_id = ?, last_sync_time = ?, updated_at = ?
+WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
+	if err != nil {
+		return fmt.Errorf("update channel cursor: %w", err)
+	}
+	return requireRows(res, "channel not found")
+}
+
+func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
+	return scanChannel(r.db.QueryRowContext(ctx, `
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+FROM telegram_channels WHERE id = ?`, id))
+}
+
+func (r *ChannelRepository) FindAll(ctx context.Context) ([]model.Channel, error) {
+	return r.find(ctx, ``, nil)
+}
+
+func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64) ([]model.Channel, error) {
+	return r.find(ctx, `WHERE account_id = ?`, []any{accountID})
+}
+
+func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
+	query := `
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+FROM telegram_channels ` + where + ` ORDER BY title, id`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("find channels: %w", err)
+	}
+	defer rows.Close()
+	var out []model.Channel
+	for rows.Next() {
+		channel, err := scanChannelRows(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, channel)
+	}
+	return out, rows.Err()
+}
+
+func scanChannel(row interface {
+	Scan(...any) error
+}) (model.Channel, error) {
+	return scanChannelRows(row)
+}
+
+func scanChannelRows(row interface {
+	Scan(...any) error
+}) (model.Channel, error) {
+	var channel model.Channel
+	var lastSync sql.NullTime
+	err := row.Scan(&channel.ID, &channel.AccountID, &channel.TelegramChannelID, &channel.AccessHash, &channel.Title, &channel.Username, &channel.Type, &channel.LastMessageID, &lastSync, &channel.CreatedAt, &channel.UpdatedAt)
+	if err != nil {
+		return model.Channel{}, err
+	}
+	if lastSync.Valid {
+		channel.LastSyncTime = &lastSync.Time
+	}
+	return channel, nil
+}

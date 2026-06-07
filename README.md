@@ -97,6 +97,7 @@ The manual sync APIs return a queued job response when the runtime retry queue i
 
 ## Operational docs
 
+- Detailed API documentation: `docs/api.md`
 - API response contract: `docs/api-response-contract.md`
 - Smoke test guide: `docs/smoke-test-guide.md`
 - Production deployment checklist: `docs/production-deployment-checklist.md`

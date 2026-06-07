@@ -6,7 +6,7 @@ Date: 2026-06-08
 
 `tg-search` is a self-hosted personal Telegram search engine. It indexes only content the logged-in Telegram account can access: private channels, private groups, Saved Messages, joined public channels, and joined public groups.
 
-The product is not a public Telegram search engine, not a PanSou replacement, not a file drive, and not an AList/TVBox/T4 provider. Phase 1 delivers a complete standalone product with a Vue admin console, setup flow, Telegram login, channel control, local indexing, local search, resource search, task observability, and Docker-friendly deployment.
+The product is not a public Telegram search engine, not a PanSou replacement, not a file drive, and not an AList/TVBox/T4 provider. Phase 1 delivers a complete standalone product with a Vue admin console, setup flow, Telegram login, channel control, local indexing, Global Search, Telegram Resource Library, task observability, storage quota controls, and Docker-friendly deployment.
 
 ## Product Positioning
 
@@ -36,7 +36,10 @@ Phase 1 must deliver a complete usable loop:
 - Explicit channel selection for history sync and realtime listening.
 - SQLite storage and SQLite FTS5 search.
 - History sync, realtime listener, idempotent writes, and link extraction.
-- Local message search and local resource search.
+- Global Search across messages, links, files, and channels.
+- Telegram Resource Library as a primary product surface.
+- Sync Profiles for safer history sync selection.
+- Storage quota and storage usage reporting.
 - Manual remote search for unsynced channels, display-only.
 - Vue 3 admin console with home, search, channels, resources, accounts, tasks, and settings.
 - Task status, progress, retry, cancel, FloodWait state, reconnect state, and recent activity.
@@ -74,17 +77,50 @@ Default data layout:
 └── thumbnails
 ```
 
+Recommended storage quota defaults:
+
+```yaml
+storage:
+  max_db_size: 10GB
+  max_media_cache: 20GB
+```
+
+The backend should parse human-readable size strings and expose effective byte values through Settings and Status APIs. Phase 1 quota behavior should be conservative: report usage, show warnings, and block new Deep or Full sync tasks when configured limits would be exceeded. It should not attempt complex automatic cleanup in the first release.
+
 ## Information Architecture
 
 The admin console has seven primary areas.
 
 ### Home
 
-Home is an operational dashboard and search entry point. It shows a global search box, account/channel/message/resource statistics, sync state, listener state, recent activity, and important errors.
+Home is an operational dashboard and search entry point. It shows a global search box, account/channel/message/resource statistics, sync state, listener state, storage usage, top resource types, recent activity, and important errors.
+
+Storage Usage shows:
+
+- DB size.
+- Index size.
+- Media cache size when enabled.
+- Total storage used.
+- Quota warning state.
+
+Top Resource Types shows the most useful resource groups:
+
+- Cloud drive links.
+- Magnet.
+- ED2K.
+- HTTP links.
+- Files.
 
 ### Search
 
-Search defaults to local indexed results. It supports keyword search, channel filter, account filter, time range, message type, link type, and file type. Results distinguish `local` and `remote`.
+Search is a Global Search experience, not only a message search page. It defaults to local indexed results and splits results into:
+
+- Messages.
+- Links.
+- Files.
+- Channels.
+
+This should feel closer to GitHub, Slack, or Discord search: one query, multiple result scopes, with tabs or grouped sections. It supports keyword search, channel filter, account filter, time range, message type, link type, and file type. Results distinguish `local` and `remote`.
 
 Remote search is only available through an explicit action for unsynced user-accessible channels. Remote results are temporary and do not enter the resource library or local index.
 
@@ -98,14 +134,26 @@ Supported actions:
 - Analyze channel.
 - Check Telegram Web access.
 - Start history sync.
-- Choose sync limit: `100`, `1000`, `5000`, or `10000`.
+- Choose Sync Profile.
 - Enable or disable realtime listening.
 - Run remote search for unsynced channels.
 - View task progress and failures.
 
 ### Resources
 
-Resources aggregates links and file metadata extracted from indexed messages. It supports link type filtering, deduplication, source message navigation, time sorting, relevance sorting, and grouped views.
+Resources is a core product surface, not a secondary utility. The most valuable daily workflow is often finding resources rather than reading raw messages.
+
+The Telegram Resource Library aggregates links and file metadata extracted from indexed messages. It supports link type filtering, resource category filtering, deduplication, source message navigation, time sorting, relevance sorting, and grouped views.
+
+Phase 1 resource categories should be derived from practical metadata rather than complex media recognition:
+
+- Link type.
+- File type and extension.
+- Keyword or tag hints from message text.
+- Source channel.
+- Optional manual labels later.
+
+Product-facing categories can include movies, cloud drive resources, e-books, courses, software, comics, generic files, and generic links, but Phase 1 should treat them as lightweight classification targets rather than a full recognition system.
 
 Only persisted local-index content appears in Resources. Remote search results do not appear here unless the user later syncs the source channel.
 
@@ -131,7 +179,7 @@ Each task exposes status, progress, failure reason, retry count, next run time, 
 
 ### Settings
 
-Settings covers admin profile, API Keys, Telegram API, storage paths, backup policy, logging, rate limits, default sync limit, and search defaults.
+Settings covers admin profile, API Keys, Telegram API, storage paths, storage quota, backup policy, logging, rate limits, default Sync Profile, and search defaults.
 
 Phase 1 settings should not expose ElasticSearch, Redis, vector search, or proxy media configuration.
 
@@ -170,7 +218,7 @@ Configure includes, excludes, message types, and link types. The default rule is
 For each channel, group, or Saved Messages entry, let the user choose:
 
 - History sync enabled or disabled.
-- Sync limit.
+- Sync Profile.
 - Realtime listening enabled or disabled.
 - Remote search allowed for unsynced use.
 
@@ -179,7 +227,16 @@ Defaults:
 - Metadata only.
 - History sync disabled.
 - Realtime listening disabled.
-- Sync limit `1000` when history sync is enabled.
+- Sync Profile `Normal` when history sync is enabled.
+
+Sync Profiles:
+
+- `Quick`: latest 100 messages.
+- `Normal`: latest 1000 messages.
+- `Deep`: latest 10000 messages.
+- `Full`: all available history.
+
+The UI should show profile names first and message counts as explanatory copy. `Full` requires an explicit confirmation that explains expected runtime, FloodWait risk, and storage impact.
 
 ### Step 8: Finish
 
@@ -221,6 +278,10 @@ Use gotd/td through a per-account client pool. Centralize session storage, Flood
 ### Repository And Index
 
 SQLite is the Phase 1 database. SQLite FTS5 is the Phase 1 search index. Writes are idempotent, and FTS changes follow message insert, update, delete, and soft-delete behavior.
+
+Message metadata and message content should be separated. `telegram_messages` stores identifiers, channel/account ownership, dates, type, deletion state, and media summary. `telegram_message_contents` stores large text and raw JSON. This keeps metadata queries, cursor updates, backups, and index maintenance lighter as message volume grows.
+
+Sync cursors should be stored in `telegram_sync_cursors`, not on `telegram_channels`. This gives history sync, incremental sync, gap recovery, and multi-account runtime state a dedicated place to evolve without overloading channel metadata.
 
 ### Local Storage
 
@@ -386,7 +447,6 @@ Fields:
 - `web_access`
 - `web_access_checked_at`
 - `web_access_error`
-- `last_sync_message_id`
 - `last_sync_at`
 - `created_at`
 - `updated_at`
@@ -402,8 +462,6 @@ Fields:
 - `channel_id`
 - `telegram_message_id`
 - `sender_id`
-- `text`
-- `raw_json`
 - `date`
 - `edit_date`
 - `deleted`
@@ -411,6 +469,39 @@ Fields:
 - `media_summary`
 - `created_at`
 - `updated_at`
+
+### telegram_message_contents
+
+Large message body content separated from message metadata.
+
+Fields:
+
+- `message_id`
+- `text`
+- `raw_json`
+- `created_at`
+- `updated_at`
+
+SQLite FTS5 should index `telegram_message_contents.text` and join back to `telegram_messages` for channel, account, date, deletion state, and message type filters.
+
+### telegram_sync_cursors
+
+Per-account and per-channel sync cursor state.
+
+Fields:
+
+- `id`
+- `account_id`
+- `channel_id`
+- `cursor_type`
+- `last_message_id`
+- `pts`
+- `qts`
+- `date`
+- `created_at`
+- `updated_at`
+
+`cursor_type` allows separate cursors for history sync, listener update state, and gap recovery. Unique constraints should prevent duplicate cursor rows for the same account, channel, and cursor type.
 
 ### telegram_links
 
@@ -564,10 +655,15 @@ Suggested Phase 1 API groups:
 
 ### Search
 
+- `GET /api/search/global`
 - `GET /api/search/messages`
-- `GET /api/search/resources`
+- `GET /api/search/links`
+- `GET /api/search/files`
+- `GET /api/search/channels`
 - `POST /api/search/remote`
 - `GET /api/search/remote/:task_id`
+
+`GET /api/search/global` returns grouped sections for messages, links, files, and channels. The specific endpoints power tabs, pagination, and deep filtering for each scope.
 
 Local results include `source: "local"` and local IDs. Remote results include `source: "remote"` and Telegram location fields, but no local message or link ID.
 
@@ -589,6 +685,7 @@ Local results include `source: "local"` and local IDs. Remote results include `s
 
 - `GET /api/settings`
 - `PUT /api/settings`
+- `GET /api/storage/usage`
 - `POST /api/backup`
 - `GET /api/logs`
 
@@ -600,9 +697,11 @@ Local results include `source: "local"` and local IDs. Remote results include `s
 - Channel analysis remains lightweight and must not force full history sync.
 - History sync requires explicit channel selection.
 - Realtime listening requires explicit channel selection.
-- Default history sync limit is `1000`.
-- Sync limits are `100`, `1000`, `5000`, and `10000`.
-- History sync writes messages, extracts links, updates FTS, and updates channel cursors.
+- Default Sync Profile is `Normal`.
+- Sync Profiles map to internal limits: `Quick=100`, `Normal=1000`, `Deep=10000`, `Full=all available history`.
+- `Full` sync requires explicit confirmation and should run only as a resumable task.
+- Deep and Full sync requests must check storage quota before starting.
+- History sync writes message metadata, writes message contents, extracts links, updates FTS, and updates `telegram_sync_cursors`.
 
 ### Task State Machine
 
@@ -652,13 +751,13 @@ Avoid:
 
 Page behavior:
 
-- Home emphasizes status and quick search.
-- Search emphasizes result readability, filters, highlights, and local/remote source labels.
+- Home emphasizes status, quick search, storage usage, and top resource types.
+- Search emphasizes Global Search result grouping, filters, highlights, and local/remote source labels.
 - Channels emphasizes bulk management and explicit sync/listen actions.
-- Resources emphasizes link type, source message, deduplication, and filtering.
+- Resources emphasizes Telegram Resource Library workflows: link type, file type, lightweight categories, source message, deduplication, and filtering.
 - Accounts emphasizes session and runtime health.
 - Tasks emphasizes progress, failures, retry, cancel, FloodWait, reconnect, and recent activity.
-- Settings emphasizes safe defaults and local deployment.
+- Settings emphasizes safe defaults, storage quota, Sync Profile defaults, and local deployment.
 
 ## Delivery Strategy
 
@@ -674,10 +773,10 @@ Implement Phase 1 in focused stages:
    Add Telegram API configuration, phone login, code login, 2FA, account state, and metadata sync.
 
 4. **Channel Control**
-   Add channel table, channel analysis, Telegram Web access status, sync selection, listener selection, and remote search entry points.
+   Add channel table, channel analysis, Telegram Web access status, Sync Profile selection, listener selection, storage quota checks, and remote search entry points.
 
 5. **Index And Search**
-   Add SQLite/FTS5 search surfaces, history sync UI, local message search, resource search, and link extraction UI.
+   Add SQLite/FTS5 search surfaces, `telegram_message_contents`, `telegram_sync_cursors`, history sync UI, Global Search, Telegram Resource Library, and link extraction UI.
 
 6. **Runtime Reliability**
    Add persistent tasks, SSE, FloodWait handling, reconnect state, gap recovery, pause/resume/retry/cancel, and restart recovery.
@@ -689,23 +788,24 @@ Implement Phase 1 in focused stages:
 
 Backend:
 
-- Repository tests for migrations, constraints, search, links, settings, users, tasks, and remote search task metadata.
-- Service tests for setup, auth, account state, channel sync, history sync, remote search, resources, and task state transitions.
+- Repository tests for migrations, constraints, message contents, sync cursors, search, links, settings, users, tasks, storage usage, and remote search task metadata.
+- Service tests for setup, auth, account state, channel sync, Sync Profile mapping, storage quota checks, history sync, remote search, resources, and task state transitions.
 - API handler tests for response contracts and sensitive value redaction.
 - Fake Telegram client tests for login, metadata sync, history sync, listener updates, FloodWait, reconnect, and gap recovery.
-- FTS5 tests for insert, update, delete, soft-delete, filtering, highlighting, and pagination.
+- FTS5 tests for content insert, update, delete, soft-delete, filtering, highlighting, and pagination.
 
 Frontend:
 
-- Component tests for Setup Wizard, login, channel selection, search filters, task rows, and settings forms.
-- Store tests for auth state, setup state, task events, search state, and channel selection.
-- End-to-end smoke tests for first setup, login mock, metadata sync mock, channel sync mock, local search, remote search mock, and backup.
+- Component tests for Setup Wizard, login, Sync Profile selection, channel selection, Global Search filters, Resource Library filters, storage usage, task rows, and settings forms.
+- Store tests for auth state, setup state, task events, Global Search state, resource state, storage usage state, and channel selection.
+- End-to-end smoke tests for first setup, login mock, metadata sync mock, channel sync mock, local Global Search, Resource Library filtering, remote search mock, storage quota warning, and backup.
 
 Operational:
 
 - Docker Compose starts with an empty data directory.
 - Setup Wizard completes from a clean state.
 - Service restarts preserve admin setup, Telegram sessions, sync tasks, listener settings, and local index.
+- Storage usage reporting matches the SQLite database, index directory, and media cache directory.
 - Logs redact sensitive values.
 - Backup and restore procedures are documented and smoke-tested.
 
@@ -719,4 +819,9 @@ None for this design. The following decisions were confirmed during brainstormin
 - Unsynced channels may run explicit remote Telegram search.
 - Remote search results are display-only and are not inserted into the local index.
 - Channel Web checks are named Telegram Web Access Detection and use `web_access`, not Discoverability.
+- History sync uses Sync Profiles instead of raw numeric choices.
+- Storage quota and storage usage are Phase 1 requirements.
+- Search is Global Search across messages, links, files, and channels.
+- Resources is a primary Telegram Resource Library surface.
+- Message metadata, message contents, and sync cursors use separate tables.
 - The frontend direction is Operations Console.

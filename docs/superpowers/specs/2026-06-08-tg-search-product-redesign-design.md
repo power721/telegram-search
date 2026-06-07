@@ -32,7 +32,7 @@ Phase 1 must deliver a complete usable loop:
 - Telegram API configuration.
 - Telegram account login with phone, code, and 2FA password support.
 - Metadata sync for channels, groups, and Saved Messages.
-- Channel analysis and discoverability detection.
+- Channel analysis and Telegram Web Access Detection.
 - Explicit channel selection for history sync and realtime listening.
 - SQLite storage and SQLite FTS5 search.
 - History sync, realtime listener, idempotent writes, and link extraction.
@@ -90,12 +90,13 @@ Remote search is only available through an explicit action for unsynced user-acc
 
 ### Channels
 
-Channels manages Telegram channels, groups, and Saved Messages. It displays title, username, type, member count, description, sync state, listener state, discoverability state, last sync time, and progress.
+Channels manages Telegram channels, groups, and Saved Messages. It displays title, username, type, member count, description, sync state, listener state, Telegram Web access state, last sync time, and progress.
 
 Supported actions:
 
 - Sync metadata.
 - Analyze channel.
+- Check Telegram Web access.
 - Start history sync.
 - Choose sync limit: `100`, `1000`, `5000`, or `10000`.
 - Enable or disable realtime listening.
@@ -118,7 +119,7 @@ Tasks shows long-running and background work:
 
 - Metadata sync.
 - Channel analysis.
-- Discoverability detection.
+- Telegram Web Access Detection.
 - History sync.
 - Realtime listener recovery.
 - Remote search.
@@ -158,7 +159,7 @@ After login, start metadata sync for channels, groups, and Saved Messages. This 
 
 ### Step 5: Channel Analysis
 
-Show title, username, type, member count, description, basic statistics, and discoverability status. Analysis must remain lightweight and must not force full history sync.
+Show title, username, type, member count, description, basic statistics, and Telegram Web access status. Analysis must remain lightweight and must not force full history sync.
 
 ### Step 6: Listen Rules
 
@@ -211,11 +212,11 @@ Services should follow clear boundaries:
 
 ### Task Runtime
 
-All long-running work runs as tasks: metadata sync, channel analysis, history sync, remote search, discoverability detection, backup, restore, and gap recovery. Tasks persist status and progress so the UI can explain what the system is doing.
+All long-running work runs as tasks: metadata sync, channel analysis, history sync, remote search, Telegram Web Access Detection, backup, restore, and gap recovery. Tasks persist status and progress so the UI can explain what the system is doing.
 
 ### Telegram Runtime
 
-Use gotd/td through a per-account client pool. Centralize session storage, FloodWait handling, reconnect, rate limits, and gap recovery. Do not use `t.me/s` public HTML scraping as a product search path.
+Use gotd/td through a per-account client pool. Centralize session storage, FloodWait handling, reconnect, rate limits, and gap recovery. Do not use `t.me/s` public HTML scraping as the main product search path.
 
 ### Repository And Index
 
@@ -245,6 +246,72 @@ Rules:
 - Results can be kept in short-lived memory or temporary storage tied to a remote search task.
 - A service restart may expire remote results.
 - FloodWait, permission errors, and timeout errors must be visible in task state.
+
+## Telegram Web Access Detection
+
+Telegram Web Access Detection checks only whether a channel with a public username can be viewed through Telegram's Web preview page:
+
+```text
+https://t.me/s/{username}
+```
+
+It is not a discoverability score and must not be named `Discoverability`.
+
+It does not mean:
+
+- Google indexed the channel.
+- Bing indexed the channel.
+- PanSou collected the channel.
+- The channel is publicly searchable.
+- The complete channel history is available through Web preview.
+
+### Detection Logic
+
+After channel metadata sync, the system may asynchronously run Web Access Detection.
+
+Rules:
+
+- If the channel has a `username`, request `https://t.me/s/{username}`.
+- Parse the response HTML for `tgme_widget_message_wrap`.
+- If at least one message element exists, store `web_access=true`.
+- If no message element exists, store `web_access=false`.
+- If the channel has no `username`, store `web_access=false`.
+- Store HTTP, timeout, DNS, parse, and other probe failures in `web_access_error`.
+
+### Scope
+
+Applicable:
+
+- Channels with a `username`.
+- Joined public channels.
+- Channels that may be reachable through `t.me/s`.
+
+Not applicable:
+
+- Private channels.
+- Private groups.
+- Channels without `username`.
+- Saved Messages.
+
+The database stays simple:
+
+- `web_access BOOLEAN`
+- `web_access_checked_at DATETIME`
+- `web_access_error TEXT`
+
+The UI may display channels without a username, private groups, and Saved Messages as "Not applicable", but the database should not introduce a separate enum for this in Phase 1.
+
+Search ranking may use this as a local-index value signal:
+
+- `web_access=false` first.
+- `web_access=true` later.
+- unknown last.
+
+Rationale: if a channel cannot be accessed through Telegram Web preview, its content depends more on the user's account permissions, so the local index is more valuable.
+
+### Telegram Web Preview Probe
+
+A helper such as `searchWeb(username, keyword)` can exist only as a Telegram Web Preview or Web Access probe. It is not the main search capability and must not bypass the product rule that normal search uses the local index, with explicit remote Telegram search reserved for unsynced user-accessible sources.
 
 ## Data Model
 
@@ -316,9 +383,9 @@ Fields:
 - `avatar_state`
 - `sync_state`
 - `listen_state`
-- `discoverability`
-- `discoverability_checked_at`
-- `discoverability_source`
+- `web_access`
+- `web_access_checked_at`
+- `web_access_error`
 - `last_sync_message_id`
 - `last_sync_at`
 - `created_at`
@@ -493,7 +560,7 @@ Suggested Phase 1 API groups:
 - `POST /api/channels/:id/listen`
 - `DELETE /api/channels/:id/listen`
 - `POST /api/channels/:id/analyze`
-- `POST /api/channels/:id/discoverability`
+- `POST /api/channels/web-access/check`
 
 ### Search
 
@@ -607,7 +674,7 @@ Implement Phase 1 in focused stages:
    Add Telegram API configuration, phone login, code login, 2FA, account state, and metadata sync.
 
 4. **Channel Control**
-   Add channel table, channel analysis, discoverability status, sync selection, listener selection, and remote search entry points.
+   Add channel table, channel analysis, Telegram Web access status, sync selection, listener selection, and remote search entry points.
 
 5. **Index And Search**
    Add SQLite/FTS5 search surfaces, history sync UI, local message search, resource search, and link extraction UI.
@@ -651,4 +718,5 @@ None for this design. The following decisions were confirmed during brainstormin
 - Project naming should be unified to `tg-search`.
 - Unsynced channels may run explicit remote Telegram search.
 - Remote search results are display-only and are not inserted into the local index.
+- Channel Web checks are named Telegram Web Access Detection and use `web_access`, not Discoverability.
 - The frontend direction is Operations Console.

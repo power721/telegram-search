@@ -36,8 +36,16 @@ func (r *MessageRepository) SaveBatch(ctx context.Context, messages []model.Mess
 
 func (r *MessageRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, messages []model.Message) ([]model.Message, error) {
 	out := make([]model.Message, 0, len(messages))
+	if len(messages) == 0 {
+		return out, nil
+	}
+	stmt, err := tx.PrepareContext(ctx, saveMessageSQL)
+	if err != nil {
+		return nil, fmt.Errorf("prepare save message: %w", err)
+	}
+	defer stmt.Close()
 	for _, msg := range messages {
-		stored, err := r.save(ctx, tx, msg)
+		stored, err := r.savePrepared(ctx, stmt, msg)
 		if err != nil {
 			return nil, err
 		}
@@ -46,7 +54,19 @@ func (r *MessageRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, message
 	return out, nil
 }
 
-func (r *MessageRepository) save(ctx context.Context, exec executor, msg model.Message) (model.Message, error) {
+func (r *MessageRepository) save(ctx context.Context, exec queryRower, msg model.Message) (model.Message, error) {
+	return saveMessage(msg, func(args ...any) *sql.Row {
+		return exec.QueryRowContext(ctx, saveMessageSQL, args...)
+	})
+}
+
+func (r *MessageRepository) savePrepared(ctx context.Context, stmt *sql.Stmt, msg model.Message) (model.Message, error) {
+	return saveMessage(msg, func(args ...any) *sql.Row {
+		return stmt.QueryRowContext(ctx, args...)
+	})
+}
+
+func saveMessage(msg model.Message, query func(args ...any) *sql.Row) (model.Message, error) {
 	now := time.Now().UTC()
 	var editDate any
 	if msg.EditDate != nil {
@@ -56,7 +76,16 @@ func (r *MessageRepository) save(ctx context.Context, exec executor, msg model.M
 	if msg.Deleted {
 		deleted = 1
 	}
-	err := exec.QueryRowContext(ctx, `
+	err := query(
+		msg.AccountID, msg.ChannelID, msg.TelegramMessageID, msg.SenderID, msg.Text, msg.RawJSON, msg.Date, editDate, deleted, now, now,
+	).Scan(&msg.ID, &msg.CreatedAt, &msg.UpdatedAt)
+	if err != nil {
+		return model.Message{}, fmt.Errorf("save message %d/%d: %w", msg.ChannelID, msg.TelegramMessageID, err)
+	}
+	return msg, nil
+}
+
+const saveMessageSQL = `
 INSERT INTO telegram_messages
   (account_id, channel_id, telegram_message_id, sender_id, text, raw_json, date, edit_date, deleted, created_at, updated_at)
 VALUES
@@ -70,14 +99,7 @@ ON CONFLICT(channel_id, telegram_message_id) DO UPDATE SET
   edit_date = excluded.edit_date,
   deleted = excluded.deleted,
   updated_at = excluded.updated_at
-RETURNING id, created_at, updated_at`,
-		msg.AccountID, msg.ChannelID, msg.TelegramMessageID, msg.SenderID, msg.Text, msg.RawJSON, msg.Date, editDate, deleted, now, now,
-	).Scan(&msg.ID, &msg.CreatedAt, &msg.UpdatedAt)
-	if err != nil {
-		return model.Message{}, fmt.Errorf("save message %d/%d: %w", msg.ChannelID, msg.TelegramMessageID, err)
-	}
-	return msg, nil
-}
+RETURNING id, created_at, updated_at`
 
 func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]model.SearchResult, error) {
 	limit := clampLimit(params.Limit, 50)

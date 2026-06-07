@@ -57,6 +57,9 @@ type Service struct {
 	startOnce       sync.Once
 	listenerCancel  context.CancelFunc
 	listenerCtx     context.Context
+	listenerCancels map[int64]context.CancelFunc
+	listenerTokens  map[int64]uint64
+	nextToken       uint64
 	processorCancel context.CancelFunc
 	processorCtx    context.Context
 	events          chan Event
@@ -86,13 +89,15 @@ func NewService(opts ServiceOptions) *Service {
 		opts.Logger = zap.NewNop()
 	}
 	return &Service{
-		accounts:      opts.Accounts,
-		processor:     opts.Processor,
-		listener:      opts.Listener,
-		retryInterval: opts.RetryInterval,
-		retryPolicy:   opts.RetryPolicy,
-		logger:        opts.Logger,
-		events:        make(chan Event, opts.QueueSize),
+		accounts:        opts.Accounts,
+		processor:       opts.Processor,
+		listener:        opts.Listener,
+		retryInterval:   opts.RetryInterval,
+		retryPolicy:     opts.RetryPolicy,
+		logger:          opts.Logger,
+		events:          make(chan Event, opts.QueueSize),
+		listenerCancels: map[int64]context.CancelFunc{},
+		listenerTokens:  map[int64]uint64{},
 	}
 }
 
@@ -112,10 +117,19 @@ func (s *Service) StartAccount(ctx context.Context, account model.Account) error
 		s.mu.Unlock()
 		return ErrServiceStopped
 	}
+	if _, ok := s.listenerCancels[account.ID]; ok {
+		s.mu.Unlock()
+		return nil
+	}
+	accountCtx, cancel := context.WithCancel(s.listenerCtx)
+	s.nextToken++
+	token := s.nextToken
+	s.listenerCancels[account.ID] = cancel
+	s.listenerTokens[account.ID] = token
 	s.listenerWG.Add(1)
 	s.mu.Unlock()
 
-	go s.runListener(account)
+	go s.runListener(accountCtx, token, account)
 	return nil
 }
 
@@ -146,6 +160,9 @@ func (s *Service) Stop(ctx context.Context) error {
 	if s.listenerCancel != nil {
 		s.listenerCancel()
 	}
+	for _, cancel := range s.listenerCancels {
+		cancel()
+	}
 	s.mu.Unlock()
 
 	if err := wait(ctx, &s.listenerWG); err != nil {
@@ -157,6 +174,18 @@ func (s *Service) Stop(ctx context.Context) error {
 		s.processorCancel()
 	}
 	return err
+}
+
+func (s *Service) StopAccount(ctx context.Context, accountID int64) error {
+	s.mu.Lock()
+	cancel := s.listenerCancels[accountID]
+	if cancel != nil {
+		cancel()
+		delete(s.listenerCancels, accountID)
+		delete(s.listenerTokens, accountID)
+	}
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *Service) worker() {
@@ -171,13 +200,21 @@ func (s *Service) worker() {
 	}
 }
 
-func (s *Service) runListener(account model.Account) {
-	defer s.listenerWG.Done()
+func (s *Service) runListener(ctx context.Context, token uint64, account model.Account) {
+	defer func() {
+		s.mu.Lock()
+		if s.listenerTokens[account.ID] == token {
+			delete(s.listenerCancels, account.ID)
+			delete(s.listenerTokens, account.ID)
+		}
+		s.mu.Unlock()
+		s.listenerWG.Done()
+	}()
 	for {
-		err := s.listener.Run(s.listenerCtx, account, func(event Event) error {
-			return s.Enqueue(s.listenerCtx, event)
+		err := s.listener.Run(ctx, account, func(event Event) error {
+			return s.Enqueue(ctx, event)
 		})
-		if s.listenerCtx.Err() != nil {
+		if ctx.Err() != nil {
 			return
 		}
 		if err == nil {
@@ -194,7 +231,7 @@ func (s *Service) runListener(account model.Account) {
 			status = model.AccountStatusFloodWait
 		}
 		if s.accounts != nil {
-			if updateErr := s.accounts.UpdateStatus(s.listenerCtx, account.ID, status); updateErr != nil {
+			if updateErr := s.accounts.UpdateStatus(ctx, account.ID, status); updateErr != nil {
 				s.logger.Error("mark account after listener failure", zap.Int64("account_id", account.ID), zap.String("status", status), zap.Error(updateErr))
 			}
 		}
@@ -203,7 +240,7 @@ func (s *Service) runListener(account model.Account) {
 		if sleep == nil {
 			sleep = sleepContext
 		}
-		if sleepErr := sleep(s.listenerCtx, delay); sleepErr != nil {
+		if sleepErr := sleep(ctx, delay); sleepErr != nil {
 			return
 		}
 	}

@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"tg-provider/internal/backup"
 	"tg-provider/internal/model"
 	searchsvc "tg-provider/internal/search"
 	"tg-provider/internal/telegram"
@@ -140,6 +143,18 @@ func (h handlers) deleteAccount(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if h.deps.AccountRuntime != nil {
+		if err := h.deps.AccountRuntime.StopAccount(c.Request.Context(), id); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if h.deps.Sessions != nil {
+		if err := h.deps.Sessions.RemoveForAccount(id); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
 	if err := h.deps.Accounts.Delete(c.Request.Context(), id); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
@@ -186,6 +201,15 @@ func (h handlers) syncChannel(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if h.deps.SyncQueue != nil {
+		jobCtx := context.WithoutCancel(c.Request.Context())
+		job := h.deps.SyncQueue.Enqueue(jobCtx, "channel-sync", func(ctx context.Context) error {
+			_, err := h.deps.History.SyncChannel(ctx, id)
+			return err
+		})
+		c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "status": job.Status})
+		return
+	}
 	result, err := h.deps.History.SyncChannel(c.Request.Context(), id)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -211,8 +235,48 @@ func (h handlers) syncChannels(c *gin.Context) {
 			return
 		}
 	}
+	if h.deps.SyncQueue != nil {
+		channelIDs := append([]int64(nil), req.ChannelIDs...)
+		jobCtx := context.WithoutCancel(c.Request.Context())
+		job := h.deps.SyncQueue.Enqueue(jobCtx, "channels-sync", func(ctx context.Context) error {
+			result := h.deps.History.SyncMany(ctx, channelIDs)
+			if len(result.Failures) > 0 {
+				return fmt.Errorf("sync failures: %v", result.Failures)
+			}
+			return nil
+		})
+		c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "status": job.Status})
+		return
+	}
 	result := h.deps.History.SyncMany(c.Request.Context(), req.ChannelIDs)
 	c.JSON(http.StatusAccepted, result)
+}
+
+func (h handlers) syncAccountChannels(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	account, err := h.deps.Accounts.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	if h.deps.SyncQueue != nil {
+		jobCtx := context.WithoutCancel(c.Request.Context())
+		job := h.deps.SyncQueue.Enqueue(jobCtx, "account-channels-sync", func(ctx context.Context) error {
+			_, err := h.deps.ChannelSync.SyncAccount(ctx, account)
+			return err
+		})
+		c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "status": job.Status})
+		return
+	}
+	items, err := h.deps.ChannelSync.SyncAccount(c.Request.Context(), account)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"items": items})
 }
 
 func (h handlers) search(c *gin.Context) {
@@ -311,6 +375,19 @@ func (h handlers) maintenanceSQLite(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"operations": ops})
+}
+
+func (h handlers) maintenanceBackup(c *gin.Context) {
+	if h.deps.BackupDB == nil || h.deps.BackupDir == "" {
+		errorText(c, http.StatusServiceUnavailable, "backup is unavailable")
+		return
+	}
+	path, err := backup.SQLite(c.Request.Context(), h.deps.BackupDB, h.deps.BackupDir)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"path": path})
 }
 
 func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, profile telegram.Profile) {
@@ -460,5 +537,9 @@ func errorJSON(c *gin.Context, status int, err error) {
 }
 
 func errorText(c *gin.Context, status int, msg string) {
-	c.JSON(status, gin.H{"error": msg})
+	code := "internal_error"
+	if status >= http.StatusBadRequest && status < http.StatusInternalServerError {
+		code = "bad_request"
+	}
+	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": msg}})
 }

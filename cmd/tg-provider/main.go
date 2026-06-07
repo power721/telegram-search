@@ -75,6 +75,7 @@ func run(configPath string) error {
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	tgClient := telegram.NewGotdClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, logs.Telegram)
 	retryPolicy := retry.DefaultPolicy()
+	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
 		DB:        conn,
 		Channels:  channels,
@@ -117,7 +118,8 @@ func run(configPath string) error {
 
 	router := api.NewRouter(api.Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
-		Search: searchService, History: historyService, ChannelSync: channelService,
+		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
+		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{
@@ -151,6 +153,9 @@ func run(configPath string) error {
 		return err
 	}
 	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
+		return err
+	}
+	if err := syncQueue.Stop(shutdownCtx); err != nil {
 		return err
 	}
 	if err := accountManager.Stop(shutdownCtx); err != nil {

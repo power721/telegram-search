@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 	"tg-provider/internal/retry"
+	"tg-provider/internal/scheduler"
 	"tg-provider/internal/search"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
@@ -76,6 +79,18 @@ func TestSearchRequiresQuery(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Error.Code != "bad_request" || body.Error.Message == "" {
+		t.Fatalf("error response = %s, want standard bad_request envelope", w.Body.String())
+	}
 }
 
 func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
@@ -97,6 +112,42 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	}
 	if account.Status != model.AccountStatusLoginRequired {
 		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+}
+
+func TestDeleteAccountStopsRuntimeAndRemovesSession(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	sessionPath := deps.Sessions.PathForAccount(accountID)
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	if err := os.WriteFile(sessionPath, []byte("session"), 0o600); err != nil {
+		t.Fatalf("write session: %v", err)
+	}
+	runtime := &recordingAccountRuntime{}
+	deps.AccountRuntime = runtime
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/accounts/"+strconv.FormatInt(accountID, 10), nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if got := runtime.stoppedIDs(); !sameInt64s(got, []int64{accountID}) {
+		t.Fatalf("stopped ids = %v, want [%d]", got, accountID)
+	}
+	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+		t.Fatalf("session stat error = %v, want not exist", err)
+	}
+	if _, err := deps.Accounts.FindByID(ctx, accountID); err == nil {
+		t.Fatal("FindByID succeeded after delete, want missing account")
 	}
 }
 
@@ -311,6 +362,29 @@ func TestMaintenanceSQLiteAPI(t *testing.T) {
 	}
 }
 
+func TestMaintenanceBackupAPI(t *testing.T) {
+	router := NewRouter(testDeps(t))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/backup", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Path == "" {
+		t.Fatalf("path is empty in response %s", w.Body.String())
+	}
+	if _, err := os.Stat(body.Path); err != nil {
+		t.Fatalf("backup path stat: %v", err)
+	}
+}
+
 func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	router := NewRouter(testDeps(t))
 	for _, body := range []string{
@@ -329,9 +403,12 @@ func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	}
 }
 
-func TestBatchSyncAPIReturnsPerChannelResults(t *testing.T) {
+func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)
+	deps.SyncQueue = scheduler.NewRetryQueue(scheduler.RetryQueueOptions{
+		Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
 	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
 	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 10, AccessHash: 20, Title: "VIP", Type: model.ChannelTypeChannel})
 	deps.History = history.NewService(history.Options{
@@ -350,14 +427,82 @@ func TestBatchSyncAPIReturnsPerChannelResults(t *testing.T) {
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())
 	}
-	if !bytes.Contains(w.Body.Bytes(), []byte(`"queued":1`)) {
-		t.Fatalf("response = %s, want queued 1", w.Body.String())
+	var body struct {
+		JobID  string `json:"job_id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.JobID == "" || body.Status != "queued" {
+		t.Fatalf("response = %+v, want queued job id", body)
+	}
+	done, err := deps.SyncQueue.Wait(ctx, body.JobID)
+	if err != nil {
+		t.Fatalf("wait job: %v", err)
+	}
+	if done.Status != scheduler.RetryJobSucceeded {
+		t.Fatalf("job status = %q error=%s, want succeeded", done.Status, done.Error)
+	}
+}
+
+func TestAccountChannelSyncAPIReturnsAsyncJob(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.SyncQueue = scheduler.NewRetryQueue(scheduler.RetryQueueOptions{
+		Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelClient := &apiChannelClient{
+		items: []telegram.Channel{{TelegramChannelID: 11, AccessHash: 22, Title: "Account Channel", Type: model.ChannelTypeChannel}},
+	}
+	deps.ChannelSync = channel.NewService(deps.Channels, channelClient, deps.Sessions)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/channels/sync", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())
+	}
+	var body struct {
+		JobID  string `json:"job_id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.JobID == "" || body.Status != "queued" {
+		t.Fatalf("response = %+v, want queued job id", body)
+	}
+	done, err := deps.SyncQueue.Wait(ctx, body.JobID)
+	if err != nil {
+		t.Fatalf("wait job: %v", err)
+	}
+	if done.Status != scheduler.RetryJobSucceeded {
+		t.Fatalf("job status = %q error=%s, want succeeded", done.Status, done.Error)
+	}
+	items, err := deps.Channels.FindByAccountID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find channels: %v", err)
+	}
+	if len(items) != 1 || items[0].Title != "Account Channel" {
+		t.Fatalf("channels = %+v, want synced account channel", items)
 	}
 }
 
 type apiHistoryClient struct {
 	telegram.NopClient
 	date time.Time
+}
+
+type apiChannelClient struct {
+	telegram.NopClient
+	items []telegram.Channel
+}
+
+func (c *apiChannelClient) ListChannels(ctx context.Context, account telegram.AccountSession) ([]telegram.Channel, error) {
+	return c.items, nil
 }
 
 func (f *apiHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
@@ -399,6 +544,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelService := channel.NewService(channels, client, sessions)
 	return Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
+		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		Search: searchService, History: historyService, ChannelSync: channelService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn
@@ -410,4 +556,43 @@ type fakeTelegram struct {
 
 func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
 	return telegram.SentCode{PhoneCodeHash: "hash"}, nil
+}
+
+type recordingAccountRuntime struct {
+	mu      sync.Mutex
+	stopped []int64
+}
+
+func (r *recordingAccountRuntime) StopAccount(ctx context.Context, accountID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = append(r.stopped, accountID)
+	return nil
+}
+
+func (r *recordingAccountRuntime) stoppedIDs() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]int64, len(r.stopped))
+	copy(out, r.stopped)
+	return out
+}
+
+func sameInt64s(got []int64, want []int64) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[int64]int{}
+	for _, id := range got {
+		seen[id]++
+	}
+	for _, id := range want {
+		seen[id]--
+	}
+	for _, count := range seen {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
 }

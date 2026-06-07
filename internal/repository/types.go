@@ -12,6 +12,10 @@ type executor interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 type SearchParams struct {
 	Query      string
 	AccountID  int64

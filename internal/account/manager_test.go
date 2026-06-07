@@ -97,6 +97,63 @@ func TestManagerRestartTransitionsAndStartsAccount(t *testing.T) {
 	}
 }
 
+func TestManagerStopAccountStopsRuntimeAndMarksDisconnected(t *testing.T) {
+	ctx := context.Background()
+	fixture := newManagerFixture(t)
+	accountID := fixture.saveAccount(t, model.AccountStatusOnline)
+	runtime := &recordingUpdateRuntime{}
+	manager := NewManager(ManagerOptions{
+		Accounts:       fixture.accounts,
+		Updates:        runtime,
+		HealthInterval: time.Hour,
+	})
+	if err := manager.Start(ctx); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	defer manager.Stop(context.Background())
+
+	if err := manager.StopAccount(ctx, accountID); err != nil {
+		t.Fatalf("StopAccount returned error: %v", err)
+	}
+
+	account, err := fixture.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("FindByID returned error: %v", err)
+	}
+	if account.Status != model.AccountStatusDisconnected {
+		t.Fatalf("status = %q, want DISCONNECTED", account.Status)
+	}
+	if got := runtime.stoppedIDs(); !sameIDs(got, []int64{accountID}) {
+		t.Fatalf("stopped ids = %v, want [%d]", got, accountID)
+	}
+}
+
+func TestManagerStopAccountIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	fixture := newManagerFixture(t)
+	accountID := fixture.saveAccount(t, model.AccountStatusOnline)
+	runtime := &recordingUpdateRuntime{}
+	manager := NewManager(ManagerOptions{
+		Accounts:       fixture.accounts,
+		Updates:        runtime,
+		HealthInterval: time.Hour,
+	})
+	if err := manager.Start(ctx); err != nil {
+		t.Fatalf("Start returned error: %v", err)
+	}
+	defer manager.Stop(context.Background())
+
+	if err := manager.StopAccount(ctx, accountID); err != nil {
+		t.Fatalf("first StopAccount returned error: %v", err)
+	}
+	if err := manager.StopAccount(ctx, accountID); err != nil {
+		t.Fatalf("second StopAccount returned error: %v", err)
+	}
+	if got := runtime.stoppedIDs(); !sameIDs(got, []int64{accountID}) {
+		t.Fatalf("stopped ids = %v, want one stop for [%d]", got, accountID)
+	}
+}
+
 func TestManagerRejectsInvalidTransition(t *testing.T) {
 	ctx := context.Background()
 	fixture := newManagerFixture(t)
@@ -187,6 +244,7 @@ type recordingUpdateRuntime struct {
 	starts    int
 	stops     int
 	started   []int64
+	stopped   []int64
 	startErr  error
 	stopError error
 }
@@ -214,6 +272,13 @@ func (r *recordingUpdateRuntime) Stop(ctx context.Context) error {
 	return r.stopError
 }
 
+func (r *recordingUpdateRuntime) StopAccount(ctx context.Context, accountID int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = append(r.stopped, accountID)
+	return r.stopError
+}
+
 func (r *recordingUpdateRuntime) startedIDs() []int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -226,6 +291,14 @@ func (r *recordingUpdateRuntime) startCalls() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.starts
+}
+
+func (r *recordingUpdateRuntime) stoppedIDs() []int64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]int64, len(r.stopped))
+	copy(out, r.stopped)
+	return out
 }
 
 func sameIDs(got []int64, want []int64) bool {

@@ -18,6 +18,7 @@ var ErrInvalidTransition = errors.New("invalid account status transition")
 type UpdateRuntime interface {
 	Start(context.Context)
 	StartAccount(context.Context, model.Account) error
+	StopAccount(context.Context, int64) error
 	Stop(context.Context) error
 }
 
@@ -132,6 +133,27 @@ func (m *Manager) Restart(ctx context.Context, accountID int64) error {
 	}
 	account.Status = model.AccountStatusReconnecting
 	return m.startAccount(ctx, account)
+}
+
+func (m *Manager) StopAccount(ctx context.Context, accountID int64) error {
+	m.mu.Lock()
+	_, active := m.active[accountID]
+	if active {
+		delete(m.active, accountID)
+	}
+	m.mu.Unlock()
+
+	if active && m.updates != nil {
+		if err := m.updates.StopAccount(ctx, accountID); err != nil {
+			return err
+		}
+	}
+	if m.accounts != nil {
+		if err := m.accounts.UpdateStatus(ctx, accountID, model.AccountStatusDisconnected); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *Manager) List(ctx context.Context) ([]model.Account, error) {

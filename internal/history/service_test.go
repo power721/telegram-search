@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -245,4 +246,120 @@ func (f *floodThenEmptyHistoryClient) FetchHistory(ctx context.Context, account 
 		return nil, retry.FloodWait(60, errors.New("FLOOD_WAIT_60"))
 	}
 	return nil, nil
+}
+
+func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channel1 := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	channel2, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 201, AccessHash: 301, Title: "VIP 2", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel2: %v", err)
+	}
+	channel3, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 202, AccessHash: 302, Title: "VIP 3", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel3: %v", err)
+	}
+	fake := &concurrentHistoryClient{delay: 5 * time.Millisecond}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10, Workers: 2,
+		RetryPolicy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+
+	result := service.SyncMany(ctx, []int64{channel1, channel1, channel2, channel3})
+	if result.Queued != 3 {
+		t.Fatalf("queued = %d, want 3 unique channels", result.Queued)
+	}
+	if result.Skipped != 1 {
+		t.Fatalf("skipped = %d, want 1 duplicate", result.Skipped)
+	}
+	if len(result.Failures) != 0 {
+		t.Fatalf("failures = %+v, want none", result.Failures)
+	}
+	if fake.maxActive > 2 {
+		t.Fatalf("max active = %d, want <= 2", fake.maxActive)
+	}
+}
+
+func TestSyncManySkipsChannelAlreadySyncing(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	fake := &blockingHistoryClient{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10, Workers: 1,
+		RetryPolicy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.SyncChannel(ctx, channelID)
+		done <- err
+	}()
+	select {
+	case <-fake.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first sync to start")
+	}
+
+	result := service.SyncMany(ctx, []int64{channelID})
+	if result.Queued != 0 || result.Skipped != 1 {
+		t.Fatalf("result = %+v, want queued=0 skipped=1", result)
+	}
+
+	close(fake.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("first SyncChannel returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first sync")
+	}
+}
+
+type concurrentHistoryClient struct {
+	telegram.NopClient
+	mu        sync.Mutex
+	active    int
+	maxActive int
+	delay     time.Duration
+}
+
+func (f *concurrentHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.mu.Lock()
+	f.active++
+	if f.active > f.maxActive {
+		f.maxActive = f.active
+	}
+	f.mu.Unlock()
+	time.Sleep(f.delay)
+	f.mu.Lock()
+	f.active--
+	f.mu.Unlock()
+	return nil, nil
+}
+
+type blockingHistoryClient struct {
+	telegram.NopClient
+	once    sync.Once
+	started chan struct{}
+	release chan struct{}
+}
+
+func (f *blockingHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.once.Do(func() { close(f.started) })
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-f.release:
+		return nil, nil
+	}
 }

@@ -52,6 +52,13 @@ type SyncResult struct {
 	Links    int `json:"links"`
 }
 
+type SyncManyResult struct {
+	Queued   int                  `json:"queued"`
+	Skipped  int                  `json:"skipped"`
+	Results  map[int64]SyncResult `json:"results"`
+	Failures map[int64]string     `json:"failures"`
+}
+
 var ErrChannelSyncInProgress = errors.New("channel sync already in progress")
 
 func NewService(opts Options) *Service {
@@ -92,6 +99,78 @@ func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult,
 	}
 	defer s.releaseChannel(channelID)
 	return s.syncChannelWithRetry(ctx, channelID)
+}
+
+func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
+	result := SyncManyResult{
+		Results:  map[int64]SyncResult{},
+		Failures: map[int64]string{},
+	}
+	unique := make([]int64, 0, len(channelIDs))
+	seen := map[int64]struct{}{}
+	for _, channelID := range channelIDs {
+		if channelID <= 0 {
+			result.Skipped++
+			continue
+		}
+		if _, ok := seen[channelID]; ok {
+			result.Skipped++
+			continue
+		}
+		seen[channelID] = struct{}{}
+		unique = append(unique, channelID)
+	}
+	if len(unique) == 0 {
+		return result
+	}
+
+	workers := s.workers
+	if workers <= 0 {
+		workers = 1
+	}
+	if workers > len(unique) {
+		workers = len(unique)
+	}
+
+	jobs := make(chan int64)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for channelID := range jobs {
+				if !s.tryAcquireChannel(channelID) {
+					mu.Lock()
+					result.Skipped++
+					mu.Unlock()
+					continue
+				}
+				syncResult, err := s.syncChannelWithRetry(ctx, channelID)
+				s.releaseChannel(channelID)
+				mu.Lock()
+				if err != nil {
+					result.Failures[channelID] = err.Error()
+				} else {
+					result.Queued++
+					result.Results[channelID] = syncResult
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, channelID := range unique {
+		select {
+		case <-ctx.Done():
+			mu.Lock()
+			result.Failures[channelID] = ctx.Err().Error()
+			mu.Unlock()
+		case jobs <- channelID:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	return result
 }
 
 func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64) (SyncResult, error) {

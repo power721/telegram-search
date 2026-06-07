@@ -43,6 +43,53 @@ func TestServiceProcessesQueuedEventsSequentiallyAndFlushesOnStop(t *testing.T) 
 	}
 }
 
+func TestServiceFlushesStopQueueWithLiveProcessorContext(t *testing.T) {
+	processor := &gatedContextProcessor{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+		result:  make(chan error, 1),
+	}
+	service := NewService(ServiceOptions{
+		Processor: processor,
+		QueueSize: 1,
+	})
+
+	ctx := context.Background()
+	service.Start(ctx)
+	if err := service.Enqueue(ctx, Event{Type: EventNewMessage, MessageID: 1}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	select {
+	case <-processor.entered:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for processor to start")
+	}
+
+	stopDone := make(chan error, 1)
+	go func() {
+		stopDone <- service.Stop(context.Background())
+	}()
+	waitForServiceStopped(t, service)
+	close(processor.release)
+
+	select {
+	case err := <-processor.result:
+		if err != nil {
+			t.Fatalf("processor context error during stop flush = %v, want nil", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for processor result")
+	}
+	select {
+	case err := <-stopDone:
+		if err != nil {
+			t.Fatalf("Stop returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for Stop")
+	}
+}
+
 func TestServiceRetriesListenerAndMarksAccountReconnecting(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
@@ -111,6 +158,23 @@ func (r *recordingProcessor) ids() []int64 {
 	return out
 }
 
+type gatedContextProcessor struct {
+	entered chan struct{}
+	release chan struct{}
+	result  chan error
+	once    sync.Once
+}
+
+func (p *gatedContextProcessor) Process(ctx context.Context, event Event) error {
+	p.once.Do(func() {
+		close(p.entered)
+	})
+	<-p.release
+	err := ctx.Err()
+	p.result <- err
+	return err
+}
+
 type flakyListener struct {
 	mu      sync.Mutex
 	runs    int
@@ -137,6 +201,26 @@ func waitForStarts(t *testing.T, ch <-chan struct{}, n int) {
 		case <-ch:
 		case <-time.After(time.Second):
 			t.Fatalf("timed out waiting for listener start %d", i+1)
+		}
+	}
+}
+
+func waitForServiceStopped(t *testing.T, service *Service) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			t.Fatal("timed out waiting for service to stop")
+		case <-ticker.C:
+			service.mu.Lock()
+			stopped := service.stopped
+			service.mu.Unlock()
+			if stopped {
+				return
+			}
 		}
 	}
 }

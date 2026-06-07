@@ -50,14 +50,16 @@ type Service struct {
 	retryInterval time.Duration
 	logger        *zap.Logger
 
-	mu         sync.Mutex
-	startOnce  sync.Once
-	cancel     context.CancelFunc
-	ctx        context.Context
-	events     chan Event
-	stopped    bool
-	workerWG   sync.WaitGroup
-	listenerWG sync.WaitGroup
+	mu              sync.Mutex
+	startOnce       sync.Once
+	listenerCancel  context.CancelFunc
+	listenerCtx     context.Context
+	processorCancel context.CancelFunc
+	processorCtx    context.Context
+	events          chan Event
+	stopped         bool
+	workerWG        sync.WaitGroup
+	listenerWG      sync.WaitGroup
 }
 
 func NewService(opts ServiceOptions) *Service {
@@ -85,7 +87,8 @@ func NewService(opts ServiceOptions) *Service {
 
 func (s *Service) Start(ctx context.Context) {
 	s.startOnce.Do(func() {
-		s.ctx, s.cancel = context.WithCancel(ctx)
+		s.listenerCtx, s.listenerCancel = context.WithCancel(ctx)
+		s.processorCtx, s.processorCancel = context.WithCancel(context.WithoutCancel(ctx))
 		s.workerWG.Add(1)
 		go s.worker()
 	})
@@ -129,8 +132,8 @@ func (s *Service) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.stopped = true
-	if s.cancel != nil {
-		s.cancel()
+	if s.listenerCancel != nil {
+		s.listenerCancel()
 	}
 	s.mu.Unlock()
 
@@ -138,7 +141,11 @@ func (s *Service) Stop(ctx context.Context) error {
 		return err
 	}
 	close(s.events)
-	return wait(ctx, &s.workerWG)
+	err := wait(ctx, &s.workerWG)
+	if s.processorCancel != nil {
+		s.processorCancel()
+	}
+	return err
 }
 
 func (s *Service) worker() {
@@ -147,7 +154,7 @@ func (s *Service) worker() {
 		if s.processor == nil {
 			continue
 		}
-		if err := s.processor.Process(s.ctx, event); err != nil {
+		if err := s.processor.Process(s.processorCtx, event); err != nil {
 			s.logger.Error("process update event", zap.Error(err), zap.String("type", string(event.Type)))
 		}
 	}
@@ -156,10 +163,10 @@ func (s *Service) worker() {
 func (s *Service) runListener(account model.Account) {
 	defer s.listenerWG.Done()
 	for {
-		err := s.listener.Run(s.ctx, account, func(event Event) error {
-			return s.Enqueue(s.ctx, event)
+		err := s.listener.Run(s.listenerCtx, account, func(event Event) error {
+			return s.Enqueue(s.listenerCtx, event)
 		})
-		if s.ctx.Err() != nil {
+		if s.listenerCtx.Err() != nil {
 			return
 		}
 		if err == nil {
@@ -167,13 +174,13 @@ func (s *Service) runListener(account model.Account) {
 		}
 		s.logger.Warn("telegram update listener stopped", zap.Int64("account_id", account.ID), zap.Error(err))
 		if s.accounts != nil {
-			if updateErr := s.accounts.UpdateStatus(s.ctx, account.ID, model.AccountStatusReconnecting); updateErr != nil {
+			if updateErr := s.accounts.UpdateStatus(s.listenerCtx, account.ID, model.AccountStatusReconnecting); updateErr != nil {
 				s.logger.Error("mark account reconnecting", zap.Int64("account_id", account.ID), zap.Error(updateErr))
 			}
 		}
 		timer := time.NewTimer(s.retryInterval)
 		select {
-		case <-s.ctx.Done():
+		case <-s.listenerCtx.Done():
 			timer.Stop()
 			return
 		case <-timer.C:

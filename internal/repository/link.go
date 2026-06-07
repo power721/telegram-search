@@ -84,6 +84,14 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 		where = append(where, `m.text LIKE ?`)
 		args = append(args, "%"+params.Keyword+"%")
 	}
+	if params.DateFrom != nil {
+		where = append(where, `m.date >= ?`)
+		args = append(args, *params.DateFrom)
+	}
+	if params.DateTo != nil {
+		where = append(where, `m.date < ?`)
+		args = append(args, *params.DateTo)
+	}
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT l.id, l.message_id, l.type, l.url, l.password, l.created_at,

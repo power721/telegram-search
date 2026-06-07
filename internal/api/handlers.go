@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -224,11 +225,17 @@ func (h handlers) latest(c *gin.Context) {
 }
 
 func (h handlers) links(c *gin.Context) {
+	dateFrom, dateTo, ok := parseDateRange(c)
+	if !ok {
+		return
+	}
 	items, err := h.deps.Search.Links(c.Request.Context(), searchsvc.LinkParams{
 		Type:      c.Query("type"),
 		AccountID: queryInt(c, "account_id"),
 		ChannelID: queryInt(c, "channel_id"),
 		Keyword:   c.Query("keyword"),
+		DateFrom:  dateFrom,
+		DateTo:    dateTo,
 		Limit:     queryIntValue(c, "limit"),
 		Offset:    queryIntValue(c, "offset"),
 	})
@@ -290,6 +297,39 @@ func queryInt(c *gin.Context, key string) int64 {
 
 func queryIntValue(c *gin.Context, key string) int {
 	return int(queryInt(c, key))
+}
+
+func parseDateRange(c *gin.Context) (*time.Time, *time.Time, bool) {
+	from, ok := parseDateQuery(c, "date_from", false)
+	if !ok {
+		return nil, nil, false
+	}
+	to, ok := parseDateQuery(c, "date_to", true)
+	if !ok {
+		return nil, nil, false
+	}
+	return from, to, true
+}
+
+func parseDateQuery(c *gin.Context, key string, end bool) (*time.Time, bool) {
+	value := c.Query(key)
+	if value == "" {
+		return nil, true
+	}
+	if t, err := time.Parse(time.RFC3339, value); err == nil {
+		if end {
+			t = t.Add(time.Nanosecond)
+		}
+		return &t, true
+	}
+	if t, err := time.Parse("2006-01-02", value); err == nil {
+		if end {
+			t = t.AddDate(0, 0, 1)
+		}
+		return &t, true
+	}
+	errorText(c, http.StatusBadRequest, key+" must be YYYY-MM-DD or RFC3339")
+	return nil, false
 }
 
 func errorJSON(c *gin.Context, status int, err error) {

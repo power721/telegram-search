@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
@@ -31,6 +32,8 @@ type LinkParams struct {
 	AccountID int64
 	ChannelID int64
 	Keyword   string
+	DateFrom  *time.Time
+	DateTo    *time.Time
 	Limit     int
 	Offset    int
 }
@@ -73,6 +76,8 @@ func (s *Service) Links(ctx context.Context, params LinkParams) ([]model.LinkRes
 		AccountID: params.AccountID,
 		ChannelID: params.ChannelID,
 		Keyword:   params.Keyword,
+		DateFrom:  params.DateFrom,
+		DateTo:    params.DateTo,
 		Limit:     params.Limit,
 		Offset:    params.Offset,
 	})

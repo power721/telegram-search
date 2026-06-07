@@ -77,6 +77,51 @@ func TestServiceSearchLatestAndLinks(t *testing.T) {
 	}
 }
 
+func TestServiceLinksFiltersByMessageDateRange(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	january := time.Date(2026, 1, 5, 12, 0, 0, 0, time.UTC)
+	february := time.Date(2026, 2, 5, 12, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "jan aliyun", RawJSON: "{}", Date: january},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "feb aliyun", RawJSON: "{}", Date: february},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/jan"}}); err != nil {
+		t.Fatalf("save jan link: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/feb"}}); err != nil {
+		t.Fatalf("save feb link: %v", err)
+	}
+
+	service := NewService(messages, links)
+	from := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	linkResults, err := service.Links(ctx, LinkParams{Type: "aliyun", DateFrom: &from, DateTo: &to, Limit: 10})
+	if err != nil {
+		t.Fatalf("Links date range returned error: %v", err)
+	}
+	if len(linkResults) != 1 || linkResults[0].MessageDate.Month() != time.January {
+		t.Fatalf("date filtered links = %+v, want only January aliyun link", linkResults)
+	}
+}
+
 func TestServiceRejectsEmptySearchQuery(t *testing.T) {
 	service := NewService(nil, nil)
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"time"
 )
 
 type executor interface {
@@ -31,6 +32,8 @@ type LinkSearchParams struct {
 	AccountID int64
 	ChannelID int64
 	Keyword   string
+	DateFrom  *time.Time
+	DateTo    *time.Time
 	Limit     int
 	Offset    int
 }

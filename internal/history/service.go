@@ -3,13 +3,16 @@ package history
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	dbpkg "tg-provider/internal/db"
 	"tg-provider/internal/link"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
 )
@@ -24,6 +27,8 @@ type Options struct {
 	Sessions         *session.Manager
 	Extractor        *link.Extractor
 	HistoryBatchSize int
+	Workers          int
+	RetryPolicy      retry.Policy
 }
 
 type Service struct {
@@ -36,12 +41,18 @@ type Service struct {
 	sessions         *session.Manager
 	extractor        *link.Extractor
 	historyBatchSize int
+	workers          int
+	retryPolicy      retry.Policy
+	mu               sync.Mutex
+	runningChannels  map[int64]struct{}
 }
 
 type SyncResult struct {
 	Messages int `json:"messages"`
 	Links    int `json:"links"`
 }
+
+var ErrChannelSyncInProgress = errors.New("channel sync already in progress")
 
 func NewService(opts Options) *Service {
 	if opts.Telegram == nil {
@@ -53,6 +64,12 @@ func NewService(opts Options) *Service {
 	if opts.HistoryBatchSize <= 0 {
 		opts.HistoryBatchSize = 100
 	}
+	if opts.Workers <= 0 {
+		opts.Workers = 1
+	}
+	if opts.RetryPolicy.MaxTries == 0 && opts.RetryPolicy.BaseDelay == 0 && opts.RetryPolicy.MaxDelay == 0 && opts.RetryPolicy.Sleep == nil {
+		opts.RetryPolicy = retry.DefaultPolicy()
+	}
 	return &Service{
 		db:               opts.DB,
 		accounts:         opts.Accounts,
@@ -63,10 +80,37 @@ func NewService(opts Options) *Service {
 		sessions:         opts.Sessions,
 		extractor:        opts.Extractor,
 		historyBatchSize: opts.HistoryBatchSize,
+		workers:          opts.Workers,
+		retryPolicy:      opts.RetryPolicy,
+		runningChannels:  map[int64]struct{}{},
 	}
 }
 
 func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult, error) {
+	if !s.tryAcquireChannel(channelID) {
+		return SyncResult{}, ErrChannelSyncInProgress
+	}
+	defer s.releaseChannel(channelID)
+	return s.syncChannelWithRetry(ctx, channelID)
+}
+
+func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64) (SyncResult, error) {
+	var result SyncResult
+	err := s.retryPolicy.Run(ctx, func() error {
+		next, err := s.syncChannelOnce(ctx, channelID)
+		if err == nil {
+			result = next
+		}
+		return err
+	}, func(ctx context.Context, attempt retry.Attempt) {
+		if attempt.Classification.Kind == retry.KindFloodWait {
+			s.markChannelAccountStatus(ctx, channelID, model.AccountStatusFloodWait)
+		}
+	})
+	return result, err
+}
+
+func (s *Service) syncChannelOnce(ctx context.Context, channelID int64) (SyncResult, error) {
 	channel, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load channel: %w", err)
@@ -139,6 +183,33 @@ func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult,
 		offsetID = minID
 	}
 	return result, nil
+}
+
+func (s *Service) tryAcquireChannel(channelID int64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.runningChannels[channelID]; ok {
+		return false
+	}
+	s.runningChannels[channelID] = struct{}{}
+	return true
+}
+
+func (s *Service) releaseChannel(channelID int64) {
+	s.mu.Lock()
+	delete(s.runningChannels, channelID)
+	s.mu.Unlock()
+}
+
+func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64, status string) {
+	if s.accounts == nil || s.channels == nil {
+		return
+	}
+	channel, err := s.channels.FindByID(ctx, channelID)
+	if err != nil {
+		return
+	}
+	_ = s.accounts.UpdateStatus(ctx, channel.AccountID, status)
 }
 
 func (s *Service) storeBatch(ctx context.Context, channelID int64, cursor int64, messages []model.Message) (int, error) {

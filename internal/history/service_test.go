@@ -2,6 +2,8 @@ package history
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"tg-provider/internal/link"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
 )
@@ -113,4 +116,133 @@ type fakeTelegramClient struct {
 
 func (f *fakeTelegramClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
 	return f.batches[offsetID], nil
+}
+
+func TestSyncChannelRetriesTemporaryFetchError(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+
+	now := time.Now().UTC()
+	fake := &retryingHistoryClient{
+		failuresBeforeSuccess: 1,
+		successBatch: []telegram.Message{
+			{TelegramMessageID: 7, SenderID: 1, Text: "retry success", RawJSON: "{}", Date: now},
+		},
+	}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+
+	result, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	if result.Messages != 1 {
+		t.Fatalf("messages = %d, want 1", result.Messages)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("fetch calls = %d, want 2", fake.calls)
+	}
+}
+
+func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+
+	fake := &floodThenEmptyHistoryClient{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  2,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+
+	_, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusFloodWait {
+		t.Fatalf("status = %q, want FLOOD_WAIT", account.Status)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("fetch calls = %d, want 2", fake.calls)
+	}
+}
+
+func setupHistoryTestStore(t *testing.T) (*sql.DB, *repository.AccountRepository, *repository.ChannelRepository, *repository.MessageRepository, *repository.LinkRepository) {
+	t.Helper()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(context.Background(), conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	return conn, repository.NewAccountRepository(conn), repository.NewChannelRepository(conn), repository.NewMessageRepository(conn), repository.NewLinkRepository(conn)
+}
+
+func seedHistoryAccountAndChannel(t *testing.T, ctx context.Context, accounts *repository.AccountRepository, channels *repository.ChannelRepository) (int64, int64) {
+	t.Helper()
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel,
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	return accountID, channelID
+}
+
+type retryingHistoryClient struct {
+	telegram.NopClient
+	calls                 int
+	failuresBeforeSuccess int
+	successBatch          []telegram.Message
+}
+
+func (f *retryingHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.calls++
+	if f.calls <= f.failuresBeforeSuccess {
+		return nil, retry.Temporary(errors.New("temporary history failure"))
+	}
+	if offsetID > 0 {
+		return nil, nil
+	}
+	return f.successBatch, nil
+}
+
+type floodThenEmptyHistoryClient struct {
+	telegram.NopClient
+	calls int
+}
+
+func (f *floodThenEmptyHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.calls++
+	if f.calls == 1 {
+		return nil, retry.FloodWait(60, errors.New("FLOOD_WAIT_60"))
+	}
+	return nil, nil
 }

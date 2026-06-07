@@ -510,7 +510,51 @@ func (h handlers) latest(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": latestMessageItems(items)})
+}
+
+type latestMessageItem struct {
+	ID                int64        `json:"id"`
+	ChannelID         int64        `json:"channel_id"`
+	TelegramMessageID int64        `json:"telegram_message_id"`
+	SenderID          int64        `json:"sender_id"`
+	Text              string       `json:"text"`
+	RawJSON           string       `json:"raw_json"`
+	Date              time.Time    `json:"date"`
+	EditDate          *time.Time   `json:"edit_date,omitempty"`
+	Deleted           bool         `json:"deleted"`
+	CreatedAt         time.Time    `json:"created_at"`
+	UpdatedAt         time.Time    `json:"updated_at"`
+	ChannelTitle      string       `json:"channel_title"`
+	ChannelUsername   string       `json:"channel_username"`
+	Links             []model.Link `json:"links"`
+}
+
+func latestMessageItems(items []model.SearchResult) []latestMessageItem {
+	out := make([]latestMessageItem, len(items))
+	for i, item := range items {
+		links := item.Links
+		if links == nil {
+			links = []model.Link{}
+		}
+		out[i] = latestMessageItem{
+			ID:                item.ID,
+			ChannelID:         item.ChannelID,
+			TelegramMessageID: item.TelegramMessageID,
+			SenderID:          item.SenderID,
+			Text:              item.Text,
+			RawJSON:           item.RawJSON,
+			Date:              item.Date,
+			EditDate:          item.EditDate,
+			Deleted:           item.Deleted,
+			CreatedAt:         item.CreatedAt,
+			UpdatedAt:         item.UpdatedAt,
+			ChannelTitle:      item.ChannelTitle,
+			ChannelUsername:   item.ChannelUsername,
+			Links:             links,
+		}
+	}
+	return out
 }
 
 func (h handlers) links(c *gin.Context) {

@@ -80,6 +80,41 @@ Rules:
 - `edit_date` is omitted when Telegram does not provide an edit timestamp.
 - Deleted messages are filtered from search and latest-message responses.
 
+## Latest Message Result
+
+`GET /api/messages/latest`
+
+The response uses the same envelope:
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "channel_id": 1,
+      "telegram_message_id": 10,
+      "sender_id": 7,
+      "text": "message text",
+      "raw_json": "{}",
+      "date": "2026-01-01T00:00:00Z",
+      "edit_date": "2026-01-01T00:01:00Z",
+      "deleted": false,
+      "created_at": "2026-01-01T00:00:00Z",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "channel_title": "Channel",
+      "channel_username": "channel",
+      "links": []
+    }
+  ]
+}
+```
+
+Rules:
+
+- `account_id`, `account_phone`, `account_username`, and `account_first_name` are not returned.
+- `account_id` remains available as a query filter.
+- `links` is an array. It may be empty.
+
 ## Link Result
 
 `GET /api/links`

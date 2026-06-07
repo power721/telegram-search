@@ -306,6 +306,64 @@ func TestReadAPIsFilterByAccount(t *testing.T) {
 	}
 }
 
+func TestLatestAPIOmitsAccountFields(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{
+		Phone:     "+19999999999",
+		FirstName: "PrivateFirst",
+		Username:  "privateuser",
+		Status:    model.AccountStatusOnline,
+	})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 1,
+		Title:             "Public Channel",
+		Username:          "publicchannel",
+		Type:              model.ChannelTypeChannel,
+	})
+	_, _ = deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID:         accountID,
+		ChannelID:         channelID,
+		TelegramMessageID: 1,
+		Text:              "latest public message",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	}})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/latest?limit=10", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items len = %d, want 1: %s", len(body.Items), w.Body.String())
+	}
+	item := body.Items[0]
+	for _, field := range []string{"account_id", "account_phone", "account_username", "account_first_name"} {
+		if _, ok := item[field]; ok {
+			t.Fatalf("latest item includes %q: %s", field, w.Body.String())
+		}
+	}
+	if item["channel_title"] != "Public Channel" || item["channel_username"] != "publicchannel" {
+		t.Fatalf("latest item missing channel context: %+v", item)
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("+19999999999")) ||
+		bytes.Contains(w.Body.Bytes(), []byte("PrivateFirst")) ||
+		bytes.Contains(w.Body.Bytes(), []byte("privateuser")) {
+		t.Fatalf("latest response leaked account data: %s", w.Body.String())
+	}
+}
+
 func TestSearchAPIFiltersByLinkType(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

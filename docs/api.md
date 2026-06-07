@@ -660,7 +660,7 @@ curl -s 'http://127.0.0.1:6000/api/search?q=短剧&account_id=1&link_type=quark&
 curl -s 'http://127.0.0.1:6000/api/messages/latest?limit=20'
 ```
 
-响应字段与 `/api/search` 的 `items` 相同。
+响应字段包含消息、频道和链接信息，但不会返回账号信息：`account_id`、`account_phone`、`account_username`、`account_first_name` 会从最新消息响应中省略。
 
 ## 链接 API
 

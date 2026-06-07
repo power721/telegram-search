@@ -21,6 +21,8 @@ import (
 	"tg-provider/internal/link"
 	"tg-provider/internal/logger"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
+	"tg-provider/internal/scheduler"
 	"tg-provider/internal/search"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
@@ -72,6 +74,7 @@ func run(configPath string) error {
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	tgClient := telegram.NewGotdClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, logs.Telegram)
+	retryPolicy := retry.DefaultPolicy()
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
 		DB:        conn,
 		Channels:  channels,
@@ -80,16 +83,19 @@ func run(configPath string) error {
 		Extractor: link.NewExtractor(),
 	})
 	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
-		Accounts:  accounts,
-		Processor: updateProcessor,
-		Listener:  updatepkg.NewGotdListener(cfg.Telegram.APIID, cfg.Telegram.APIHash, sessions, logs.Telegram),
-		Logger:    logs.Telegram,
+		Accounts:    accounts,
+		Processor:   updateProcessor,
+		Listener:    updatepkg.NewGotdListener(cfg.Telegram.APIID, cfg.Telegram.APIHash, sessions, logs.Telegram),
+		RetryPolicy: retryPolicy,
+		Logger:      logs.Telegram,
 	})
 	searchService := search.NewService(messages, links)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
 		Telegram: tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
+		Workers:          cfg.Sync.Workers,
+		RetryPolicy:      retryPolicy,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
 	accountManager := account.NewManager(account.ManagerOptions{
@@ -100,6 +106,14 @@ func run(configPath string) error {
 	if err := accountManager.Start(ctx); err != nil {
 		return err
 	}
+	cleanupScheduler := scheduler.New(scheduler.Options{
+		Interval: time.Hour,
+		Jobs: []scheduler.Job{
+			scheduler.CleanupJob{Logger: logs.App},
+		},
+		Logger: logs.App,
+	})
+	cleanupScheduler.Start(ctx)
 
 	router := api.NewRouter(api.Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
@@ -134,6 +148,9 @@ func run(configPath string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
 		return err
 	}
 	if err := accountManager.Stop(shutdownCtx); err != nil {

@@ -242,6 +242,30 @@ func TestSearchAPIFiltersByDateRange(t *testing.T) {
 	}
 }
 
+func TestReadAPIsRejectInvalidQueryParameters(t *testing.T) {
+	router := NewRouter(testDeps(t))
+	for _, path := range []string{
+		"/api/search?q=x&limit=abc",
+		"/api/search?q=x&limit=-1",
+		"/api/search?q=x&offset=-1",
+		"/api/search?q=x&account_id=abc",
+		"/api/search?q=x&account_id=0",
+		"/api/search?q=x&channel_id=abc",
+		"/api/messages/latest?limit=-1",
+		"/api/messages/latest?account_id=abc",
+		"/api/links?offset=-1",
+		"/api/links?channel_id=abc",
+		"/api/channels?account_id=abc",
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d body=%s, want 400", path, w.Code, w.Body.String())
+		}
+	}
+}
+
 func testDeps(t *testing.T) Dependencies {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

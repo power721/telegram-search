@@ -148,7 +148,10 @@ func (h handlers) deleteAccount(c *gin.Context) {
 }
 
 func (h handlers) channels(c *gin.Context) {
-	accountID := queryInt(c, "account_id")
+	accountID, ok := queryPositiveInt64(c, "account_id")
+	if !ok {
+		return
+	}
 	var (
 		items []model.Channel
 		err   error
@@ -192,19 +195,23 @@ func (h handlers) syncChannel(c *gin.Context) {
 }
 
 func (h handlers) search(c *gin.Context) {
+	accountID, channelID, limit, offset, ok := readFilters(c)
+	if !ok {
+		return
+	}
 	dateFrom, dateTo, ok := parseDateRange(c)
 	if !ok {
 		return
 	}
 	items, err := h.deps.Search.Search(c.Request.Context(), searchsvc.Params{
 		Query:     c.Query("q"),
-		AccountID: queryInt(c, "account_id"),
-		ChannelID: queryInt(c, "channel_id"),
+		AccountID: accountID,
+		ChannelID: channelID,
 		LinkType:  c.Query("link_type"),
 		DateFrom:  dateFrom,
 		DateTo:    dateTo,
-		Limit:     queryIntValue(c, "limit"),
-		Offset:    queryIntValue(c, "offset"),
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -218,10 +225,14 @@ func (h handlers) search(c *gin.Context) {
 }
 
 func (h handlers) latest(c *gin.Context) {
+	accountID, channelID, limit, _, ok := readFilters(c)
+	if !ok {
+		return
+	}
 	items, err := h.deps.Search.Latest(c.Request.Context(), searchsvc.LatestParams{
-		AccountID: queryInt(c, "account_id"),
-		ChannelID: queryInt(c, "channel_id"),
-		Limit:     queryIntValue(c, "limit"),
+		AccountID: accountID,
+		ChannelID: channelID,
+		Limit:     limit,
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -231,19 +242,23 @@ func (h handlers) latest(c *gin.Context) {
 }
 
 func (h handlers) links(c *gin.Context) {
+	accountID, channelID, limit, offset, ok := readFilters(c)
+	if !ok {
+		return
+	}
 	dateFrom, dateTo, ok := parseDateRange(c)
 	if !ok {
 		return
 	}
 	items, err := h.deps.Search.Links(c.Request.Context(), searchsvc.LinkParams{
 		Type:      c.Query("type"),
-		AccountID: queryInt(c, "account_id"),
-		ChannelID: queryInt(c, "channel_id"),
+		AccountID: accountID,
+		ChannelID: channelID,
 		Keyword:   c.Query("keyword"),
 		DateFrom:  dateFrom,
 		DateTo:    dateTo,
-		Limit:     queryIntValue(c, "limit"),
-		Offset:    queryIntValue(c, "offset"),
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -289,20 +304,54 @@ func pathID(c *gin.Context) (int64, bool) {
 	return id, true
 }
 
-func queryInt(c *gin.Context, key string) int64 {
+func queryPositiveInt64(c *gin.Context, key string) (int64, bool) {
 	value := c.Query(key)
 	if value == "" {
-		return 0
+		return 0, true
 	}
 	n, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return 0
+	if err != nil || n <= 0 {
+		errorText(c, http.StatusBadRequest, key+" must be a positive integer")
+		return 0, false
 	}
-	return n
+	return n, true
 }
 
-func queryIntValue(c *gin.Context, key string) int {
-	return int(queryInt(c, key))
+func queryNonNegativeInt(c *gin.Context, key string) (int, bool) {
+	value := c.Query(key)
+	if value == "" {
+		return 0, true
+	}
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || n < 0 {
+		errorText(c, http.StatusBadRequest, key+" must be a non-negative integer")
+		return 0, false
+	}
+	if int64(int(n)) != n {
+		errorText(c, http.StatusBadRequest, key+" is too large")
+		return 0, false
+	}
+	return int(n), true
+}
+
+func readFilters(c *gin.Context) (accountID int64, channelID int64, limit int, offset int, ok bool) {
+	accountID, ok = queryPositiveInt64(c, "account_id")
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	channelID, ok = queryPositiveInt64(c, "channel_id")
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	limit, ok = queryNonNegativeInt(c, "limit")
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	offset, ok = queryNonNegativeInt(c, "offset")
+	if !ok {
+		return 0, 0, 0, 0, false
+	}
+	return accountID, channelID, limit, offset, true
 }
 
 func parseDateRange(c *gin.Context) (*time.Time, *time.Time, bool) {

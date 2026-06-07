@@ -23,6 +23,7 @@ import (
 	"tg-provider/internal/search"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
+	updatepkg "tg-provider/internal/update"
 )
 
 func main() {
@@ -69,6 +70,19 @@ func run(configPath string) error {
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	tgClient := telegram.NewGotdClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, logs.Telegram)
+	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
+		DB:        conn,
+		Channels:  channels,
+		Messages:  messages,
+		Links:     links,
+		Extractor: link.NewExtractor(),
+	})
+	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
+		Accounts:  accounts,
+		Processor: updateProcessor,
+		Listener:  updatepkg.NewGotdListener(cfg.Telegram.APIID, cfg.Telegram.APIHash, sessions, logs.Telegram),
+		Logger:    logs.Telegram,
+	})
 	searchService := search.NewService(messages, links)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
@@ -76,6 +90,19 @@ func run(configPath string) error {
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
+	updateService.Start(ctx)
+	onlineAccounts, err := accounts.FindAll(ctx)
+	if err != nil {
+		return err
+	}
+	for _, account := range onlineAccounts {
+		if account.Status != "ONLINE" {
+			continue
+		}
+		if err := updateService.StartAccount(ctx, account); err != nil {
+			return err
+		}
+	}
 
 	router := api.NewRouter(api.Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Status: status,
@@ -110,6 +137,9 @@ func run(configPath string) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+	if err := updateService.Stop(shutdownCtx); err != nil {
 		return err
 	}
 	logs.App.Info("tg-provider stopped")

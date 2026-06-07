@@ -40,6 +40,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/accounts", h.accounts)
 	api.DELETE("/accounts/:id", h.deleteAccount)
 	api.GET("/channels", h.channels)
+	api.POST("/channels/sync", h.syncChannels)
 	api.GET("/channels/:id", h.channel)
 	api.POST("/channels/:id/sync", h.syncChannel)
 	api.GET("/search", h.search)

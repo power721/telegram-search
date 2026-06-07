@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"tg-provider/internal/link"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
 	"tg-provider/internal/search"
 	"tg-provider/internal/session"
 	"tg-provider/internal/telegram"
@@ -309,7 +311,69 @@ func TestMaintenanceSQLiteAPI(t *testing.T) {
 	}
 }
 
+func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
+	router := NewRouter(testDeps(t))
+	for _, body := range []string{
+		`{}`,
+		`{"channel_ids":[]}`,
+		`{"channel_ids":[0]}`,
+		`{"channel_ids":[-1]}`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d body=%s, want 400", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestBatchSyncAPIReturnsPerChannelResults(t *testing.T) {
+	ctx := context.Background()
+	deps, conn := testDepsWithDB(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 10, AccessHash: 20, Title: "VIP", Type: model.ChannelTypeChannel})
+	deps.History = history.NewService(history.Options{
+		DB: conn, Accounts: deps.Accounts, Channels: deps.Channels, Messages: deps.Messages, Links: deps.Links,
+		Telegram:  &apiHistoryClient{date: time.Now().UTC()},
+		Sessions:  session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10, Workers: 2,
+		RetryPolicy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"queued":1`)) {
+		t.Fatalf("response = %s, want queued 1", w.Body.String())
+	}
+}
+
+type apiHistoryClient struct {
+	telegram.NopClient
+	date time.Time
+}
+
+func (f *apiHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	if offsetID > 0 {
+		return nil, nil
+	}
+	return []telegram.Message{{TelegramMessageID: 1, SenderID: 1, Text: "api sync", RawJSON: "{}", Date: f.date}}, nil
+}
+
 func testDeps(t *testing.T) Dependencies {
+	t.Helper()
+	deps, _ := testDepsWithDB(t)
+	return deps
+}
+
+func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
 	if err != nil {
@@ -337,7 +401,7 @@ func testDeps(t *testing.T) Dependencies {
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
 		Search: searchService, History: historyService, ChannelSync: channelService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
-	}
+	}, conn
 }
 
 type fakeTelegram struct {

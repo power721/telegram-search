@@ -194,6 +194,27 @@ func (h handlers) syncChannel(c *gin.Context) {
 	c.JSON(http.StatusAccepted, result)
 }
 
+func (h handlers) syncChannels(c *gin.Context) {
+	var req struct {
+		ChannelIDs []int64 `json:"channel_ids"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.ChannelIDs) == 0 {
+		errorText(c, http.StatusBadRequest, "channel_ids is required")
+		return
+	}
+	for _, id := range req.ChannelIDs {
+		if id <= 0 {
+			errorText(c, http.StatusBadRequest, "channel_ids must contain positive integers")
+			return
+		}
+	}
+	result := h.deps.History.SyncMany(c.Request.Context(), req.ChannelIDs)
+	c.JSON(http.StatusAccepted, result)
+}
+
 func (h handlers) search(c *gin.Context) {
 	accountID, channelID, limit, offset, ok := readFilters(c)
 	if !ok {

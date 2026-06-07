@@ -11,6 +11,7 @@ import (
 	"tg-provider/internal/db"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
 )
 
 func TestServiceProcessesQueuedEventsSequentiallyAndFlushesOnStop(t *testing.T) {
@@ -135,6 +136,63 @@ func TestServiceRetriesListenerAndMarksAccountReconnecting(t *testing.T) {
 	}
 }
 
+func TestServiceMarksFloodWaitAndRetriesListener(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+
+	listener := &floodWaitListener{started: make(chan struct{}, 2)}
+	var slept []time.Duration
+	service := NewService(ServiceOptions{
+		Accounts:  accounts,
+		Processor: &recordingProcessor{},
+		Listener:  listener,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				slept = append(slept, d)
+				return nil
+			},
+		},
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, account); err != nil {
+		t.Fatalf("StartAccount returned error: %v", err)
+	}
+
+	waitForStarts(t, listener.started, 2)
+	updated, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find updated account: %v", err)
+	}
+	if updated.Status != model.AccountStatusFloodWait {
+		t.Fatalf("status = %q, want FLOOD_WAIT", updated.Status)
+	}
+	if len(slept) != 1 || slept[0] != time.Millisecond {
+		t.Fatalf("slept = %v, want capped 1ms flood wait", slept)
+	}
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
 type recordingProcessor struct {
 	mu        sync.Mutex
 	events    []Event
@@ -189,6 +247,25 @@ func (l *flakyListener) Run(ctx context.Context, account model.Account, emit fun
 	l.started <- struct{}{}
 	if run == 1 {
 		return errors.New("temporary disconnect")
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type floodWaitListener struct {
+	mu      sync.Mutex
+	runs    int
+	started chan struct{}
+}
+
+func (l *floodWaitListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	l.mu.Lock()
+	l.runs++
+	run := l.runs
+	l.mu.Unlock()
+	l.started <- struct{}{}
+	if run == 1 {
+		return retry.FloodWait(60, errors.New("FLOOD_WAIT_60"))
 	}
 	<-ctx.Done()
 	return ctx.Err()

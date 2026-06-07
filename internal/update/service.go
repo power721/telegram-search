@@ -10,6 +10,7 @@ import (
 
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
+	"tg-provider/internal/retry"
 )
 
 var ErrServiceStopped = errors.New("update service stopped")
@@ -40,6 +41,7 @@ type ServiceOptions struct {
 	Listener      Listener
 	QueueSize     int
 	RetryInterval time.Duration
+	RetryPolicy   retry.Policy
 	Logger        *zap.Logger
 }
 
@@ -48,6 +50,7 @@ type Service struct {
 	processor     EventProcessor
 	listener      Listener
 	retryInterval time.Duration
+	retryPolicy   retry.Policy
 	logger        *zap.Logger
 
 	mu              sync.Mutex
@@ -72,6 +75,13 @@ func NewService(opts ServiceOptions) *Service {
 	if opts.QueueSize <= 0 {
 		opts.QueueSize = 100
 	}
+	if opts.RetryPolicy.MaxTries == 0 && opts.RetryPolicy.BaseDelay == 0 && opts.RetryPolicy.MaxDelay == 0 && opts.RetryPolicy.Sleep == nil {
+		opts.RetryPolicy = retry.Policy{
+			BaseDelay: opts.RetryInterval,
+			MaxDelay:  30 * time.Minute,
+			MaxTries:  3,
+		}
+	}
 	if opts.Logger == nil {
 		opts.Logger = zap.NewNop()
 	}
@@ -80,6 +90,7 @@ func NewService(opts ServiceOptions) *Service {
 		processor:     opts.Processor,
 		listener:      opts.Listener,
 		retryInterval: opts.RetryInterval,
+		retryPolicy:   opts.RetryPolicy,
 		logger:        opts.Logger,
 		events:        make(chan Event, opts.QueueSize),
 	}
@@ -173,17 +184,27 @@ func (s *Service) runListener(account model.Account) {
 			return
 		}
 		s.logger.Warn("telegram update listener stopped", zap.Int64("account_id", account.ID), zap.Error(err))
+		classification := retry.Classify(err)
+		if classification.Kind == retry.KindPermanent {
+			s.logger.Error("telegram update listener permanent failure", zap.Int64("account_id", account.ID), zap.Error(err))
+			return
+		}
+		status := model.AccountStatusReconnecting
+		if classification.Kind == retry.KindFloodWait {
+			status = model.AccountStatusFloodWait
+		}
 		if s.accounts != nil {
-			if updateErr := s.accounts.UpdateStatus(s.listenerCtx, account.ID, model.AccountStatusReconnecting); updateErr != nil {
-				s.logger.Error("mark account reconnecting", zap.Int64("account_id", account.ID), zap.Error(updateErr))
+			if updateErr := s.accounts.UpdateStatus(s.listenerCtx, account.ID, status); updateErr != nil {
+				s.logger.Error("mark account after listener failure", zap.Int64("account_id", account.ID), zap.String("status", status), zap.Error(updateErr))
 			}
 		}
-		timer := time.NewTimer(s.retryInterval)
-		select {
-		case <-s.listenerCtx.Done():
-			timer.Stop()
+		delay := s.retryPolicy.Delay(1, classification)
+		sleep := s.retryPolicy.Sleep
+		if sleep == nil {
+			sleep = sleepContext
+		}
+		if sleepErr := sleep(s.listenerCtx, delay); sleepErr != nil {
 			return
-		case <-timer.C:
 		}
 	}
 }
@@ -199,5 +220,16 @@ func wait(ctx context.Context, wg *sync.WaitGroup) error {
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
+	}
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }

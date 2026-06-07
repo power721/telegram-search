@@ -1,0 +1,153 @@
+package update
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+
+	gotdsession "github.com/gotd/td/session"
+	gotdtelegram "github.com/gotd/td/telegram"
+	"github.com/gotd/td/tg"
+	"go.uber.org/zap"
+
+	"tg-provider/internal/model"
+	localsession "tg-provider/internal/session"
+)
+
+type GotdListener struct {
+	apiID    int
+	apiHash  string
+	sessions *localsession.Manager
+	logger   *zap.Logger
+}
+
+func NewGotdListener(apiID int, apiHash string, sessions *localsession.Manager, logger *zap.Logger) *GotdListener {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	return &GotdListener{apiID: apiID, apiHash: apiHash, sessions: sessions, logger: logger}
+}
+
+func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	sessionPath := ""
+	if l.sessions != nil {
+		sessionPath = l.sessions.PathForAccount(account.ID)
+	}
+	client := gotdtelegram.NewClient(l.apiID, l.apiHash, gotdtelegram.Options{
+		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
+		Logger:         l.logger,
+		UpdateHandler: gotdtelegram.UpdateHandlerFunc(func(ctx context.Context, updates tg.UpdatesClass) error {
+			for _, event := range EventsFromGotdUpdates(account.ID, updates) {
+				if err := emit(event); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
+	})
+	return client.Run(ctx, func(ctx context.Context) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+}
+
+func EventsFromGotdUpdates(accountID int64, updates tg.UpdatesClass) []Event {
+	var out []Event
+	for _, item := range updateItems(updates) {
+		switch u := item.(type) {
+		case *tg.UpdateNewChannelMessage:
+			if event, ok := eventFromMessage(accountID, EventNewMessage, u.Message); ok {
+				out = append(out, event)
+			}
+		case *tg.UpdateEditChannelMessage:
+			if event, ok := eventFromMessage(accountID, EventEditMessage, u.Message); ok {
+				out = append(out, event)
+			}
+		case *tg.UpdateDeleteChannelMessages:
+			for _, id := range u.Messages {
+				out = append(out, Event{
+					Type:              EventDeleteMessage,
+					AccountID:         accountID,
+					TelegramChannelID: u.ChannelID,
+					MessageID:         int64(id),
+				})
+			}
+		case *tg.UpdateNewMessage:
+			if event, ok := eventFromMessage(accountID, EventNewMessage, u.Message); ok {
+				out = append(out, event)
+			}
+		case *tg.UpdateEditMessage:
+			if event, ok := eventFromMessage(accountID, EventEditMessage, u.Message); ok {
+				out = append(out, event)
+			}
+		}
+	}
+	return out
+}
+
+func updateItems(updates tg.UpdatesClass) []tg.UpdateClass {
+	switch u := updates.(type) {
+	case *tg.Updates:
+		return u.Updates
+	case *tg.UpdatesCombined:
+		return u.Updates
+	case *tg.UpdateShort:
+		return []tg.UpdateClass{u.Update}
+	default:
+		return nil
+	}
+}
+
+func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Event, bool) {
+	message, ok := item.(*tg.Message)
+	if !ok {
+		return Event{}, false
+	}
+	channelID := peerChannelID(message.PeerID)
+	if channelID == 0 {
+		return Event{}, false
+	}
+	var editDate *time.Time
+	if message.EditDate > 0 {
+		t := time.Unix(int64(message.EditDate), 0).UTC()
+		editDate = &t
+	}
+	rawJSON, _ := json.Marshal(map[string]any{
+		"id":      message.ID,
+		"date":    message.Date,
+		"message": message.Message,
+	})
+	return Event{
+		Type:              typ,
+		AccountID:         accountID,
+		TelegramChannelID: channelID,
+		MessageID:         int64(message.ID),
+		SenderID:          peerID(message.FromID),
+		Text:              message.Message,
+		RawJSON:           string(rawJSON),
+		Date:              time.Unix(int64(message.Date), 0).UTC(),
+		EditDate:          editDate,
+	}, true
+}
+
+func peerChannelID(peer tg.PeerClass) int64 {
+	switch p := peer.(type) {
+	case *tg.PeerChannel:
+		return p.ChannelID
+	default:
+		return 0
+	}
+}
+
+func peerID(peer tg.PeerClass) int64 {
+	switch p := peer.(type) {
+	case *tg.PeerUser:
+		return p.UserID
+	case *tg.PeerChat:
+		return p.ChatID
+	case *tg.PeerChannel:
+		return p.ChannelID
+	default:
+		return 0
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/gotd/td/session"
 	gotdtelegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
+	"github.com/gotd/td/telegram/query/dialogs"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 )
@@ -85,35 +86,61 @@ func (g *GotdClient) ListChannels(ctx context.Context, account AccountSession) (
 			Type:              "saved_messages",
 		})
 
-		dialogs, err := client.API().MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
-			OffsetPeer: &tg.InputPeerEmpty{},
-			Limit:      200,
-		})
+		channels, err := listDialogChannels(ctx, dialogs.NewQueryBuilder(client.API()).GetDialogs().BatchSize(100).Iter())
 		if err != nil {
 			return err
 		}
-		for _, chat := range dialogChats(dialogs) {
-			channel, ok := chat.(*tg.Channel)
-			if !ok || channel.Left {
-				continue
-			}
-			accessHash, _ := channel.GetAccessHash()
-			username, _ := channel.GetUsername()
-			typ := "channel"
-			if channel.Megagroup {
-				typ = "supergroup"
-			}
-			out = append(out, Channel{
-				TelegramChannelID: channel.ID,
-				AccessHash:        accessHash,
-				Title:             channel.Title,
-				Username:          username,
-				Type:              typ,
-			})
-		}
+		out = append(out, channels...)
 		return nil
 	})
 	return out, err
+}
+
+type dialogIterator interface {
+	Next(context.Context) bool
+	Value() dialogs.Elem
+	Err() error
+}
+
+func listDialogChannels(ctx context.Context, iter dialogIterator) ([]Channel, error) {
+	var out []Channel
+	for iter.Next(ctx) {
+		value := iter.Value()
+		channelID, ok := peerChannelID(value.Dialog.GetPeer())
+		if !ok {
+			continue
+		}
+		channel, ok := value.Entities.Channel(channelID)
+		if !ok || channel.Left {
+			continue
+		}
+		out = append(out, channelFromTG(channel))
+	}
+	return out, iter.Err()
+}
+
+func peerChannelID(peer tg.PeerClass) (int64, bool) {
+	channel, ok := peer.(*tg.PeerChannel)
+	if !ok {
+		return 0, false
+	}
+	return channel.ChannelID, true
+}
+
+func channelFromTG(channel *tg.Channel) Channel {
+	accessHash, _ := channel.GetAccessHash()
+	username, _ := channel.GetUsername()
+	typ := "channel"
+	if channel.Megagroup {
+		typ = "supergroup"
+	}
+	return Channel{
+		TelegramChannelID: channel.ID,
+		AccessHash:        accessHash,
+		Title:             channel.Title,
+		Username:          username,
+		Type:              typ,
+	}
 }
 
 func (g *GotdClient) FetchHistory(ctx context.Context, account AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error) {

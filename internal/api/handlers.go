@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	"tg-provider/internal/backup"
 	"tg-provider/internal/model"
+	"tg-provider/internal/repository"
 	searchsvc "tg-provider/internal/search"
 	"tg-provider/internal/telegram"
 )
@@ -277,6 +279,146 @@ func (h handlers) syncAccountChannels(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, gin.H{"items": items})
+}
+
+type watchRulePayload struct {
+	ChannelID int64           `json:"channel_id"`
+	Enabled   *bool           `json:"enabled"`
+	Includes  json.RawMessage `json:"includes"`
+	Excludes  json.RawMessage `json:"excludes"`
+}
+
+func (h handlers) watchRules(c *gin.Context) {
+	items, err := h.deps.WatchRules.FindAll(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h handlers) watchRule(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	item, err := h.deps.WatchRules.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) createWatchRule(c *gin.Context) {
+	rule, ok := h.readWatchRuleRequest(c, true)
+	if !ok {
+		return
+	}
+	id, err := h.deps.WatchRules.Create(c.Request.Context(), rule)
+	if err != nil {
+		if errors.Is(err, repository.ErrDuplicateWatchRule) {
+			errorText(c, http.StatusConflict, "watch rule already exists for channel")
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	item, err := h.deps.WatchRules.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusCreated, item)
+}
+
+func (h handlers) updateWatchRule(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	rule, ok := h.readWatchRuleRequest(c, false)
+	if !ok {
+		return
+	}
+	rule.ID = id
+	if err := h.deps.WatchRules.Update(c.Request.Context(), rule); err != nil {
+		if errors.Is(err, repository.ErrDuplicateWatchRule) {
+			errorText(c, http.StatusConflict, "watch rule already exists for channel")
+			return
+		}
+		if errors.Is(err, repository.ErrNotFound) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	item, err := h.deps.WatchRules.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) deleteWatchRule(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	if err := h.deps.WatchRules.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h handlers) readWatchRuleRequest(c *gin.Context, create bool) (model.WatchRule, bool) {
+	var payload watchRulePayload
+	if !bindJSON(c, &payload) {
+		return model.WatchRule{}, false
+	}
+	if payload.ChannelID <= 0 {
+		errorText(c, http.StatusBadRequest, "channel_id must be a positive integer")
+		return model.WatchRule{}, false
+	}
+	if _, err := h.deps.Channels.FindByID(c.Request.Context(), payload.ChannelID); err != nil {
+		errorText(c, http.StatusBadRequest, "channel_id must reference an existing channel")
+		return model.WatchRule{}, false
+	}
+	enabled := true
+	if payload.Enabled != nil {
+		enabled = *payload.Enabled
+	} else if !create {
+		errorText(c, http.StatusBadRequest, "enabled is required")
+		return model.WatchRule{}, false
+	}
+	includes, ok := decodeStringArray(c, payload.Includes, "includes")
+	if !ok {
+		return model.WatchRule{}, false
+	}
+	excludes, ok := decodeStringArray(c, payload.Excludes, "excludes")
+	if !ok {
+		return model.WatchRule{}, false
+	}
+	return model.WatchRule{ChannelID: payload.ChannelID, Enabled: enabled, Includes: includes, Excludes: excludes}, true
+}
+
+func decodeStringArray(c *gin.Context, raw json.RawMessage, field string) ([]string, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, true
+	}
+	var out []string
+	if err := json.Unmarshal(raw, &out); err != nil {
+		errorText(c, http.StatusBadRequest, field+" must be an array of strings")
+		return nil, false
+	}
+	return out, true
 }
 
 func (h handlers) search(c *gin.Context) {

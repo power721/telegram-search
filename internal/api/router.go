@@ -24,6 +24,7 @@ type Dependencies struct {
 	Channels       *repository.ChannelRepository
 	Messages       *repository.MessageRepository
 	Links          *repository.LinkRepository
+	WatchRules     *repository.WatchRuleRepository
 	Maintenance    *repository.MaintenanceRepository
 	Status         *repository.StatusRepository
 	BackupDB       *sql.DB
@@ -56,6 +57,11 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.POST("/channels/sync", h.syncChannels)
 	api.GET("/channels/:id", h.channel)
 	api.POST("/channels/:id/sync", h.syncChannel)
+	api.GET("/watch-rules", h.watchRules)
+	api.POST("/watch-rules", h.createWatchRule)
+	api.GET("/watch-rules/:id", h.watchRule)
+	api.PUT("/watch-rules/:id", h.updateWatchRule)
+	api.DELETE("/watch-rules/:id", h.deleteWatchRule)
 	api.GET("/search", h.search)
 	api.GET("/messages/latest", h.latest)
 	api.GET("/links", h.links)

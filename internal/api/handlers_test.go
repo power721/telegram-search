@@ -69,6 +69,100 @@ func TestCoreReadAPIs(t *testing.T) {
 	}
 }
 
+func TestWatchRuleAPICRUD(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"includes":[" 庆余年 "],"excludes":["预告"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body=%s, want 201", w.Code, w.Body.String())
+	}
+	var created model.WatchRule
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("invalid create JSON: %v", err)
+	}
+	if created.ID == 0 || created.ChannelID != channelID || !created.Enabled || !sameStringSlices(created.Includes, []string{"庆余年"}) {
+		t.Fatalf("created = %+v", created)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"enabled":false,"includes":["三体"],"excludes":["花絮"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var got model.WatchRule
+	_ = json.Unmarshal(w.Body.Bytes(), &got)
+	if got.Enabled || !sameStringSlices(got.Includes, []string{"三体"}) || !sameStringSlices(got.Excludes, []string{"花絮"}) {
+		t.Fatalf("got = %+v", got)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/watch-rules", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"items"`)) {
+		t.Fatalf("list status=%d body=%s, want items", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+}
+
+func TestWatchRuleAPIRejectsInvalidRequests(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	router := NewRouter(deps)
+
+	for _, body := range []string{
+		`{"channel_id":0}`,
+		`{"channel_id":999999}`,
+		`{"channel_id":` + strconv.FormatInt(channelID, 10) + `,"includes":["ok",5]}`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d response=%s, want 400", body, w.Code, w.Body.String())
+		}
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first create status = %d body=%s", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("duplicate status = %d body=%s, want 409", w.Code, w.Body.String())
+	}
+}
+
 func TestSearchRequiresQuery(t *testing.T) {
 	router := NewRouter(testDeps(t))
 
@@ -532,6 +626,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	watchRules := repository.NewWatchRuleRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
@@ -543,7 +638,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	})
 	channelService := channel.NewService(channels, client, sessions)
 	return Dependencies{
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		Search: searchService, History: historyService, ChannelSync: channelService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
@@ -591,6 +686,18 @@ func sameInt64s(got []int64, want []int64) bool {
 	}
 	for _, count := range seen {
 		if count != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStringSlices(got []string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range want {
+		if got[i] != want[i] {
 			return false
 		}
 	}

@@ -57,6 +57,17 @@ WHERE id = ?`,
 	return requireRows(res, "account not found")
 }
 
+func (r *AccountRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE telegram_accounts
+SET status = ?, updated_at = ?
+WHERE id = ?`, status, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("update account status: %w", err)
+	}
+	return requireRows(res, "account not found")
+}
+
 func (r *AccountRepository) Delete(ctx context.Context, id int64) error {
 	res, err := r.db.ExecContext(ctx, `DELETE FROM telegram_accounts WHERE id = ?`, id)
 	if err != nil {

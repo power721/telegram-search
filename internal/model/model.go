@@ -7,6 +7,8 @@ const (
 	AccountStatusLoginRequired = "LOGIN_REQUIRED"
 	AccountStatusSyncing       = "SYNCING"
 	AccountStatusOnline        = "ONLINE"
+	AccountStatusReconnecting  = "RECONNECTING"
+	AccountStatusFloodWait     = "FLOOD_WAIT"
 	AccountStatusDisconnected  = "DISCONNECTED"
 )
 

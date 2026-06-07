@@ -3,11 +3,13 @@ package update
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	dbpkg "tg-provider/internal/db"
 	"tg-provider/internal/link"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 )
@@ -18,6 +20,7 @@ type ProcessorOptions struct {
 	Messages  *repository.MessageRepository
 	Links     *repository.LinkRepository
 	Extractor *link.Extractor
+	Filter    *messagefilter.Filter
 }
 
 type Processor struct {
@@ -26,6 +29,7 @@ type Processor struct {
 	messages  *repository.MessageRepository
 	links     *repository.LinkRepository
 	extractor *link.Extractor
+	filter    *messagefilter.Filter
 }
 
 func NewProcessor(opts ProcessorOptions) *Processor {
@@ -38,6 +42,7 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		messages:  opts.Messages,
 		links:     opts.Links,
 		extractor: opts.Extractor,
+		filter:    opts.Filter,
 	}
 }
 
@@ -58,6 +63,27 @@ func (p *Processor) Process(ctx context.Context, event Event) error {
 }
 
 func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, event Event) error {
+	extracted := p.extractor.Extract(event.Text)
+	if p.filter != nil {
+		result, err := p.filter.Apply(ctx, messagefilter.Request{
+			ChannelID:      channel.ID,
+			Text:           event.Text,
+			RequireRule:    true,
+			RequireEnabled: true,
+		})
+		if err != nil {
+			return err
+		}
+		if !result.Keep {
+			if event.Type == EventEditMessage && result.RuleApplied {
+				if err := p.messages.MarkDeleted(ctx, channel.ID, event.MessageID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+					return err
+				}
+			}
+			return nil
+		}
+		extracted = result.Links
+	}
 	return dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		date := event.Date
 		if date.IsZero() {
@@ -76,7 +102,6 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		if err != nil {
 			return err
 		}
-		extracted := p.extractor.Extract(event.Text)
 		_, err = p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted)
 		return err
 	})

@@ -9,6 +9,7 @@ import (
 
 	"tg-provider/internal/db"
 	"tg-provider/internal/link"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 )
@@ -107,6 +108,112 @@ func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
 	}
 	if len(results) != 0 {
 		t.Fatalf("deleted search len = %d, want 0", len(results))
+	}
+}
+
+func TestProcessorFiltersRealtimeMessagesByEnabledWatchRule(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	rules := repository.NewWatchRuleRepository(fixture.conn)
+	_, err := rules.Create(ctx, model.WatchRule{
+		ChannelID: fixture.channelID,
+		Enabled:   true,
+		Includes:  []string{"庆余年"},
+		Excludes:  []string{"预告"},
+	})
+	if err != nil {
+		t.Fatalf("create watch rule: %v", err)
+	}
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+		Filter:    messagefilter.New(rules),
+	})
+	now := time.Now().UTC()
+	for _, event := range []Event{
+		{Type: EventNewMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 11, Text: "庆余年 https://pan.quark.cn/s/abc", RawJSON: "{}", Date: now},
+		{Type: EventNewMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 12, Text: "庆余年 无链接", RawJSON: "{}", Date: now},
+		{Type: EventNewMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 13, Text: "三体 https://pan.quark.cn/s/def", RawJSON: "{}", Date: now},
+		{Type: EventNewMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 14, Text: "庆余年 预告 https://pan.quark.cn/s/ghi", RawJSON: "{}", Date: now},
+	} {
+		if err := processor.Process(ctx, event); err != nil {
+			t.Fatalf("process event %d: %v", event.MessageID, err)
+		}
+	}
+	results, err := fixture.messages.Search(ctx, repository.SearchParams{Query: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 11 || len(results[0].Links) != 1 {
+		t.Fatalf("results = %+v, want only message 11 with link", results)
+	}
+}
+
+func TestProcessorSkipsRealtimeMessagesWithoutEnabledWatchRule(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	rules := repository.NewWatchRuleRepository(fixture.conn)
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+		Filter:    messagefilter.New(rules),
+	})
+	err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         20,
+		Text:              "庆余年 https://pan.quark.cn/s/abc",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Process returned error: %v", err)
+	}
+	latest, err := fixture.messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if len(latest) != 0 {
+		t.Fatalf("latest = %+v, want no stored realtime messages without enabled rule", latest)
+	}
+}
+
+func TestProcessorDeletesStoredMessageWhenRealtimeEditStopsMatching(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	rules := repository.NewWatchRuleRepository(fixture.conn)
+	_, err := rules.Create(ctx, model.WatchRule{ChannelID: fixture.channelID, Enabled: true, Includes: []string{"庆余年"}})
+	if err != nil {
+		t.Fatalf("create watch rule: %v", err)
+	}
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+		Filter:    messagefilter.New(rules),
+	})
+	now := time.Now().UTC()
+	if err := processor.Process(ctx, Event{Type: EventNewMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 30, Text: "庆余年 https://pan.quark.cn/s/abc", RawJSON: "{}", Date: now}); err != nil {
+		t.Fatalf("process new: %v", err)
+	}
+	if err := processor.Process(ctx, Event{Type: EventEditMessage, AccountID: fixture.accountID, TelegramChannelID: fixture.telegramChannelID, MessageID: 30, Text: "三体 https://pan.quark.cn/s/abc", RawJSON: "{}", Date: now}); err != nil {
+		t.Fatalf("process edit: %v", err)
+	}
+	results, err := fixture.messages.Search(ctx, repository.SearchParams{Query: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("search after non-matching edit = %+v, want empty", results)
 	}
 }
 

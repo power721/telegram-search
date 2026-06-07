@@ -44,6 +44,16 @@ type Channel struct {
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
+type WatchRule struct {
+	ID        int64     `json:"id"`
+	ChannelID int64     `json:"channel_id"`
+	Enabled   bool      `json:"enabled"`
+	Includes  []string  `json:"includes"`
+	Excludes  []string  `json:"excludes"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Message struct {
 	ID                int64      `json:"id"`
 	AccountID         int64      `json:"account_id"`

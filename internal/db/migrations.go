@@ -124,6 +124,22 @@ CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_mes
 CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
 `,
 	},
+	{
+		version: 5,
+		name:    "watch_rules",
+		sql: `
+CREATE TABLE IF NOT EXISTS telegram_watch_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel_id INTEGER NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  includes_json TEXT NOT NULL DEFAULT '[]',
+  excludes_json TEXT NOT NULL DEFAULT '[]',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
+);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

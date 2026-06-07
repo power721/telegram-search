@@ -63,13 +63,13 @@ WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
 
 func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
 FROM telegram_channels WHERE id = ?`, id))
 }
 
 func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
 FROM telegram_channels WHERE account_id = ? AND telegram_channel_id = ?`, accountID, telegramChannelID))
 }
 
@@ -83,7 +83,7 @@ func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64
 
 func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
 	query := `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
 FROM telegram_channels ` + where + ` ORDER BY title, id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -101,6 +101,17 @@ FROM telegram_channels ` + where + ` ORDER BY title, id`
 	return out, rows.Err()
 }
 
+func (r *ChannelRepository) UpdateWebAccess(ctx context.Context, channelID int64, access bool, checkedAt time.Time) error {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE telegram_channels
+SET web_access = ?, web_access_checked_at = ?, updated_at = ?
+WHERE id = ?`, access, checkedAt, time.Now().UTC(), channelID)
+	if err != nil {
+		return fmt.Errorf("update channel web access: %w", err)
+	}
+	return requireRows(res, "channel not found")
+}
+
 func scanChannel(row interface {
 	Scan(...any) error
 }) (model.Channel, error) {
@@ -112,12 +123,20 @@ func scanChannelRows(row interface {
 }) (model.Channel, error) {
 	var channel model.Channel
 	var lastSync sql.NullTime
-	err := row.Scan(&channel.ID, &channel.AccountID, &channel.TelegramChannelID, &channel.AccessHash, &channel.Title, &channel.Username, &channel.Type, &channel.LastMessageID, &lastSync, &channel.CreatedAt, &channel.UpdatedAt)
+	var webAccess sql.NullBool
+	var webAccessCheckedAt sql.NullTime
+	err := row.Scan(&channel.ID, &channel.AccountID, &channel.TelegramChannelID, &channel.AccessHash, &channel.Title, &channel.Username, &channel.Type, &channel.LastMessageID, &lastSync, &webAccess, &webAccessCheckedAt, &channel.CreatedAt, &channel.UpdatedAt)
 	if err != nil {
 		return model.Channel{}, err
 	}
 	if lastSync.Valid {
 		channel.LastSyncTime = &lastSync.Time
+	}
+	if webAccess.Valid {
+		channel.WebAccess = &webAccess.Bool
+	}
+	if webAccessCheckedAt.Valid {
+		channel.WebAccessCheckedAt = &webAccessCheckedAt.Time
 	}
 	return channel, nil
 }

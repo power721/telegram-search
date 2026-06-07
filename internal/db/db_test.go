@@ -28,6 +28,8 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertTableExists(t, conn, "telegram_messages")
 	assertTableExists(t, conn, "telegram_links")
 	assertTableExists(t, conn, "telegram_messages_fts")
+	assertColumnExists(t, conn, "telegram_channels", "web_access")
+	assertColumnExists(t, conn, "telegram_channels", "web_access_checked_at")
 }
 
 func TestFTSTriggersIndexUpdateAndSoftDelete(t *testing.T) {
@@ -126,4 +128,31 @@ func assertIndexExists(t *testing.T, conn *sql.DB, name string) {
 	if count != 1 {
 		t.Fatalf("index %s count = %d, want 1", name, count)
 	}
+}
+
+func assertColumnExists(t *testing.T, conn *sql.DB, table string, column string) {
+	t.Helper()
+	rows, err := conn.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		t.Fatalf("table_info %s: %v", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name string
+		var typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			t.Fatalf("scan table_info %s: %v", table, err)
+		}
+		if name == column {
+			return
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate table_info %s: %v", table, err)
+	}
+	t.Fatalf("column %s.%s does not exist", table, column)
 }

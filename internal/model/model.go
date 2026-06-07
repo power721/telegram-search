@@ -31,17 +31,19 @@ type Account struct {
 }
 
 type Channel struct {
-	ID                int64      `json:"id"`
-	AccountID         int64      `json:"account_id"`
-	TelegramChannelID int64      `json:"telegram_channel_id"`
-	AccessHash        int64      `json:"access_hash"`
-	Title             string     `json:"title"`
-	Username          string     `json:"username"`
-	Type              string     `json:"type"`
-	LastMessageID     int64      `json:"last_message_id"`
-	LastSyncTime      *time.Time `json:"last_sync_time,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                 int64      `json:"id"`
+	AccountID          int64      `json:"account_id"`
+	TelegramChannelID  int64      `json:"telegram_channel_id"`
+	AccessHash         int64      `json:"access_hash"`
+	Title              string     `json:"title"`
+	Username           string     `json:"username"`
+	Type               string     `json:"type"`
+	LastMessageID      int64      `json:"last_message_id"`
+	LastSyncTime       *time.Time `json:"last_sync_time,omitempty"`
+	WebAccess          *bool      `json:"web_access,omitempty"`
+	WebAccessCheckedAt *time.Time `json:"web_access_checked_at,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type WatchRule struct {

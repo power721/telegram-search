@@ -140,6 +140,14 @@ CREATE TABLE IF NOT EXISTS telegram_watch_rules (
 );
 `,
 	},
+	{
+		version: 6,
+		name:    "channel_web_access",
+		sql: `
+ALTER TABLE telegram_channels ADD COLUMN web_access INTEGER;
+ALTER TABLE telegram_channels ADD COLUMN web_access_checked_at DATETIME;
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

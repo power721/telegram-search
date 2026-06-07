@@ -213,6 +213,71 @@ func TestRepositoriesKeepAccountDataIsolated(t *testing.T) {
 	}
 }
 
+func TestChannelRepositoryUpdatesWebAccess(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		Title:             "Public",
+		Username:          "public_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+
+	unchecked, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find unchecked channel: %v", err)
+	}
+	if unchecked.WebAccess != nil || unchecked.WebAccessCheckedAt != nil {
+		t.Fatalf("unchecked web access = %v checked_at=%v, want nil values", unchecked.WebAccess, unchecked.WebAccessCheckedAt)
+	}
+
+	checkedAt := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	if err := channels.UpdateWebAccess(ctx, channelID, true, checkedAt); err != nil {
+		t.Fatalf("UpdateWebAccess returned error: %v", err)
+	}
+
+	checked, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find checked channel: %v", err)
+	}
+	if checked.WebAccess == nil || *checked.WebAccess != true {
+		t.Fatalf("web access = %v, want true", checked.WebAccess)
+	}
+	if checked.WebAccessCheckedAt == nil || !checked.WebAccessCheckedAt.Equal(checkedAt) {
+		t.Fatalf("checked_at = %v, want %v", checked.WebAccessCheckedAt, checkedAt)
+	}
+
+	_, err = channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		Title:             "Public Renamed",
+		Username:          "public_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	if err != nil {
+		t.Fatalf("save existing channel: %v", err)
+	}
+	afterUpsert, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find upserted channel: %v", err)
+	}
+	if afterUpsert.WebAccess == nil || *afterUpsert.WebAccess != true || afterUpsert.WebAccessCheckedAt == nil || !afterUpsert.WebAccessCheckedAt.Equal(checkedAt) {
+		t.Fatalf("upsert changed web access fields: %+v", afterUpsert)
+	}
+}
+
 func TestMessageSearchAttachesLinksForMultipleResults(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

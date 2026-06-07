@@ -68,6 +68,7 @@ func run(configPath string) error {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	tgClient := telegram.NewGotdClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, logs.Telegram)
@@ -101,7 +102,7 @@ func run(configPath string) error {
 	}
 
 	router := api.NewRouter(api.Dependencies{
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
 		Search: searchService, History: historyService, ChannelSync: channelService,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})

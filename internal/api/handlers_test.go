@@ -295,6 +295,20 @@ func TestSearchAPICursorReturnsOlderRows(t *testing.T) {
 	}
 }
 
+func TestMaintenanceSQLiteAPI(t *testing.T) {
+	router := NewRouter(testDeps(t))
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sqlite", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("ANALYZE")) || !bytes.Contains(w.Body.Bytes(), []byte("telegram_messages_fts optimize")) {
+		t.Fatalf("maintenance response = %s", w.Body.String())
+	}
+}
+
 func testDeps(t *testing.T) Dependencies {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
@@ -309,6 +323,7 @@ func testDeps(t *testing.T) Dependencies {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
 	client := telegram.NopClient{}
@@ -319,7 +334,7 @@ func testDeps(t *testing.T) Dependencies {
 	})
 	channelService := channel.NewService(channels, client, sessions)
 	return Dependencies{
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
 		Search: searchService, History: historyService, ChannelSync: channelService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}

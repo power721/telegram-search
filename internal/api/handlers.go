@@ -279,6 +279,19 @@ func (h handlers) links(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h handlers) maintenanceSQLite(c *gin.Context) {
+	if h.deps.Maintenance == nil {
+		errorText(c, http.StatusServiceUnavailable, "maintenance repository is unavailable")
+		return
+	}
+	ops, err := h.deps.Maintenance.OptimizeSQLite(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"operations": ops})
+}
+
 func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, profile telegram.Profile) {
 	account.TelegramUserID = profile.TelegramUserID
 	account.FirstName = profile.FirstName

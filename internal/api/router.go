@@ -16,6 +16,7 @@ type Dependencies struct {
 	Channels    *repository.ChannelRepository
 	Messages    *repository.MessageRepository
 	Links       *repository.LinkRepository
+	Maintenance *repository.MaintenanceRepository
 	Status      *repository.StatusRepository
 	Search      *search.Service
 	History     *history.Service
@@ -44,6 +45,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/search", h.search)
 	api.GET("/messages/latest", h.latest)
 	api.GET("/links", h.links)
+	api.POST("/maintenance/sqlite", h.maintenanceSQLite)
 
 	return router
 }

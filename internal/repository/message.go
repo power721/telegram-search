@@ -187,6 +187,17 @@ WHERE channel_id = ? AND telegram_message_id = ?`, time.Now().UTC(), channelID, 
 	return requireRows(res, "message not found")
 }
 
+func (r *MessageRepository) MarkDeletedTx(ctx context.Context, tx *sql.Tx, channelID int64, telegramMessageID int64) error {
+	res, err := tx.ExecContext(ctx, `
+UPDATE telegram_messages
+SET deleted = 1, updated_at = ?
+WHERE channel_id = ? AND telegram_message_id = ?`, time.Now().UTC(), channelID, telegramMessageID)
+	if err != nil {
+		return fmt.Errorf("mark message deleted: %w", err)
+	}
+	return requireRows(res, "message not found")
+}
+
 func scanSearchResult(row interface {
 	Scan(...any) error
 }) (model.SearchResult, error) {

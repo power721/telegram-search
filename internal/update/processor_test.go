@@ -1,0 +1,164 @@
+package update
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"tg-provider/internal/db"
+	"tg-provider/internal/link"
+	"tg-provider/internal/model"
+	"tg-provider/internal/repository"
+)
+
+func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+	})
+
+	now := time.Now().UTC().Truncate(time.Second)
+	newEvent := Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         10,
+		SenderID:          88,
+		Text:              "庆余年 https://example.com/old 提取码: abcd",
+		RawJSON:           "{}",
+		Date:              now,
+	}
+	if err := processor.Process(ctx, newEvent); err != nil {
+		t.Fatalf("process new event: %v", err)
+	}
+
+	results, err := fixture.messages.Search(ctx, repository.SearchParams{Query: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search after new event: %v", err)
+	}
+	if len(results) != 1 || len(results[0].Links) != 1 {
+		t.Fatalf("new event search results = %+v", results)
+	}
+	if results[0].Links[0].URL != "https://example.com/old" || results[0].Links[0].Password != "abcd" {
+		t.Fatalf("new event link = %+v", results[0].Links[0])
+	}
+
+	editTime := now.Add(time.Minute)
+	editEvent := Event{
+		Type:              EventEditMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         10,
+		SenderID:          88,
+		Text:              "三体 https://example.com/new",
+		RawJSON:           `{"edited":true}`,
+		Date:              now,
+		EditDate:          &editTime,
+	}
+	if err := processor.Process(ctx, editEvent); err != nil {
+		t.Fatalf("process edit event: %v", err)
+	}
+
+	results, err = fixture.messages.Search(ctx, repository.SearchParams{Query: "三体", Limit: 10})
+	if err != nil {
+		t.Fatalf("search after edit event: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("edited search len = %d, want 1", len(results))
+	}
+	if results[0].Text != "三体 https://example.com/new" {
+		t.Fatalf("edited text = %q", results[0].Text)
+	}
+	if results[0].EditDate == nil || !results[0].EditDate.Equal(editTime) {
+		t.Fatalf("edit date = %v, want %v", results[0].EditDate, editTime)
+	}
+	if len(results[0].Links) != 1 || results[0].Links[0].URL != "https://example.com/new" {
+		t.Fatalf("edited links = %+v", results[0].Links)
+	}
+
+	oldLinks, err := fixture.links.Search(ctx, repository.LinkSearchParams{Keyword: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search old links: %v", err)
+	}
+	if len(oldLinks) != 0 {
+		t.Fatalf("old links len = %d, want 0", len(oldLinks))
+	}
+
+	deleteEvent := Event{
+		Type:              EventDeleteMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         10,
+	}
+	if err := processor.Process(ctx, deleteEvent); err != nil {
+		t.Fatalf("process delete event: %v", err)
+	}
+
+	results, err = fixture.messages.Search(ctx, repository.SearchParams{Query: "三体", Limit: 10})
+	if err != nil {
+		t.Fatalf("search after delete event: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("deleted search len = %d, want 0", len(results))
+	}
+}
+
+type processorFixture struct {
+	conn              *sql.DB
+	accounts          *repository.AccountRepository
+	channels          *repository.ChannelRepository
+	messages          *repository.MessageRepository
+	links             *repository.LinkRepository
+	accountID         int64
+	channelID         int64
+	telegramChannelID int64
+}
+
+func newProcessorFixture(t *testing.T) processorFixture {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	telegramChannelID := int64(200)
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: telegramChannelID,
+		AccessHash:        300,
+		Title:             "VIP",
+		Type:              model.ChannelTypeChannel,
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	return processorFixture{
+		conn:              conn,
+		accounts:          accounts,
+		channels:          channels,
+		messages:          messages,
+		links:             links,
+		accountID:         accountID,
+		channelID:         channelID,
+		telegramChannelID: telegramChannelID,
+	}
+}

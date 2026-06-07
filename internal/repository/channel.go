@@ -67,6 +67,12 @@ SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, 
 FROM telegram_channels WHERE id = ?`, id))
 }
 
+func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
+	return scanChannel(r.db.QueryRowContext(ctx, `
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at
+FROM telegram_channels WHERE account_id = ? AND telegram_channel_id = ?`, accountID, telegramChannelID))
+}
+
 func (r *ChannelRepository) FindAll(ctx context.Context) ([]model.Channel, error) {
 	return r.find(ctx, ``, nil)
 }

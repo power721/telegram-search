@@ -7,13 +7,17 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/net/html"
 
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 )
 
 const defaultWebAccessTimeout = 5 * time.Second
+const maxWebAccessConcurrency = 5
 
 type WebAccessChecker interface {
 	Check(ctx context.Context, username string) (bool, error)
@@ -47,15 +51,10 @@ func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([
 	if err != nil {
 		return nil, err
 	}
+	accesses := s.checkWebAccess(ctx, loaded)
 	results := make([]WebAccessResult, 0, len(loaded))
-	for _, item := range loaded {
-		access := false
-		username := strings.TrimPrefix(item.Username, "@")
-		if item.Type != model.ChannelTypeSavedMessages && username != "" {
-			if checked, err := s.checker.Check(ctx, username); err == nil {
-				access = checked
-			}
-		}
+	for i, item := range loaded {
+		access := accesses[i]
 		checkedAt := s.now().UTC()
 		if err := s.channels.UpdateWebAccess(ctx, item.ID, access, checkedAt); err != nil {
 			return nil, err
@@ -67,6 +66,30 @@ func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([
 		})
 	}
 	return results, nil
+}
+
+func (s *WebAccessService) checkWebAccess(ctx context.Context, channels []model.Channel) []bool {
+	accesses := make([]bool, len(channels))
+	sem := make(chan struct{}, maxWebAccessConcurrency)
+	var wg sync.WaitGroup
+	for i, item := range channels {
+		wg.Add(1)
+		go func(i int, item model.Channel) {
+			defer wg.Done()
+			username := strings.TrimPrefix(item.Username, "@")
+			if item.Type == model.ChannelTypeSavedMessages || username == "" {
+				return
+			}
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			checked, err := s.checker.Check(ctx, username)
+			if err == nil {
+				accesses[i] = checked
+			}
+		}(i, item)
+	}
+	wg.Wait()
+	return accesses
 }
 
 func (s *WebAccessService) loadUniqueChannels(ctx context.Context, channelIDs []int64) ([]model.Channel, error) {
@@ -111,12 +134,57 @@ func (c *HTTPWebAccessChecker) Check(ctx context.Context, username string) (bool
 	if err != nil {
 		return false, err
 	}
+	q := req.URL.Query()
+	q.Set("q", "")
+	req.URL.RawQuery = q.Encode()
 	req.Header.Set("User-Agent", "tg-provider/1.0")
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return false, err
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
-	return resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusBadRequest, nil
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+		return false, nil
+	}
+	return hasTelegramMessageWrap(resp.Body), nil
+}
+
+func hasTelegramMessageWrap(r io.Reader) bool {
+	doc, err := html.Parse(io.LimitReader(r, 4*1024*1024))
+	if err != nil {
+		return false
+	}
+	var walk func(*html.Node, bool) bool
+	walk = func(n *html.Node, insideContainer bool) bool {
+		if n.Type == html.ElementNode && n.Data == "div" {
+			if hasClass(n, "tgme_container") {
+				insideContainer = true
+			}
+			if insideContainer && hasClass(n, "tgme_widget_message_wrap") {
+				return true
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			if walk(child, insideContainer) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(doc, false)
+}
+
+func hasClass(n *html.Node, className string) bool {
+	for _, attr := range n.Attr {
+		if attr.Key != "class" {
+			continue
+		}
+		for _, item := range strings.Fields(attr.Val) {
+			if item == className {
+				return true
+			}
+		}
+	}
+	return false
 }

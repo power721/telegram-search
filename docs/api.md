@@ -418,10 +418,11 @@ curl -s -X POST http://127.0.0.1:6000/api/channels/web-access/check \
 
 检测规则：
 
-- 有 `username` 且不是 `saved_messages` 的频道会请求 `https://t.me/s/{username}`。
-- HTTP `2xx` 或 `3xx` 记录为 `web_access=true`。
-- HTTP `4xx`、`5xx`、超时、DNS 或其他网络错误记录为 `web_access=false`。
+- 有 `username` 且不是 `saved_messages` 的频道会请求 `https://t.me/s/{username}?q=`。
+- 响应 HTML 中存在 `div.tgme_container div.tgme_widget_message_wrap` 时记录为 `web_access=true`。
+- HTTP 非成功状态、没有消息节点、超时、DNS 或其他网络错误记录为 `web_access=false`。
 - 没有 `username` 或类型为 `saved_messages` 的频道直接记录为 `web_access=false`。
+- 批量检测会并发执行，最大并发数为 5。
 
 校验：
 

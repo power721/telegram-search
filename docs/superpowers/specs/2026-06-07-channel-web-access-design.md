@@ -90,15 +90,16 @@ type Checker interface {
 The default checker performs an HTTP request to:
 
 ```text
-https://t.me/s/{username}
+https://t.me/s/{username}?q=
 ```
 
 Rules:
 
 - Only local channels with a non-empty `username` are checked over HTTP.
 - `saved_messages` and channels without `username` are stored as `web_access=false`.
-- HTTP `2xx` and `3xx` mean `true`.
-- HTTP `4xx`, `5xx`, timeout, DNS, and other network errors mean `false`.
+- The response HTML must contain at least one `div.tgme_container div.tgme_widget_message_wrap` element to mean `true`.
+- HTTP non-success status, no matching message element, timeout, DNS, and other network errors mean `false`.
+- Batch checks run concurrently with a maximum concurrency of 5.
 - Each result is saved with a fresh UTC `checked_at`.
 
 The checker uses a bounded timeout so the batch API cannot hang indefinitely on a slow network.

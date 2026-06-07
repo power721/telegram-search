@@ -13,6 +13,7 @@ import (
 
 	"tg-provider/internal/model"
 	localsession "tg-provider/internal/session"
+	"tg-provider/internal/telegram"
 )
 
 type GotdListener struct {
@@ -121,10 +122,12 @@ func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Eve
 		t := time.Unix(int64(message.EditDate), 0).UTC()
 		editDate = &t
 	}
+	indexedText, messageURLs := telegram.IndexedMessageText(message)
 	rawJSON, _ := json.Marshal(map[string]any{
-		"id":      message.ID,
-		"date":    message.Date,
-		"message": message.Message,
+		"id":           message.ID,
+		"date":         message.Date,
+		"message":      message.Message,
+		"message_urls": messageURLs,
 	})
 	return Event{
 		Type:              typ,
@@ -132,7 +135,7 @@ func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Eve
 		TelegramChannelID: channelID,
 		MessageID:         int64(message.ID),
 		SenderID:          peerID(message.FromID),
-		Text:              message.Message,
+		Text:              indexedText,
 		RawJSON:           string(rawJSON),
 		Date:              time.Unix(int64(message.Date), 0).UTC(),
 		EditDate:          editDate,

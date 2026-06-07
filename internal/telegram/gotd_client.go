@@ -237,15 +237,17 @@ func convertMessage(message *tg.Message) Message {
 		t := time.Unix(int64(raw), 0).UTC()
 		editDate = &t
 	}
+	indexedText, messageURLs := IndexedMessageText(message)
 	rawJSON, _ := json.Marshal(map[string]any{
-		"id":      message.ID,
-		"date":    message.Date,
-		"message": message.Message,
+		"id":           message.ID,
+		"date":         message.Date,
+		"message":      message.Message,
+		"message_urls": messageURLs,
 	})
 	return Message{
 		TelegramMessageID: int64(message.ID),
 		SenderID:          peerID(message.FromID),
-		Text:              message.Message,
+		Text:              indexedText,
 		RawJSON:           string(rawJSON),
 		Date:              time.Unix(int64(message.Date), 0).UTC(),
 		EditDate:          editDate,

@@ -2,7 +2,9 @@ package telegram
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/gotd/td/telegram/query/dialogs"
 	"github.com/gotd/td/tg"
@@ -71,5 +73,44 @@ func testDialogsResult(items []tg.DialogClass, count int) tg.MessagesDialogsClas
 		Messages: messages,
 		Chats:    chats,
 		Count:    count,
+	}
+}
+
+func TestConvertMessageIncludesHiddenAndButtonURLs(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "🔗 链接: 115网盘",
+	}
+	message.SetEntities([]tg.MessageEntityClass{
+		&tg.MessageEntityTextURL{
+			Offset: 4,
+			Length: 5,
+			URL:    "https://115cdn.com/s/sws61os33xj?password=re39",
+		},
+	})
+	message.SetReplyMarkup(&tg.ReplyInlineMarkup{
+		Rows: []tg.KeyboardButtonRow{{
+			Buttons: []tg.KeyboardButtonClass{
+				&tg.KeyboardButtonURL{Text: "打开", URL: "https://pan.quark.cn/s/hidden"},
+			},
+		}},
+	})
+
+	converted := convertMessage(message)
+
+	for _, want := range []string{
+		"🔗 链接: 115网盘",
+		"https://115cdn.com/s/sws61os33xj?password=re39",
+		"https://pan.quark.cn/s/hidden",
+	} {
+		if !strings.Contains(converted.Text, want) {
+			t.Fatalf("converted text %q missing %q", converted.Text, want)
+		}
+		if !strings.Contains(converted.RawJSON, want) {
+			t.Fatalf("raw json %q missing %q", converted.RawJSON, want)
+		}
 	}
 }

@@ -498,6 +498,112 @@ func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	}
 }
 
+func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 30,
+		Title:             "Public Channel",
+		Username:          "public_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	checker := &apiWebAccessChecker{results: map[string]bool{"public_channel": true}}
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, checker)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []channel.WebAccessResult `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ChannelID != channelID || !body.Items[0].WebAccess || body.Items[0].CheckedAt.IsZero() {
+		t.Fatalf("response = %+v, want checked channel", body)
+	}
+	if !sameStringSlices(checker.calls, []string{"public_channel"}) {
+		t.Fatalf("checker calls = %v, want public_channel", checker.calls)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var list struct {
+		Items []model.Channel `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("invalid channel list JSON: %v", err)
+	}
+	if len(list.Items) != 1 || list.Items[0].WebAccess == nil || *list.Items[0].WebAccess != true || list.Items[0].WebAccessCheckedAt == nil {
+		t.Fatalf("channel list = %+v, want web_access true", list)
+	}
+}
+
+func TestChannelWebAccessCheckAPIValidatesChannelIDs(t *testing.T) {
+	deps := testDeps(t)
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, &apiWebAccessChecker{})
+	router := NewRouter(deps)
+	for _, body := range []string{
+		`{}`,
+		`{"channel_ids":[]}`,
+		`{"channel_ids":[0]}`,
+		`{"channel_ids":[-1]}`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d body=%s, want 400", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestChannelWebAccessCheckAPIRejectsMissingWithoutPartialUpdates(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 31,
+		Title:             "Existing",
+		Username:          "existing_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	checker := &apiWebAccessChecker{results: map[string]bool{"existing_channel": true}}
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, checker)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`,999999]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d body=%s, want 404", w.Code, w.Body.String())
+	}
+	if len(checker.calls) != 0 {
+		t.Fatalf("checker calls = %v, want none", checker.calls)
+	}
+	stored, err := deps.Channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if stored.WebAccess != nil || stored.WebAccessCheckedAt != nil {
+		t.Fatalf("stored web access = %v checked_at=%v, want unchanged nil values", stored.WebAccess, stored.WebAccessCheckedAt)
+	}
+}
+
 func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)
@@ -639,10 +745,11 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
 	})
 	channelService := channel.NewService(channels, client, sessions)
+	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
-		Search: searchService, History: historyService, ChannelSync: channelService,
+		Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn
 }
@@ -653,6 +760,16 @@ type fakeTelegram struct {
 
 func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
 	return telegram.SentCode{PhoneCodeHash: "hash"}, nil
+}
+
+type apiWebAccessChecker struct {
+	results map[string]bool
+	calls   []string
+}
+
+func (c *apiWebAccessChecker) Check(ctx context.Context, username string) (bool, error) {
+	c.calls = append(c.calls, username)
+	return c.results[username], nil
 }
 
 type recordingAccountRuntime struct {

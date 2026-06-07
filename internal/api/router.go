@@ -20,23 +20,24 @@ type AccountRuntime interface {
 }
 
 type Dependencies struct {
-	Accounts       *repository.AccountRepository
-	Channels       *repository.ChannelRepository
-	Messages       *repository.MessageRepository
-	Links          *repository.LinkRepository
-	WatchRules     *repository.WatchRuleRepository
-	Maintenance    *repository.MaintenanceRepository
-	Status         *repository.StatusRepository
-	BackupDB       *sql.DB
-	BackupDir      string
-	SyncQueue      *scheduler.RetryQueue
-	Search         *search.Service
-	History        *history.Service
-	ChannelSync    *channel.Service
-	AccountRuntime AccountRuntime
-	Telegram       telegram.Client
-	Sessions       *session.Manager
-	CodeStore      *telegram.CodeStore
+	Accounts         *repository.AccountRepository
+	Channels         *repository.ChannelRepository
+	Messages         *repository.MessageRepository
+	Links            *repository.LinkRepository
+	WatchRules       *repository.WatchRuleRepository
+	Maintenance      *repository.MaintenanceRepository
+	Status           *repository.StatusRepository
+	BackupDB         *sql.DB
+	BackupDir        string
+	SyncQueue        *scheduler.RetryQueue
+	Search           *search.Service
+	History          *history.Service
+	ChannelSync      *channel.Service
+	ChannelWebAccess *channel.WebAccessService
+	AccountRuntime   AccountRuntime
+	Telegram         telegram.Client
+	Sessions         *session.Manager
+	CodeStore        *telegram.CodeStore
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -55,6 +56,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.POST("/accounts/:id/channels/sync", h.syncAccountChannels)
 	api.GET("/channels", h.channels)
 	api.POST("/channels/sync", h.syncChannels)
+	api.POST("/channels/web-access/check", h.checkChannelWebAccess)
 	api.GET("/channels/:id", h.channel)
 	api.POST("/channels/:id/sync", h.syncChannel)
 	api.GET("/watch-rules", h.watchRules)

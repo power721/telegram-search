@@ -254,6 +254,39 @@ func (h handlers) syncChannels(c *gin.Context) {
 	c.JSON(http.StatusAccepted, result)
 }
 
+func (h handlers) checkChannelWebAccess(c *gin.Context) {
+	var req struct {
+		ChannelIDs []int64 `json:"channel_ids"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.ChannelIDs) == 0 {
+		errorText(c, http.StatusBadRequest, "channel_ids is required")
+		return
+	}
+	for _, id := range req.ChannelIDs {
+		if id <= 0 {
+			errorText(c, http.StatusBadRequest, "channel_ids must contain positive integers")
+			return
+		}
+	}
+	if h.deps.ChannelWebAccess == nil {
+		errorText(c, http.StatusServiceUnavailable, "channel web access checker is unavailable")
+		return
+	}
+	items, err := h.deps.ChannelWebAccess.CheckMany(c.Request.Context(), req.ChannelIDs)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h handlers) syncAccountChannels(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {

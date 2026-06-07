@@ -104,6 +104,7 @@ func run(configPath string) error {
 		RetryPolicy:      retryPolicy,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
+	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	accountManager := account.NewManager(account.ManagerOptions{
 		Accounts: accounts,
 		Updates:  updateService,
@@ -124,7 +125,7 @@ func run(configPath string) error {
 	router := api.NewRouter(api.Dependencies{
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
-		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, AccountRuntime: accountManager,
+		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{

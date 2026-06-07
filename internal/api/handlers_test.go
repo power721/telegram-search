@@ -19,6 +19,7 @@ import (
 	"tg-provider/internal/db"
 	"tg-provider/internal/history"
 	"tg-provider/internal/link"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 	"tg-provider/internal/retry"
@@ -631,10 +632,11 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
 	client := telegram.NopClient{}
+	watchFilter := messagefilter.New(watchRules)
 	searchService := search.NewService(messages, links)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
-		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), HistoryBatchSize: 100,
+		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
 	})
 	channelService := channel.NewService(channels, client, sessions)
 	return Dependencies{

@@ -40,6 +40,11 @@ GET    /api/channels
 GET    /api/channels/{id}
 POST   /api/channels/sync
 POST   /api/channels/{id}/sync
+GET    /api/watch-rules
+POST   /api/watch-rules
+GET    /api/watch-rules/{id}
+PUT    /api/watch-rules/{id}
+DELETE /api/watch-rules/{id}
 GET    /api/search?q=keyword
 GET    /api/messages/latest
 GET    /api/links

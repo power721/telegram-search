@@ -20,6 +20,7 @@ import (
 	"tg-provider/internal/history"
 	"tg-provider/internal/link"
 	"tg-provider/internal/logger"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/repository"
 	"tg-provider/internal/retry"
 	"tg-provider/internal/scheduler"
@@ -70,6 +71,8 @@ func run(configPath string) error {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	watchRules := repository.NewWatchRuleRepository(conn)
+	watchFilter := messagefilter.New(watchRules)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
@@ -82,6 +85,7 @@ func run(configPath string) error {
 		Messages:  messages,
 		Links:     links,
 		Extractor: link.NewExtractor(),
+		Filter:    watchFilter,
 	})
 	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
 		Accounts:    accounts,
@@ -94,6 +98,7 @@ func run(configPath string) error {
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
 		Telegram: tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
+		Filter:           watchFilter,
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 		Workers:          cfg.Sync.Workers,
 		RetryPolicy:      retryPolicy,
@@ -117,7 +122,7 @@ func run(configPath string) error {
 	cleanupScheduler.Start(ctx)
 
 	router := api.NewRouter(api.Dependencies{
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),

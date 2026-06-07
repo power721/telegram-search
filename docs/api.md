@@ -431,6 +431,83 @@ curl -s -X POST http://127.0.0.1:6000/api/channels/sync \
 - `channel_ids` 不能是空数组。
 - 每个频道 ID 必须大于 0。
 
+## 监听规则 API
+
+监听规则绑定本地频道 ID。实时监听只使用 `enabled=true` 的规则；手动历史同步只要频道存在规则就应用 `includes`、`excludes` 和“必须包含链接”的过滤，并忽略 `enabled`。
+
+### GET `/api/watch-rules`
+
+返回所有监听规则。
+
+响应 `200`：
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "channel_id": 1,
+      "enabled": true,
+      "includes": ["庆余年"],
+      "excludes": ["预告"],
+      "created_at": "2026-06-07T12:00:00Z",
+      "updated_at": "2026-06-07T12:00:00Z"
+    }
+  ]
+}
+```
+
+### POST `/api/watch-rules`
+
+创建监听规则。每个频道最多一条规则。
+
+```bash
+curl -s -X POST http://127.0.0.1:6000/api/watch-rules \
+  -H 'content-type: application/json' \
+  -d '{"channel_id":1,"enabled":true,"includes":["庆余年"],"excludes":["预告"]}'
+```
+
+响应 `201`：
+
+```json
+{
+  "id": 1,
+  "channel_id": 1,
+  "enabled": true,
+  "includes": ["庆余年"],
+  "excludes": ["预告"],
+  "created_at": "2026-06-07T12:00:00Z",
+  "updated_at": "2026-06-07T12:00:00Z"
+}
+```
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `channel_id` | positive integer | 是 | 本地频道 ID。 |
+| `enabled` | boolean | 否 | 是否启用实时监听过滤。创建时默认 `true`。 |
+| `includes` | string array | 否 | 包含关键词。非空时命中任意一个才保留。 |
+| `excludes` | string array | 否 | 排除关键词。命中任意一个就丢弃。 |
+
+校验：
+
+- `channel_id` 必须引用已存在频道。
+- `includes` 和 `excludes` 必须是字符串数组。
+- 重复创建同一频道规则返回 `409`。
+
+### GET `/api/watch-rules/{id}`
+
+返回单条监听规则。
+
+### PUT `/api/watch-rules/{id}`
+
+更新监听规则。更新请求必须显式传入 `enabled`。
+
+### DELETE `/api/watch-rules/{id}`
+
+删除监听规则。
+
 ## 搜索 API
 
 ### GET `/api/search`

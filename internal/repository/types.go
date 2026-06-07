@@ -48,6 +48,17 @@ type LinkSearchParams struct {
 	Offset    int
 }
 
+type MergedLinkSearchParams struct {
+	Type      string
+	AccountID int64
+	ChannelID int64
+	Keyword   string
+	DateFrom  *time.Time
+	DateTo    *time.Time
+	Limit     int
+	Offset    int
+}
+
 func clampLimit(limit int, fallback int) int {
 	if limit <= 0 {
 		return fallback

@@ -119,6 +119,49 @@ func TestExtractDeduplicatesProviderAndFallback(t *testing.T) {
 	}
 }
 
+func TestExtractAssignsNoteFromTitleBeforeLink(t *testing.T) {
+	text := `庆余年 S02 4K 全集
+夸克网盘：https://pan.quark.cn/s/abc123
+
+凡人修仙传 最新
+阿里云盘：https://www.alipan.com/s/def456`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	if links[0].URL != "https://pan.quark.cn/s/abc123" || links[0].Note != "庆余年 S02 4K 全集" {
+		t.Fatalf("first link = %+v, want note from preceding title", links[0])
+	}
+	if links[1].URL != "https://www.alipan.com/s/def456" || links[1].Note != "凡人修仙传 最新" {
+		t.Fatalf("second link = %+v, want note from preceding title", links[1])
+	}
+}
+
+func TestExtractAssignsNoteAcrossLinkLabelLine(t *testing.T) {
+	text := `庆余年 S02 4K
+链接：
+https://pan.quark.cn/s/abc123`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	if links[0].Note != "庆余年 S02 4K" {
+		t.Fatalf("note = %q, want title above link label line", links[0].Note)
+	}
+}
+
+func TestExtractLeavesNoteEmptyForProviderOnlyLabels(t *testing.T) {
+	links := NewExtractor().Extract("夸克网盘：https://pan.quark.cn/s/abc123")
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	if links[0].Note != "" {
+		t.Fatalf("note = %q, want empty provider label is not a title", links[0].Note)
+	}
+}
+
 func TestExtractFallbackURLAndFalsePositive(t *testing.T) {
 	links := NewExtractor().Extract("官网 https://example.com/a 不是网盘 pan.baidu.com/s/no-scheme")
 	if len(links) != 1 {

@@ -66,6 +66,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.DELETE("/watch-rules/:id", h.deleteWatchRule)
 	api.GET("/search", h.search)
 	api.GET("/messages/latest", h.latest)
+	api.GET("/links/merged", h.mergedLinks)
 	api.GET("/links", h.links)
 	api.POST("/maintenance/sqlite", h.maintenanceSQLite)
 	api.POST("/maintenance/backup", h.maintenanceBackup)

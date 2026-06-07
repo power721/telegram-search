@@ -49,6 +49,7 @@ DELETE /api/watch-rules/{id}
 GET    /api/search?q=keyword
 GET    /api/messages/latest
 GET    /api/links
+GET    /api/links/merged
 GET    /api/status
 POST   /api/maintenance/sqlite
 POST   /api/maintenance/backup

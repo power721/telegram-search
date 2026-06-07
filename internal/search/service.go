@@ -94,3 +94,16 @@ func (s *Service) Links(ctx context.Context, params LinkParams) ([]model.LinkRes
 		Offset:    params.Offset,
 	})
 }
+
+func (s *Service) MergedLinks(ctx context.Context, params LinkParams) (model.MergedLinksResponse, error) {
+	return s.links.SearchMerged(ctx, repository.MergedLinkSearchParams{
+		Type:      params.Type,
+		AccountID: params.AccountID,
+		ChannelID: params.ChannelID,
+		Keyword:   params.Keyword,
+		DateFrom:  params.DateFrom,
+		DateTo:    params.DateTo,
+		Limit:     params.Limit,
+		Offset:    params.Offset,
+	})
+}

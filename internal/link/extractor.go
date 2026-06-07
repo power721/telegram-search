@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"tg-provider/internal/model"
 )
@@ -140,6 +142,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 		if password == "" {
 			password = e.nearbyPassword(text, candidate.MatchEnd)
 		}
+		note := inferNote(text, candidate.MatchStart)
 		seen[url] = struct{}{}
 		if candidate.Type != "url" {
 			providerURLs = append(providerURLs, url)
@@ -149,6 +152,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 			Type:     candidate.Type,
 			URL:      url,
 			Password: password,
+			Note:     note,
 		})
 	}
 	return out
@@ -210,4 +214,103 @@ func (e *Extractor) nearbyPassword(text string, after int) string {
 		return ""
 	}
 	return m[1]
+}
+
+func inferNote(text string, linkStart int) string {
+	if linkStart < 0 || linkStart > len(text) {
+		return ""
+	}
+	lineStart := strings.LastIndex(text[:linkStart], "\n") + 1
+	currentPrefix := text[lineStart:linkStart]
+	if note := cleanNoteCandidate(currentPrefix); note != "" {
+		return note
+	}
+
+	prevEnd := lineStart
+	for prevEnd > 0 {
+		prevStart := strings.LastIndex(text[:prevEnd-1], "\n") + 1
+		line := text[prevStart : prevEnd-1]
+		prevEnd = prevStart
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if note := cleanNoteCandidate(line); note != "" {
+			return note
+		}
+	}
+	return ""
+}
+
+func cleanNoteCandidate(raw string) string {
+	candidate := strings.TrimSpace(raw)
+	candidate = strings.TrimRight(candidate, ":：-—| \t")
+	candidate = strings.TrimSpace(candidate)
+	candidate = stripLeadingSymbols(candidate)
+	for _, prefix := range []string{"名称", "标题", "片名"} {
+		switch {
+		case strings.HasPrefix(candidate, prefix+"："):
+			candidate = strings.TrimSpace(candidate[len(prefix)+len("："):])
+		case strings.HasPrefix(candidate, prefix+":"):
+			candidate = strings.TrimSpace(candidate[len(prefix)+len(":"):])
+			break
+		}
+	}
+	candidate = strings.TrimRight(candidate, ":：-—| \t")
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" || isLinkLabel(candidate) {
+		return ""
+	}
+	return candidate
+}
+
+func stripLeadingSymbols(value string) string {
+	for value != "" {
+		r, size := utf8.DecodeRuneInString(value)
+		if r == ' ' || r == '\t' || r == '-' || r == '*' || r == '>' || r == ':' || r == '：' || r == '|' {
+			value = value[size:]
+			continue
+		}
+		if isSymbolOrPunctuation(r) {
+			value = value[size:]
+			continue
+		}
+		break
+	}
+	return strings.TrimSpace(value)
+}
+
+func isSymbolOrPunctuation(r rune) bool {
+	return unicode.IsPunct(r) || unicode.IsSymbol(r)
+}
+
+func isLinkLabel(value string) bool {
+	normalized := strings.ToLower(strings.NewReplacer(" ", "", "\t", "", "：", "", ":", "", "-", "", "_", "", "网盘", "", "云盘", "").Replace(value))
+	labels := map[string]struct{}{
+		"":       {},
+		"链接":     {},
+		"地址":     {},
+		"资源":     {},
+		"资源地址":   {},
+		"下载":     {},
+		"网盘地址":   {},
+		"夸克":     {},
+		"quark":  {},
+		"百度":     {},
+		"baidu":  {},
+		"阿里":     {},
+		"aliyun": {},
+		"alipan": {},
+		"uc":     {},
+		"迅雷":     {},
+		"xunlei": {},
+		"115":    {},
+		"123":    {},
+		"天翼":     {},
+		"mobile": {},
+		"pikpak": {},
+		"磁力":     {},
+		"ed2k":   {},
+	}
+	_, ok := labels[normalized]
+	return ok
 }

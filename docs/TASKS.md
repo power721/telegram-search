@@ -965,6 +965,62 @@ Acceptance Criteria:
 
 ---
 
+# Phase 5C: PanSou Gap Closure
+
+This phase borrows PanSou's result-processing ideas while keeping `tg-provider` focused on logged-in Telegram data. It must not add `https://t.me/s/...` scraping as a primary search path.
+
+## Task PGC-001: Document PanSou access boundary
+
+Record how PanSou searches public Telegram Web pages and why that does not cover private or joined-only Telegram channels/groups.
+
+Acceptance Criteria:
+
+- Documents PanSou's `https://t.me/s/{channel}?q={keyword}` approach.
+- States that this project uses logged-in gotd sync instead.
+- Lists borrowed and rejected ideas.
+
+## Task PGC-002: Persist per-link note
+
+Add an optional `note` field to extracted links.
+
+Acceptance Criteria:
+
+- `telegram_links.note` exists.
+- Existing links remain valid with an empty note.
+- Search and link APIs include `note` when present.
+
+## Task PGC-003: Infer note from message text
+
+Infer a link note from nearby resource titles.
+
+Acceptance Criteria:
+
+- Title-before-link messages assign the title to the link note.
+- `链接：` and provider-label lines are skipped when looking upward for a title.
+- Provider labels alone do not become notes.
+
+## Task PGC-004: Add merged links repository and service
+
+Add read-side merged link results grouped by provider type.
+
+Acceptance Criteria:
+
+- Same URL is deduplicated.
+- Latest message context wins.
+- Filters support type, account, channel, keyword, and date range.
+
+## Task PGC-005: Add merged links API
+
+Implement `GET /api/links/merged`.
+
+Acceptance Criteria:
+
+- Returns `total` and `merged_by_type`.
+- Supports `q`, `type`, account/channel/date, limit, and offset filters.
+- Invalid filters use the standard API error envelope.
+
+---
+
 # Phase 6: AList-TVBox Integration
 
 ## Task 083: Finalize API response models

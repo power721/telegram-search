@@ -367,6 +367,44 @@ func TestLinksAPIFiltersByDateRangeAndRejectsInvalidDate(t *testing.T) {
 	}
 }
 
+func TestMergedLinksAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "庆余年 old", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "庆余年 new", RawJSON: "{}", Date: newDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "庆余年 aliyun", RawJSON: "{}", Date: newDate.Add(-time.Minute)},
+	})
+	_, _ = deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/same", Note: "庆余年 旧"}})
+	_, _ = deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/same", Note: "庆余年 最新合集"}})
+	_, _ = deps.Links.SaveBatch(ctx, stored[2].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/abc123", Note: "庆余年 S02"}})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/links/merged?q=庆余年&limit=10", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.MergedLinksResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Total != 2 {
+		t.Fatalf("total = %d, want 2: %s", body.Total, w.Body.String())
+	}
+	if len(body.MergedByType["quark"]) != 1 || body.MergedByType["quark"][0].Note != "庆余年 最新合集" {
+		t.Fatalf("quark merged links = %+v, want newest deduped note", body.MergedByType["quark"])
+	}
+	if len(body.MergedByType["aliyun"]) != 1 || body.MergedByType["aliyun"][0].Note != "庆余年 S02" {
+		t.Fatalf("aliyun merged links = %+v, want aliyun note", body.MergedByType["aliyun"])
+	}
+}
+
 func TestSearchAPIFiltersByDateRange(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

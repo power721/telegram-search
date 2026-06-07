@@ -539,6 +539,36 @@ func (h handlers) links(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h handlers) mergedLinks(c *gin.Context) {
+	accountID, channelID, limit, offset, ok := readFilters(c)
+	if !ok {
+		return
+	}
+	dateFrom, dateTo, ok := parseDateRange(c)
+	if !ok {
+		return
+	}
+	keyword := c.Query("q")
+	if keyword == "" {
+		keyword = c.Query("keyword")
+	}
+	result, err := h.deps.Search.MergedLinks(c.Request.Context(), searchsvc.LinkParams{
+		Type:      c.Query("type"),
+		AccountID: accountID,
+		ChannelID: channelID,
+		Keyword:   keyword,
+		DateFrom:  dateFrom,
+		DateTo:    dateTo,
+		Limit:     limit,
+		Offset:    offset,
+	})
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h handlers) maintenanceSQLite(c *gin.Context) {
 	if h.deps.Maintenance == nil {
 		errorText(c, http.StatusServiceUnavailable, "maintenance repository is unavailable")

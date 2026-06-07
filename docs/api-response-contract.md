@@ -91,12 +91,30 @@ Each item includes link fields plus message context:
 - `type`
 - `url`
 - `password`, omitted when empty
+- `note`, omitted when empty
 - `created_at`
 - `message_text`
 - `message_date`
 - `account_id`
 - `channel_id`
 - `channel_title`
+- `telegram_message_id`
+
+`GET /api/links/merged`
+
+Returns links grouped by provider type:
+
+- `total`: number of returned merged links after filtering, deduplication, and pagination
+- `merged_by_type`: object keyed by link type
+
+Each merged link includes:
+
+- `url`
+- `password`, omitted when empty
+- `note`, omitted when empty
+- `datetime`
+- `source`
+- `channel_id`
 - `telegram_message_id`
 
 ## Channel Result

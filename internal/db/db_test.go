@@ -30,6 +30,7 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertTableExists(t, conn, "telegram_messages_fts")
 	assertColumnExists(t, conn, "telegram_channels", "web_access")
 	assertColumnExists(t, conn, "telegram_channels", "web_access_checked_at")
+	assertColumnExists(t, conn, "telegram_links", "note")
 }
 
 func TestFTSTriggersIndexUpdateAndSoftDelete(t *testing.T) {

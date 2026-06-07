@@ -698,6 +698,7 @@ curl -s 'http://127.0.0.1:6000/api/links?type=quark&keyword=短剧&limit=20'
       "type": "quark",
       "url": "https://pan.quark.cn/s/abc",
       "password": "abcd",
+      "note": "短剧合集",
       "created_at": "2026-06-07T12:00:01Z",
       "message_text": "短剧合集 https://pan.quark.cn/s/abc",
       "message_date": "2026-06-07T12:00:00Z",
@@ -725,6 +726,56 @@ curl -s 'http://127.0.0.1:6000/api/links?type=quark&keyword=短剧&limit=20'
 - `magnet`
 - `ed2k`
 - `url`
+
+### GET `/api/links/merged`
+
+按网盘类型聚合已提取链接。这个接口面向 AList/TVBox 这类只需要资源链接列表的调用方，不改变 `/api/search` 和 `/api/links` 的原始结果接口。
+
+查询参数：
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `q` | string | 按消息文本或链接备注过滤。 |
+| `type` | string | 链接类型过滤，例如 `quark`。 |
+| `account_id` | positive integer | 按账号过滤。 |
+| `channel_id` | positive integer | 按频道过滤。 |
+| `date_from` | date/RFC3339 | 起始时间。 |
+| `date_to` | date/RFC3339 | 结束时间。 |
+| `limit` | non-negative integer | 返回数量。 |
+| `offset` | non-negative integer | offset 分页。 |
+
+示例：
+
+```bash
+curl -s 'http://127.0.0.1:6000/api/links/merged?q=庆余年&type=quark&limit=20'
+```
+
+响应 `200`：
+
+```json
+{
+  "total": 1,
+  "merged_by_type": {
+    "quark": [
+      {
+        "url": "https://pan.quark.cn/s/abc",
+        "password": "abcd",
+        "note": "庆余年 S02 最新合集",
+        "datetime": "2026-06-07T12:00:00Z",
+        "source": "tg:Resource Channel",
+        "channel_id": 1,
+        "telegram_message_id": 8001
+      }
+    ]
+  }
+}
+```
+
+规则：
+
+- 相同 URL 去重，保留最新消息上下文。
+- `note` 来自链接附近的资源标题，可能为空。
+- 同类型内优先返回标题包含 `合集`、`系列`、`全`、`完`、`最新`、`complete` 的资源，然后按消息时间倒序。
 
 ## 维护 API
 

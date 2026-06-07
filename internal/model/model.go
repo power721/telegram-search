@@ -79,6 +79,7 @@ type Link struct {
 	Type      string    `json:"type"`
 	URL       string    `json:"url"`
 	Password  string    `json:"password,omitempty"`
+	Note      string    `json:"note,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -100,6 +101,23 @@ type LinkResult struct {
 	ChannelID         int64     `json:"channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
 	TelegramMessageID int64     `json:"telegram_message_id"`
+}
+
+type MergedLink struct {
+	URL               string    `json:"url"`
+	Password          string    `json:"password,omitempty"`
+	Note              string    `json:"note,omitempty"`
+	Datetime          time.Time `json:"datetime"`
+	Source            string    `json:"source,omitempty"`
+	ChannelID         int64     `json:"channel_id"`
+	TelegramMessageID int64     `json:"telegram_message_id"`
+}
+
+type MergedLinks map[string][]MergedLink
+
+type MergedLinksResponse struct {
+	Total        int         `json:"total"`
+	MergedByType MergedLinks `json:"merged_by_type"`
 }
 
 type StatusCounts struct {

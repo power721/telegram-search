@@ -310,3 +310,96 @@ func TestMessageSearchAttachesLinksForMultipleResults(t *testing.T) {
 		t.Fatalf("search results links = %+v", results)
 	}
 }
+
+func TestLinkRepositoryPersistsAndLoadsNote(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, _ := messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "庆余年 S02 https://pan.quark.cn/s/abc123", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, err = links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "quark", URL: "https://pan.quark.cn/s/abc123", Note: "庆余年 S02",
+	}})
+	if err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+
+	searchResults, err := messages.Search(ctx, SearchParams{Query: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search messages: %v", err)
+	}
+	if len(searchResults) != 1 || len(searchResults[0].Links) != 1 {
+		t.Fatalf("search results = %+v, want one result with one link", searchResults)
+	}
+	if searchResults[0].Links[0].Note != "庆余年 S02" {
+		t.Fatalf("attached link note = %q, want persisted note", searchResults[0].Links[0].Note)
+	}
+
+	linkResults, err := links.Search(ctx, LinkSearchParams{Type: "quark", Limit: 10})
+	if err != nil {
+		t.Fatalf("search links: %v", err)
+	}
+	if len(linkResults) != 1 || linkResults[0].Note != "庆余年 S02" {
+		t.Fatalf("link results = %+v, want persisted note", linkResults)
+	}
+}
+
+func TestLinkRepositorySearchMergedGroupsAndDeduplicatesNewest(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
+	stored, _ := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "庆余年 old", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "庆余年 new", RawJSON: "{}", Date: newDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "庆余年 aliyun", RawJSON: "{}", Date: newDate.Add(-time.Minute)},
+	})
+	_, _ = links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/same", Note: "庆余年 旧"}})
+	_, _ = links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/same", Note: "庆余年 最新合集"}})
+	_, _ = links.SaveBatch(ctx, stored[2].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/abc123", Note: "庆余年 S02"}})
+
+	merged, err := links.SearchMerged(ctx, MergedLinkSearchParams{Keyword: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("SearchMerged returned error: %v", err)
+	}
+	if merged.Total != 2 {
+		t.Fatalf("total = %d, want 2: %+v", merged.Total, merged)
+	}
+	if len(merged.MergedByType["quark"]) != 1 {
+		t.Fatalf("quark links = %+v, want one deduped link", merged.MergedByType["quark"])
+	}
+	quark := merged.MergedByType["quark"][0]
+	if quark.Note != "庆余年 最新合集" || !quark.Datetime.Equal(newDate) || quark.Source != "tg:VIP" || quark.TelegramMessageID != 2 {
+		t.Fatalf("quark merged link = %+v, want newest context", quark)
+	}
+	if len(merged.MergedByType["aliyun"]) != 1 || merged.MergedByType["aliyun"][0].Note != "庆余年 S02" {
+		t.Fatalf("aliyun links = %+v, want one aliyun note", merged.MergedByType["aliyun"])
+	}
+}

@@ -148,6 +148,13 @@ ALTER TABLE telegram_channels ADD COLUMN web_access INTEGER;
 ALTER TABLE telegram_channels ADD COLUMN web_access_checked_at DATETIME;
 `,
 	},
+	{
+		version: 7,
+		name:    "link_note",
+		sql: `
+ALTER TABLE telegram_links ADD COLUMN note TEXT;
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

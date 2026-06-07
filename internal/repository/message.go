@@ -265,7 +265,7 @@ func attachLinks(ctx context.Context, db *sql.DB, items []model.SearchResult) ([
 		placeholders = append(placeholders, "?")
 	}
 	rows, err := db.QueryContext(ctx, `
-SELECT id, message_id, type, url, password, created_at
+SELECT id, message_id, type, url, COALESCE(password, ''), COALESCE(note, ''), created_at
 FROM telegram_links
 WHERE message_id IN (`+strings.Join(placeholders, ",")+`)
 ORDER BY message_id, id`, ids...)
@@ -277,7 +277,7 @@ ORDER BY message_id, id`, ids...)
 	byMessageID := map[int64][]model.Link{}
 	for rows.Next() {
 		var link model.Link
-		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.CreatedAt); err != nil {
+		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.Note, &link.CreatedAt); err != nil {
 			return nil, err
 		}
 		byMessageID[link.MessageID] = append(byMessageID[link.MessageID], link)

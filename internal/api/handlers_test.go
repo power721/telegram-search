@@ -96,6 +96,31 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	}
 }
 
+func TestStatusIncludesAccountStateSummary(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	_, _ = deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	_, _ = deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusReconnecting})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		AccountStates map[string]int64 `json:"account_states"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.AccountStates[model.AccountStatusOnline] != 1 || body.AccountStates[model.AccountStatusReconnecting] != 1 {
+		t.Fatalf("account_states = %+v, want ONLINE=1 RECONNECTING=1", body.AccountStates)
+	}
+}
+
 func testDeps(t *testing.T) Dependencies {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

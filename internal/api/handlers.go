@@ -24,11 +24,12 @@ func (h handlers) status(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"service":  "ok",
-		"accounts": counts.Accounts,
-		"channels": counts.Channels,
-		"messages": counts.Messages,
-		"links":    counts.Links,
+		"service":        "ok",
+		"accounts":       counts.Accounts,
+		"channels":       counts.Channels,
+		"messages":       counts.Messages,
+		"links":          counts.Links,
+		"account_states": counts.AccountStates,
 	})
 }
 

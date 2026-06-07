@@ -91,8 +91,9 @@ type LinkResult struct {
 }
 
 type StatusCounts struct {
-	Accounts int64 `json:"accounts"`
-	Channels int64 `json:"channels"`
-	Messages int64 `json:"messages"`
-	Links    int64 `json:"links"`
+	Accounts      int64            `json:"accounts"`
+	Channels      int64            `json:"channels"`
+	Messages      int64            `json:"messages"`
+	Links         int64            `json:"links"`
+	AccountStates map[string]int64 `json:"account_states"`
 }

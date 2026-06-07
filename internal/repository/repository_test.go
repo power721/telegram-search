@@ -138,6 +138,20 @@ func TestRepositoriesPersistSearchAndCountData(t *testing.T) {
 	if counts.Accounts != 1 || counts.Channels != 1 || counts.Messages != 2 || counts.Links != 1 {
 		t.Fatalf("counts = %+v, want 1 account 1 channel 2 messages 1 link", counts)
 	}
+	secondAccountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusReconnecting})
+	if err != nil {
+		t.Fatalf("save reconnecting account: %v", err)
+	}
+	if secondAccountID == 0 {
+		t.Fatal("second account id = 0")
+	}
+	counts, err = status.Counts(ctx)
+	if err != nil {
+		t.Fatalf("counts with states: %v", err)
+	}
+	if counts.AccountStates[model.AccountStatusOnline] != 1 || counts.AccountStates[model.AccountStatusReconnecting] != 1 {
+		t.Fatalf("account state counts = %+v, want ONLINE=1 RECONNECTING=1", counts.AccountStates)
+	}
 
 	if err := messages.MarkDeleted(ctx, channelID, 10); err != nil {
 		t.Fatalf("mark deleted: %v", err)

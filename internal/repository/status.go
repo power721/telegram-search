@@ -32,5 +32,22 @@ func (r *StatusRepository) Counts(ctx context.Context) (model.StatusCounts, erro
 			return model.StatusCounts{}, fmt.Errorf("read status count: %w", err)
 		}
 	}
+	counts.AccountStates = map[string]int64{}
+	rows, err := r.db.QueryContext(ctx, `SELECT status, count(*) FROM telegram_accounts GROUP BY status`)
+	if err != nil {
+		return model.StatusCounts{}, fmt.Errorf("read account state counts: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var status string
+		var count int64
+		if err := rows.Scan(&status, &count); err != nil {
+			return model.StatusCounts{}, err
+		}
+		counts.AccountStates[status] = count
+	}
+	if err := rows.Err(); err != nil {
+		return model.StatusCounts{}, err
+	}
 	return counts, nil
 }

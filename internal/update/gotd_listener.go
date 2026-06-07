@@ -7,6 +7,7 @@ import (
 
 	gotdsession "github.com/gotd/td/session"
 	gotdtelegram "github.com/gotd/td/telegram"
+	"github.com/gotd/td/telegram/updates"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
@@ -33,21 +34,29 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 	if l.sessions != nil {
 		sessionPath = l.sessions.PathForAccount(account.ID)
 	}
+	handler := gotdtelegram.UpdateHandlerFunc(func(ctx context.Context, updates tg.UpdatesClass) error {
+		for _, event := range EventsFromGotdUpdates(account.ID, updates) {
+			if err := emit(event); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	manager := updates.New(updates.Config{
+		Handler: handler,
+		Logger:  l.logger.Named("updates"),
+	})
 	client := gotdtelegram.NewClient(l.apiID, l.apiHash, gotdtelegram.Options{
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         l.logger,
-		UpdateHandler: gotdtelegram.UpdateHandlerFunc(func(ctx context.Context, updates tg.UpdatesClass) error {
-			for _, event := range EventsFromGotdUpdates(account.ID, updates) {
-				if err := emit(event); err != nil {
-					return err
-				}
-			}
-			return nil
-		}),
+		UpdateHandler:  manager,
 	})
 	return client.Run(ctx, func(ctx context.Context) error {
-		<-ctx.Done()
-		return ctx.Err()
+		self, err := client.Self(ctx)
+		if err != nil {
+			return err
+		}
+		return manager.Run(ctx, client.API(), self.ID, updates.AuthOptions{})
 	})
 }
 

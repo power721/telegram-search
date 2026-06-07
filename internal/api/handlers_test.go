@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -118,6 +119,41 @@ func TestStatusIncludesAccountStateSummary(t *testing.T) {
 	}
 	if body.AccountStates[model.AccountStatusOnline] != 1 || body.AccountStates[model.AccountStatusReconnecting] != 1 {
 		t.Fatalf("account_states = %+v, want ONLINE=1 RECONNECTING=1", body.AccountStates)
+	}
+}
+
+func TestReadAPIsFilterByAccount(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	account1, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "one", Status: model.AccountStatusOnline})
+	account2, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Username: "two", Status: model.AccountStatusOnline})
+	channel1, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account1, TelegramChannelID: 1, Title: "one-channel", Type: model.ChannelTypeChannel})
+	channel2, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account2, TelegramChannelID: 2, Title: "two-channel", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored1, _ := deps.Messages.SaveBatch(ctx, []model.Message{{AccountID: account1, ChannelID: channel1, TelegramMessageID: 1, Text: "shared title one", RawJSON: "{}", Date: now}})
+	stored2, _ := deps.Messages.SaveBatch(ctx, []model.Message{{AccountID: account2, ChannelID: channel2, TelegramMessageID: 2, Text: "shared title two", RawJSON: "{}", Date: now}})
+	_, _ = deps.Links.SaveBatch(ctx, stored1[0].ID, []model.Link{{Type: "url", URL: "https://example.com/one"}})
+	_, _ = deps.Links.SaveBatch(ctx, stored2[0].ID, []model.Link{{Type: "url", URL: "https://example.com/two"}})
+	router := NewRouter(deps)
+
+	for _, path := range []string{
+		"/api/search?q=shared&account_id=" + strconv.FormatInt(account1, 10),
+		"/api/messages/latest?account_id=" + strconv.FormatInt(account1, 10),
+		"/api/links?account_id=" + strconv.FormatInt(account1, 10),
+		"/api/channels?account_id=" + strconv.FormatInt(account1, 10),
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s", path, w.Code, w.Body.String())
+		}
+		if !bytes.Contains(w.Body.Bytes(), []byte("one")) {
+			t.Fatalf("%s response missing account one data: %s", path, w.Body.String())
+		}
+		if bytes.Contains(w.Body.Bytes(), []byte("two")) || bytes.Contains(w.Body.Bytes(), []byte("https://example.com/two")) {
+			t.Fatalf("%s response leaked account two data: %s", path, w.Body.String())
+		}
 	}
 }
 

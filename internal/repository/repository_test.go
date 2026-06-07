@@ -164,3 +164,51 @@ func TestRepositoriesPersistSearchAndCountData(t *testing.T) {
 		t.Fatalf("search after delete length = %d, want 0", len(results))
 	}
 }
+
+func TestRepositoriesKeepAccountDataIsolated(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+
+	account1, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "one", Status: model.AccountStatusOnline})
+	account2, _ := accounts.Save(ctx, model.Account{Phone: "+10000000001", Username: "two", Status: model.AccountStatusOnline})
+	channel1, _ := channels.Save(ctx, model.Channel{AccountID: account1, TelegramChannelID: 100, Title: "A1", Type: model.ChannelTypeChannel})
+	channel2, _ := channels.Save(ctx, model.Channel{AccountID: account2, TelegramChannelID: 100, Title: "A2", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored1, _ := messages.SaveBatch(ctx, []model.Message{{AccountID: account1, ChannelID: channel1, TelegramMessageID: 1, Text: "shared keyword account one", RawJSON: "{}", Date: now}})
+	stored2, _ := messages.SaveBatch(ctx, []model.Message{{AccountID: account2, ChannelID: channel2, TelegramMessageID: 1, Text: "shared keyword account two", RawJSON: "{}", Date: now}})
+	_, _ = links.SaveBatch(ctx, stored1[0].ID, []model.Link{{Type: "url", URL: "https://example.com/one"}})
+	_, _ = links.SaveBatch(ctx, stored2[0].ID, []model.Link{{Type: "url", URL: "https://example.com/two"}})
+
+	results, err := messages.Search(ctx, SearchParams{Query: "shared", AccountID: account1, Limit: 10})
+	if err != nil {
+		t.Fatalf("search account1: %v", err)
+	}
+	if len(results) != 1 || results[0].AccountID != account1 || results[0].AccountUsername != "one" {
+		t.Fatalf("account1 search results = %+v", results)
+	}
+	latest, err := messages.Latest(ctx, LatestParams{AccountID: account2, Limit: 10})
+	if err != nil {
+		t.Fatalf("latest account2: %v", err)
+	}
+	if len(latest) != 1 || latest[0].AccountID != account2 {
+		t.Fatalf("account2 latest = %+v", latest)
+	}
+	linkResults, err := links.Search(ctx, LinkSearchParams{AccountID: account1, Limit: 10})
+	if err != nil {
+		t.Fatalf("links account1: %v", err)
+	}
+	if len(linkResults) != 1 || linkResults[0].AccountID != account1 || linkResults[0].URL != "https://example.com/one" {
+		t.Fatalf("account1 links = %+v", linkResults)
+	}
+}

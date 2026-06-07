@@ -192,11 +192,17 @@ func (h handlers) syncChannel(c *gin.Context) {
 }
 
 func (h handlers) search(c *gin.Context) {
+	dateFrom, dateTo, ok := parseDateRange(c)
+	if !ok {
+		return
+	}
 	items, err := h.deps.Search.Search(c.Request.Context(), searchsvc.Params{
 		Query:     c.Query("q"),
 		AccountID: queryInt(c, "account_id"),
 		ChannelID: queryInt(c, "channel_id"),
 		LinkType:  c.Query("link_type"),
+		DateFrom:  dateFrom,
+		DateTo:    dateTo,
 		Limit:     queryIntValue(c, "limit"),
 		Offset:    queryIntValue(c, "offset"),
 	})

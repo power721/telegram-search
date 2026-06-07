@@ -17,6 +17,8 @@ type SearchParams struct {
 	AccountID int64
 	ChannelID int64
 	LinkType  string
+	DateFrom  *time.Time
+	DateTo    *time.Time
 	Limit     int
 	Offset    int
 }

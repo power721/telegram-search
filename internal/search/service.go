@@ -17,6 +17,8 @@ type Params struct {
 	AccountID int64
 	ChannelID int64
 	LinkType  string
+	DateFrom  *time.Time
+	DateTo    *time.Time
 	Limit     int
 	Offset    int
 }
@@ -57,6 +59,8 @@ func (s *Service) Search(ctx context.Context, params Params) ([]model.SearchResu
 		AccountID: params.AccountID,
 		ChannelID: params.ChannelID,
 		LinkType:  params.LinkType,
+		DateFrom:  params.DateFrom,
+		DateTo:    params.DateTo,
 		Limit:     params.Limit,
 		Offset:    params.Offset,
 	})

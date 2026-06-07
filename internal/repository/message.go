@@ -95,6 +95,14 @@ func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]
 		where = append(where, `EXISTS (SELECT 1 FROM telegram_links fl WHERE fl.message_id = m.id AND fl.type = ?)`)
 		args = append(args, params.LinkType)
 	}
+	if params.DateFrom != nil {
+		where = append(where, `m.date >= ?`)
+		args = append(args, *params.DateFrom)
+	}
+	if params.DateTo != nil {
+		where = append(where, `m.date < ?`)
+		args = append(args, *params.DateTo)
+	}
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.text, m.raw_json, m.date, m.edit_date,

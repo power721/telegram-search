@@ -115,6 +115,15 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 4,
+		name:    "performance_indexes",
+		sql: `
+CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_date_id ON telegram_messages(account_id, date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_messages(channel_id, date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

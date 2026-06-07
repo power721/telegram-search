@@ -160,6 +160,43 @@ func TestServiceSearchFiltersByMessageDateRange(t *testing.T) {
 	}
 }
 
+func TestServiceSearchCursorReturnsOlderRows(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	newer := time.Date(2026, 2, 5, 12, 0, 0, 0, time.UTC)
+	older := time.Date(2026, 2, 4, 12, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "shared newer", RawJSON: "{}", Date: newer},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "shared older", RawJSON: "{}", Date: older},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+
+	service := NewService(messages, links)
+	results, err := service.Search(ctx, Params{Query: "shared", BeforeDate: &newer, BeforeID: stored[0].ID, Limit: 10})
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+	if len(results) != 1 || results[0].Text != "shared older" {
+		t.Fatalf("cursor search results = %+v, want older row only", results)
+	}
+}
+
 func TestServiceRejectsEmptySearchQuery(t *testing.T) {
 	service := NewService(nil, nil)
 

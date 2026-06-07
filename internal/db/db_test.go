@@ -85,6 +85,25 @@ VALUES
 	}
 }
 
+func TestPerformanceIndexesExist(t *testing.T) {
+	ctx := context.Background()
+	conn, err := Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	for _, name := range []string{
+		"idx_telegram_messages_account_date_id",
+		"idx_telegram_messages_channel_date_id",
+		"idx_telegram_links_type_message_id",
+	} {
+		assertIndexExists(t, conn, name)
+	}
+}
+
 func assertTableExists(t *testing.T, conn *sql.DB, name string) {
 	t.Helper()
 	var count int
@@ -94,5 +113,17 @@ func assertTableExists(t *testing.T, conn *sql.DB, name string) {
 	}
 	if count != 1 {
 		t.Fatalf("table %s count = %d, want 1", name, count)
+	}
+}
+
+func assertIndexExists(t *testing.T, conn *sql.DB, name string) {
+	t.Helper()
+	var count int
+	err := conn.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = ?`, name).Scan(&count)
+	if err != nil {
+		t.Fatalf("check index %s: %v", name, err)
+	}
+	if count != 1 {
+		t.Fatalf("index %s count = %d, want 1", name, count)
 	}
 }

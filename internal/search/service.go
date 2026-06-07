@@ -13,20 +13,24 @@ import (
 var ErrEmptyQuery = errors.New("search query is required")
 
 type Params struct {
-	Query     string
-	AccountID int64
-	ChannelID int64
-	LinkType  string
-	DateFrom  *time.Time
-	DateTo    *time.Time
-	Limit     int
-	Offset    int
+	Query      string
+	AccountID  int64
+	ChannelID  int64
+	LinkType   string
+	DateFrom   *time.Time
+	DateTo     *time.Time
+	BeforeDate *time.Time
+	BeforeID   int64
+	Limit      int
+	Offset     int
 }
 
 type LatestParams struct {
-	AccountID int64
-	ChannelID int64
-	Limit     int
+	AccountID  int64
+	ChannelID  int64
+	BeforeDate *time.Time
+	BeforeID   int64
+	Limit      int
 }
 
 type LinkParams struct {
@@ -55,22 +59,26 @@ func (s *Service) Search(ctx context.Context, params Params) ([]model.SearchResu
 		return nil, ErrEmptyQuery
 	}
 	return s.messages.Search(ctx, repository.SearchParams{
-		Query:     query,
-		AccountID: params.AccountID,
-		ChannelID: params.ChannelID,
-		LinkType:  params.LinkType,
-		DateFrom:  params.DateFrom,
-		DateTo:    params.DateTo,
-		Limit:     params.Limit,
-		Offset:    params.Offset,
+		Query:      query,
+		AccountID:  params.AccountID,
+		ChannelID:  params.ChannelID,
+		LinkType:   params.LinkType,
+		DateFrom:   params.DateFrom,
+		DateTo:     params.DateTo,
+		BeforeDate: params.BeforeDate,
+		BeforeID:   params.BeforeID,
+		Limit:      params.Limit,
+		Offset:     params.Offset,
 	})
 }
 
 func (s *Service) Latest(ctx context.Context, params LatestParams) ([]model.SearchResult, error) {
 	return s.messages.Latest(ctx, repository.LatestParams{
-		AccountID: params.AccountID,
-		ChannelID: params.ChannelID,
-		Limit:     params.Limit,
+		AccountID:  params.AccountID,
+		ChannelID:  params.ChannelID,
+		BeforeDate: params.BeforeDate,
+		BeforeID:   params.BeforeID,
+		Limit:      params.Limit,
 	})
 }
 

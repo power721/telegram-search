@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -256,6 +257,9 @@ func TestReadAPIsRejectInvalidQueryParameters(t *testing.T) {
 		"/api/links?offset=-1",
 		"/api/links?channel_id=abc",
 		"/api/channels?account_id=abc",
+		"/api/search?q=x&before_date=2026-02-05T12:00:00Z",
+		"/api/search?q=x&before_id=10",
+		"/api/messages/latest?before_date=2026-02-05T12:00:00Z",
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -263,6 +267,31 @@ func TestReadAPIsRejectInvalidQueryParameters(t *testing.T) {
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d body=%s, want 400", path, w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestSearchAPICursorReturnsOlderRows(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	newer := time.Date(2026, 2, 5, 12, 0, 0, 0, time.UTC)
+	older := time.Date(2026, 2, 4, 12, 0, 0, 0, time.UTC)
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "shared newer", RawJSON: "{}", Date: newer},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "shared older", RawJSON: "{}", Date: older},
+	})
+	router := NewRouter(deps)
+
+	path := "/api/search?q=shared&before_date=" + url.QueryEscape(newer.Format(time.RFC3339)) + "&before_id=" + strconv.FormatInt(stored[0].ID, 10)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("shared older")) || bytes.Contains(w.Body.Bytes(), []byte("shared newer")) {
+		t.Fatalf("cursor response = %s, want older only", w.Body.String())
 	}
 }
 

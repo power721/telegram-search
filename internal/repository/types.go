@@ -13,20 +13,24 @@ type executor interface {
 }
 
 type SearchParams struct {
-	Query     string
-	AccountID int64
-	ChannelID int64
-	LinkType  string
-	DateFrom  *time.Time
-	DateTo    *time.Time
-	Limit     int
-	Offset    int
+	Query      string
+	AccountID  int64
+	ChannelID  int64
+	LinkType   string
+	DateFrom   *time.Time
+	DateTo     *time.Time
+	BeforeDate *time.Time
+	BeforeID   int64
+	Limit      int
+	Offset     int
 }
 
 type LatestParams struct {
-	AccountID int64
-	ChannelID int64
-	Limit     int
+	AccountID  int64
+	ChannelID  int64
+	BeforeDate *time.Time
+	BeforeID   int64
+	Limit      int
 }
 
 type LinkSearchParams struct {

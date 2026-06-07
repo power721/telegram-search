@@ -103,6 +103,10 @@ func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]
 		where = append(where, `m.date < ?`)
 		args = append(args, *params.DateTo)
 	}
+	if params.BeforeDate != nil && params.BeforeID > 0 {
+		where = append(where, `(m.date < ? OR (m.date = ? AND m.id < ?))`)
+		args = append(args, *params.BeforeDate, *params.BeforeDate, params.BeforeID)
+	}
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.text, m.raw_json, m.date, m.edit_date,
@@ -149,6 +153,10 @@ func (r *MessageRepository) Latest(ctx context.Context, params LatestParams) ([]
 	if params.ChannelID > 0 {
 		where = append(where, `m.channel_id = ?`)
 		args = append(args, params.ChannelID)
+	}
+	if params.BeforeDate != nil && params.BeforeID > 0 {
+		where = append(where, `(m.date < ? OR (m.date = ? AND m.id < ?))`)
+		args = append(args, *params.BeforeDate, *params.BeforeDate, params.BeforeID)
 	}
 	args = append(args, limit)
 	query := `

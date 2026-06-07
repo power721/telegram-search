@@ -203,15 +203,21 @@ func (h handlers) search(c *gin.Context) {
 	if !ok {
 		return
 	}
+	beforeDate, beforeID, ok := parseCursor(c)
+	if !ok {
+		return
+	}
 	items, err := h.deps.Search.Search(c.Request.Context(), searchsvc.Params{
-		Query:     c.Query("q"),
-		AccountID: accountID,
-		ChannelID: channelID,
-		LinkType:  c.Query("link_type"),
-		DateFrom:  dateFrom,
-		DateTo:    dateTo,
-		Limit:     limit,
-		Offset:    offset,
+		Query:      c.Query("q"),
+		AccountID:  accountID,
+		ChannelID:  channelID,
+		LinkType:   c.Query("link_type"),
+		DateFrom:   dateFrom,
+		DateTo:     dateTo,
+		BeforeDate: beforeDate,
+		BeforeID:   beforeID,
+		Limit:      limit,
+		Offset:     offset,
 	})
 	if err != nil {
 		status := http.StatusInternalServerError
@@ -229,10 +235,16 @@ func (h handlers) latest(c *gin.Context) {
 	if !ok {
 		return
 	}
+	beforeDate, beforeID, ok := parseCursor(c)
+	if !ok {
+		return
+	}
 	items, err := h.deps.Search.Latest(c.Request.Context(), searchsvc.LatestParams{
-		AccountID: accountID,
-		ChannelID: channelID,
-		Limit:     limit,
+		AccountID:  accountID,
+		ChannelID:  channelID,
+		BeforeDate: beforeDate,
+		BeforeID:   beforeID,
+		Limit:      limit,
 	})
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -385,6 +397,28 @@ func parseDateQuery(c *gin.Context, key string, end bool) (*time.Time, bool) {
 	}
 	errorText(c, http.StatusBadRequest, key+" must be YYYY-MM-DD or RFC3339")
 	return nil, false
+}
+
+func parseCursor(c *gin.Context) (*time.Time, int64, bool) {
+	beforeDateRaw := c.Query("before_date")
+	beforeIDRaw := c.Query("before_id")
+	if beforeDateRaw == "" && beforeIDRaw == "" {
+		return nil, 0, true
+	}
+	if beforeDateRaw == "" || beforeIDRaw == "" {
+		errorText(c, http.StatusBadRequest, "before_date and before_id must be provided together")
+		return nil, 0, false
+	}
+	beforeDate, ok := parseDateQuery(c, "before_date", false)
+	if !ok {
+		return nil, 0, false
+	}
+	beforeID, err := strconv.ParseInt(beforeIDRaw, 10, 64)
+	if err != nil || beforeID <= 0 {
+		errorText(c, http.StatusBadRequest, "before_id must be a positive integer")
+		return nil, 0, false
+	}
+	return beforeDate, beforeID, true
 }
 
 func errorJSON(c *gin.Context, status int, err error) {

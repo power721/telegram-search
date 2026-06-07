@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"tg-provider/internal/account"
 	"tg-provider/internal/api"
 	"tg-provider/internal/channel"
 	"tg-provider/internal/config"
@@ -90,18 +91,13 @@ func run(configPath string) error {
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
-	updateService.Start(ctx)
-	onlineAccounts, err := accounts.FindAll(ctx)
-	if err != nil {
+	accountManager := account.NewManager(account.ManagerOptions{
+		Accounts: accounts,
+		Updates:  updateService,
+		Logger:   logs.Telegram,
+	})
+	if err := accountManager.Start(ctx); err != nil {
 		return err
-	}
-	for _, account := range onlineAccounts {
-		if account.Status != "ONLINE" {
-			continue
-		}
-		if err := updateService.StartAccount(ctx, account); err != nil {
-			return err
-		}
 	}
 
 	router := api.NewRouter(api.Dependencies{
@@ -139,7 +135,7 @@ func run(configPath string) error {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return err
 	}
-	if err := updateService.Stop(shutdownCtx); err != nil {
+	if err := accountManager.Stop(shutdownCtx); err != nil {
 		return err
 	}
 	logs.App.Info("tg-provider stopped")

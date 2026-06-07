@@ -212,3 +212,36 @@ func TestRepositoriesKeepAccountDataIsolated(t *testing.T) {
 		t.Fatalf("account1 links = %+v", linkResults)
 	}
 }
+
+func TestMessageSearchAttachesLinksForMultipleResults(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, _ := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "shared one", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "shared two", RawJSON: "{}", Date: now.Add(-time.Minute)},
+	})
+	_, _ = links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/one"}})
+	_, _ = links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/two"}})
+
+	results, err := messages.Search(ctx, SearchParams{Query: "shared", Limit: 10})
+	if err != nil {
+		t.Fatalf("search messages: %v", err)
+	}
+	if len(results) != 2 || len(results[0].Links) != 1 || len(results[1].Links) != 1 {
+		t.Fatalf("search results links = %+v", results)
+	}
+}

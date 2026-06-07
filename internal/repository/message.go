@@ -233,12 +233,38 @@ func scanSearchResult(row interface {
 }
 
 func attachLinks(ctx context.Context, db *sql.DB, items []model.SearchResult) ([]model.SearchResult, error) {
-	for i := range items {
-		links, err := loadLinks(ctx, db, items[i].ID)
-		if err != nil {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]any, 0, len(items))
+	placeholders := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+		placeholders = append(placeholders, "?")
+	}
+	rows, err := db.QueryContext(ctx, `
+SELECT id, message_id, type, url, password, created_at
+FROM telegram_links
+WHERE message_id IN (`+strings.Join(placeholders, ",")+`)
+ORDER BY message_id, id`, ids...)
+	if err != nil {
+		return nil, fmt.Errorf("load links: %w", err)
+	}
+	defer rows.Close()
+
+	byMessageID := map[int64][]model.Link{}
+	for rows.Next() {
+		var link model.Link
+		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.CreatedAt); err != nil {
 			return nil, err
 		}
-		items[i].Links = links
+		byMessageID[link.MessageID] = append(byMessageID[link.MessageID], link)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Links = byMessageID[items[i].ID]
 	}
 	return items, nil
 }

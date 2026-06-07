@@ -42,13 +42,14 @@ func NewExtractor() *Extractor {
 			providerParser("baidu", `(?i)(https?://pan\.baidu\.com/(?:share|wap)/init\?surl=[\w-]+(?:&pwd=([\w-]+))?)`, 1, 2),
 			providerParser("pikpak", `(?i)(https?://mypikpak\.com/s/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
 			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/web/share\?code=[\w-]+)`, 1, 0),
+			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/t/[\w-]+)%EF%BC%88%E8%AE%BF%E9%97%AE%E7%A0%81%EF%BC%9A(\w+)%EF%BC%89`, 1, 2),
 			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/t/[\w-]+(?:%[0-9A-Fa-f]{2})*)(?:（访问码：(\w+)）)?`, 1, 2),
 			providerParser("tianyi", `(?i)(https?://h5\.cloud\.189\.cn/share\.html#/t/[\w-]+)`, 1, 0),
-			providerParser("mobile", `(?i)(https?://(?:www\.)?caiyun\.139\.com/(?:m/i\?[\w-]+|w/i/[\w-]+)[^\s"'<>，。；、]*)`, 1, 0),
-			providerParser("mobile", `(?i)(https?://(?:www\.)?yun\.139\.com/shareweb/#/w/i/[\w-]+[^\s"'<>，。；、]*)`, 1, 0),
-			providerParser("mobile", `(?i)(https?://caiyun\.feixin\.10086\.cn/[\w-]+[^\s"'<>，。；、]*)`, 1, 0),
+			providerParser("mobile", `(?i)(https?://(?:www\.)?caiyun\.139\.com/(?:m/i\?[\w-]+(?:&[\w%-]+=[\w%-]+)*|w/i/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?))`, 1, 0),
+			providerParser("mobile", `(?i)(https?://(?:www\.)?yun\.139\.com/shareweb/#/w/i/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?)`, 1, 0),
+			providerParser("mobile", `(?i)(https?://caiyun\.feixin\.10086\.cn/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?)`, 1, 0),
 			providerParser("quark", `(?i)(https?://pan\.quark\.cn/s/[\w-]+)`, 1, 0),
-			providerParser("uc", `(?i)(https?://(?:drive|fast)\.uc\.cn/s/[\w-]+(?:\?[^\s"'<>，。；、]*)?)`, 1, 0),
+			providerParser("uc", `(?i)(https?://(?:drive|fast)\.uc\.cn/s/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?)`, 1, 0),
 			providerParser("aliyun", `(?i)(https?://(?:www\.)?(?:alipan|aliyundrive)\.com/s/[\w-]+(?:/folder/[\w-]+)?(?:\?password=([\w-]+))?)`, 1, 2),
 			providerParser("123", `(?i)(https?://(?:www\.)?123(?:684|865|685|912|pan|592)\.(?:com|cn)/s/[\w-]+(?:\.html)?)(?:(?:\?(?:%E6%8F%90%E5%8F%96%E7%A0%81|提取码)|提取码)[:：](\w+))?`, 1, 2),
 			providerParser("guangya", `(?i)(https?://(?:www\.)?guangyapan\.com/s/[A-Za-z0-9_-]+)`, 1, 0),
@@ -116,10 +117,14 @@ func (e *Extractor) Extract(text string) []model.Link {
 
 	seen := map[string]struct{}{}
 	var providerURLs []string
+	var providerSpans []matchSpan
 	var out []model.Link
 	for _, candidate := range candidates {
 		url := trimTrailingPunctuation(strings.TrimSpace(candidate.URL))
 		if url == "" {
+			continue
+		}
+		if candidate.Type != "url" && overlapsSpan(candidate.MatchStart, candidate.MatchEnd, providerSpans) {
 			continue
 		}
 		if candidate.Type == "url" && overlapsProvider(url, providerURLs) {
@@ -138,6 +143,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 		seen[url] = struct{}{}
 		if candidate.Type != "url" {
 			providerURLs = append(providerURLs, url)
+			providerSpans = append(providerSpans, matchSpan{start: candidate.MatchStart, end: candidate.MatchEnd})
 		}
 		out = append(out, model.Link{
 			Type:     candidate.Type,
@@ -146,6 +152,20 @@ func (e *Extractor) Extract(text string) []model.Link {
 		})
 	}
 	return out
+}
+
+type matchSpan struct {
+	start int
+	end   int
+}
+
+func overlapsSpan(start int, end int, spans []matchSpan) bool {
+	for _, item := range spans {
+		if start < item.end && item.start < end {
+			return true
+		}
+	}
+	return false
 }
 
 func overlapsProvider(url string, providers []string) bool {

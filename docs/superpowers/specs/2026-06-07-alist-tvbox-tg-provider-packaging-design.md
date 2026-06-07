@@ -23,15 +23,24 @@ The commented Python/TG image steps stay disabled. `docker/Dockerfile-tg` and `d
 
 ## Workflow Packaging
 
-`build.yaml` checks out the provider source before Docker image builds:
+`telegram-search` owns provider compilation and release packaging. Its latest GitHub Release must publish these assets:
 
-1. Check out `power721/telegram-search` into `tg-provider-src`.
-2. Set up Go.
-3. Run provider tests.
-4. Build Linux binaries for `amd64` and `arm64`.
+- `tg-provider-linux-amd64`
+- `tg-provider-linux-arm64`
+- `checksums.txt`
+
+`alist-tvbox` does not check out or compile `telegram-search` during its Docker build. `build.yaml` downloads the latest `power721/telegram-search` release before Docker image builds:
+
+1. Resolve the latest release for `power721/telegram-search`.
+2. Download `tg-provider-linux-amd64`, `tg-provider-linux-arm64`, and `checksums.txt`.
+3. Verify both binaries against `checksums.txt`.
+4. Make both binaries executable.
 5. Place binaries under the AList-TVBox build context:
    - `build/tg-provider/linux-amd64/tg-provider`
    - `build/tg-provider/linux-arm64/tg-provider`
+6. Record the downloaded provider release tag in `build/tg-provider/version` for build logs.
+
+If the latest release is missing an asset or checksum verification fails, `build.yaml` fails the Docker build. It does not fall back to a bundled, stale, or previously cached provider binary.
 
 Each active Dockerfile uses `ARG TARGETARCH` and copies the matching binary:
 
@@ -40,7 +49,9 @@ ARG TARGETARCH
 COPY build/tg-provider/linux-${TARGETARCH}/tg-provider /usr/local/bin/tg-provider
 ```
 
-This keeps multi-platform Docker builds simple and avoids compiling Go repeatedly inside every Dockerfile. It also makes the native AMD64-only images work with the same copy path.
+This keeps multi-platform Docker builds simple and avoids compiling Go during every AList-TVBox build. It also makes the native AMD64-only images work with the same copy path.
+
+Using the latest provider release is an accepted tradeoff: rebuilding the same AList-TVBox commit may include a newer `tg-provider` binary if `telegram-search` publishes a newer release.
 
 ## Runtime Model
 
@@ -121,15 +132,18 @@ The helper avoids relying on `wait -n` so it works with BusyBox `sh`.
 
 ## Verification
 
-Provider repository:
+Provider repository release workflow:
 
 - `go test ./...`
-- `GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o build/tg-provider/linux-amd64/tg-provider ./cmd/tg-provider`
-- `GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o build/tg-provider/linux-arm64/tg-provider ./cmd/tg-provider`
+- `GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o tg-provider-linux-amd64 ./cmd/tg-provider`
+- `GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o tg-provider-linux-arm64 ./cmd/tg-provider`
+- `sha256sum tg-provider-linux-amd64 tg-provider-linux-arm64 > checksums.txt`
+- publish all three files to the latest GitHub Release
 
 AList-TVBox repository:
 
 - Maven package still produces `target/application` and `target/atv`.
+- `build.yaml` downloads and verifies the latest provider release assets.
 - Buildx can build all six active Dockerfiles.
 - Runtime smoke test confirms:
   - `/usr/local/bin/tg-provider` exists in each image.

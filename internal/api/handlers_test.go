@@ -157,6 +157,34 @@ func TestReadAPIsFilterByAccount(t *testing.T) {
 	}
 }
 
+func TestSearchAPIFiltersByLinkType(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "shared aliyun", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "shared quark", RawJSON: "{}", Date: now.Add(-time.Minute)},
+	})
+	_, _ = deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "aliyun", URL: "https://www.alipan.com/s/abc123"}})
+	_, _ = deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/quark123"}})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search?q=shared&link_type=aliyun", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte("https://www.alipan.com/s/abc123")) {
+		t.Fatalf("response missing aliyun link: %s", w.Body.String())
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("https://pan.quark.cn/s/quark123")) {
+		t.Fatalf("response included quark link: %s", w.Body.String())
+	}
+}
+
 func testDeps(t *testing.T) Dependencies {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

@@ -50,10 +50,10 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
 		0: {
 			{TelegramMessageID: 11, SenderID: 1, Text: "最新消息", RawJSON: "{}", Date: now},
-			{TelegramMessageID: 10, SenderID: 1, Text: "庆余年 https://example.com/a 提取码: abcd", RawJSON: "{}", Date: now.Add(-time.Minute)},
+			{TelegramMessageID: 10, SenderID: 1, Text: "庆余年 https://www.alipan.com/s/abc123 提取码: abcd", RawJSON: "{}", Date: now.Add(-time.Minute)},
 		},
 		10: {
-			{TelegramMessageID: 10, SenderID: 1, Text: "庆余年 https://example.com/a 提取码: abcd", RawJSON: "{}", Date: now.Add(-time.Minute)},
+			{TelegramMessageID: 10, SenderID: 1, Text: "庆余年 https://www.alipan.com/s/abc123 提取码: abcd", RawJSON: "{}", Date: now.Add(-time.Minute)},
 			{TelegramMessageID: 9, SenderID: 1, Text: "更早消息 magnet:?xt=urn:btih:abc", RawJSON: "{}", Date: now.Add(-2 * time.Minute)},
 		},
 		9: {},
@@ -87,6 +87,14 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	}
 	if counts.Links != 2 {
 		t.Fatalf("stored link count = %d, want 2", counts.Links)
+	}
+
+	linkResults, err := links.Search(ctx, repository.LinkSearchParams{Type: "aliyun", Limit: 10})
+	if err != nil {
+		t.Fatalf("search aliyun links: %v", err)
+	}
+	if len(linkResults) != 1 || linkResults[0].Type != "aliyun" {
+		t.Fatalf("aliyun links = %+v, want 1 aliyun link", linkResults)
 	}
 
 	channel, err := channels.FindByID(ctx, channelID)

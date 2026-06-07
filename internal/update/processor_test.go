@@ -31,7 +31,7 @@ func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
 		TelegramChannelID: fixture.telegramChannelID,
 		MessageID:         10,
 		SenderID:          88,
-		Text:              "庆余年 https://example.com/old 提取码: abcd",
+		Text:              "庆余年 https://pan.quark.cn/s/old123 提取码: abcd",
 		RawJSON:           "{}",
 		Date:              now,
 	}
@@ -46,7 +46,7 @@ func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
 	if len(results) != 1 || len(results[0].Links) != 1 {
 		t.Fatalf("new event search results = %+v", results)
 	}
-	if results[0].Links[0].URL != "https://example.com/old" || results[0].Links[0].Password != "abcd" {
+	if results[0].Links[0].Type != "quark" || results[0].Links[0].URL != "https://pan.quark.cn/s/old123" || results[0].Links[0].Password != "abcd" {
 		t.Fatalf("new event link = %+v", results[0].Links[0])
 	}
 
@@ -57,7 +57,7 @@ func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
 		TelegramChannelID: fixture.telegramChannelID,
 		MessageID:         10,
 		SenderID:          88,
-		Text:              "三体 https://example.com/new",
+		Text:              "三体 https://pan.baidu.com/s/new123?pwd=wxyz",
 		RawJSON:           `{"edited":true}`,
 		Date:              now,
 		EditDate:          &editTime,
@@ -73,13 +73,13 @@ func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
 	if len(results) != 1 {
 		t.Fatalf("edited search len = %d, want 1", len(results))
 	}
-	if results[0].Text != "三体 https://example.com/new" {
+	if results[0].Text != "三体 https://pan.baidu.com/s/new123?pwd=wxyz" {
 		t.Fatalf("edited text = %q", results[0].Text)
 	}
 	if results[0].EditDate == nil || !results[0].EditDate.Equal(editTime) {
 		t.Fatalf("edit date = %v, want %v", results[0].EditDate, editTime)
 	}
-	if len(results[0].Links) != 1 || results[0].Links[0].URL != "https://example.com/new" {
+	if len(results[0].Links) != 1 || results[0].Links[0].Type != "baidu" || results[0].Links[0].URL != "https://pan.baidu.com/s/new123?pwd=wxyz" || results[0].Links[0].Password != "wxyz" {
 		t.Fatalf("edited links = %+v", results[0].Links)
 	}
 

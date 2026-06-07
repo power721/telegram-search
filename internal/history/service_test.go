@@ -11,6 +11,7 @@ import (
 
 	"tg-provider/internal/db"
 	"tg-provider/internal/link"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 	"tg-provider/internal/retry"
@@ -186,6 +187,88 @@ func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
 	}
 	if fake.calls != 2 {
 		t.Fatalf("fetch calls = %d, want 2", fake.calls)
+	}
+}
+
+func TestSyncChannelAppliesWatchRuleAndIgnoresEnabled(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	rules := repository.NewWatchRuleRepository(conn)
+	_, err := rules.Create(ctx, model.WatchRule{ChannelID: channelID, Enabled: false, Includes: []string{"庆余年"}, Excludes: []string{"预告"}})
+	if err != nil {
+		t.Fatalf("create watch rule: %v", err)
+	}
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {
+			{TelegramMessageID: 3, Text: "庆余年 https://pan.quark.cn/s/keep", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 2, Text: "庆余年 无链接", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 1, Text: "庆余年 预告 https://pan.quark.cn/s/drop", RawJSON: "{}", Date: now},
+		},
+	}}
+	service := NewService(Options{
+		DB:               conn,
+		Accounts:         accounts,
+		Channels:         channels,
+		Messages:         messages,
+		Links:            links,
+		Telegram:         fake,
+		Sessions:         session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor:        link.NewExtractor(),
+		HistoryBatchSize: 10,
+		Filter:           messagefilter.New(rules),
+	})
+	result, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	if result.Messages != 3 || result.Links != 1 {
+		t.Fatalf("result = %+v, want 3 fetched messages and 1 stored link", result)
+	}
+	results, err := messages.Search(ctx, repository.SearchParams{Query: "庆余年", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 3 {
+		t.Fatalf("results = %+v, want only message 3", results)
+	}
+}
+
+func TestSyncChannelWithoutWatchRuleKeepsExistingBehavior(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	rules := repository.NewWatchRuleRepository(conn)
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {
+			{TelegramMessageID: 2, Text: "plain message without link", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 1, Text: "linked https://pan.quark.cn/s/abc", RawJSON: "{}", Date: now},
+		},
+	}}
+	service := NewService(Options{
+		DB:               conn,
+		Accounts:         accounts,
+		Channels:         channels,
+		Messages:         messages,
+		Links:            links,
+		Telegram:         fake,
+		Sessions:         session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor:        link.NewExtractor(),
+		HistoryBatchSize: 10,
+		Filter:           messagefilter.New(rules),
+	})
+	_, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	latest, err := messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if len(latest) != 2 {
+		t.Fatalf("latest len = %d, want 2 messages when no watch rule exists", len(latest))
 	}
 }
 

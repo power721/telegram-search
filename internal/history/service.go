@@ -10,6 +10,7 @@ import (
 
 	dbpkg "tg-provider/internal/db"
 	"tg-provider/internal/link"
+	"tg-provider/internal/messagefilter"
 	"tg-provider/internal/model"
 	"tg-provider/internal/repository"
 	"tg-provider/internal/retry"
@@ -26,6 +27,7 @@ type Options struct {
 	Telegram         telegram.Client
 	Sessions         *session.Manager
 	Extractor        *link.Extractor
+	Filter           *messagefilter.Filter
 	HistoryBatchSize int
 	Workers          int
 	RetryPolicy      retry.Policy
@@ -40,6 +42,7 @@ type Service struct {
 	telegram         telegram.Client
 	sessions         *session.Manager
 	extractor        *link.Extractor
+	filter           *messagefilter.Filter
 	historyBatchSize int
 	workers          int
 	retryPolicy      retry.Policy
@@ -86,6 +89,7 @@ func NewService(opts Options) *Service {
 		telegram:         opts.Telegram,
 		sessions:         opts.Sessions,
 		extractor:        opts.Extractor,
+		filter:           opts.Filter,
 		historyBatchSize: opts.HistoryBatchSize,
 		workers:          opts.Workers,
 		retryPolicy:      opts.RetryPolicy,
@@ -292,19 +296,46 @@ func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64,
 }
 
 func (s *Service) storeBatch(ctx context.Context, channelID int64, cursor int64, messages []model.Message) (int, error) {
+	filtered := make([]model.Message, 0, len(messages))
+	linksByTelegramID := map[int64][]model.Link{}
+	for _, msg := range messages {
+		extracted := s.extractor.Extract(msg.Text)
+		if s.filter != nil {
+			result, err := s.filter.Apply(ctx, messagefilter.Request{
+				ChannelID:      msg.ChannelID,
+				Text:           msg.Text,
+				RequireRule:    false,
+				RequireEnabled: false,
+			})
+			if err != nil {
+				return 0, fmt.Errorf("filter history message: %w", err)
+			}
+			if result.RuleApplied {
+				if !result.Keep {
+					continue
+				}
+				extracted = result.Links
+			}
+		}
+		filtered = append(filtered, msg)
+		linksByTelegramID[msg.TelegramMessageID] = extracted
+	}
+
 	var linkCount int
 	err := dbpkg.WithTx(ctx, s.db, func(tx *sql.Tx) error {
-		stored, err := s.messages.SaveBatchTx(ctx, tx, messages)
-		if err != nil {
-			return err
-		}
-		for _, msg := range stored {
-			extracted := s.extractor.Extract(msg.Text)
-			_, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
+		if len(filtered) > 0 {
+			stored, err := s.messages.SaveBatchTx(ctx, tx, filtered)
 			if err != nil {
 				return err
 			}
-			linkCount += len(extracted)
+			for _, msg := range stored {
+				extracted := linksByTelegramID[msg.TelegramMessageID]
+				_, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
+				if err != nil {
+					return err
+				}
+				linkCount += len(extracted)
+			}
 		}
 		if cursor > 0 {
 			if err := s.channels.UpdateCursorTx(ctx, tx, channelID, cursor, time.Now().UTC()); err != nil {

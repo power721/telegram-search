@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiPost } from '@/api/client'
+import { apiPost, setAPIKey } from '@/api/client'
 import { useSetupStore } from './setup'
 
 vi.mock('@/api/client', () => ({
@@ -10,12 +10,24 @@ vi.mock('@/api/client', () => ({
     api_key_configured: false,
     telegram_configured: false
   }),
-  apiPost: vi.fn().mockResolvedValue({ ok: true })
+  apiPost: vi.fn((path: string) => {
+    if (path === '/api/setup/api-key') {
+      return Promise.resolve({
+        id: 1,
+        name: 'default',
+        prefix: '12345678',
+        key: '12345678123456781234567812345678'
+      })
+    }
+    return Promise.resolve({ ok: true })
+  }),
+  setAPIKey: vi.fn()
 }))
 
 describe('setup store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.clearAllMocks()
   })
 
   it('loads setup status', async () => {
@@ -31,10 +43,9 @@ describe('setup store', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/setup/complete')
   })
 
-  it('supports optional api key and listen rules setup steps', async () => {
+  it('auto-generates api key and supports listen rules setup steps', async () => {
     const store = useSetupStore()
-    await store.createAPIKey('cli')
-    await store.skipAPIKey()
+    await store.createAPIKey()
     await store.saveListenRules({
       includes: ['电影'],
       excludes: ['预告'],
@@ -42,8 +53,8 @@ describe('setup store', () => {
       link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
     })
 
-    expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key', { name: 'cli' })
-    expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key/skip')
+    expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key')
+    expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
     expect(apiPost).toHaveBeenCalledWith('/api/setup/listen-rules', {
       includes: ['电影'],
       excludes: ['预告'],

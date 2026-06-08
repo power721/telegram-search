@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DefaultPath = "/data/tg-provider/config.yaml"
+const DefaultPath = "/data/tg-search/config.yaml"
 
 type Config struct {
 	Telegram TelegramConfig `yaml:"telegram"`
@@ -34,7 +34,9 @@ type SyncConfig struct {
 }
 
 type StorageConfig struct {
-	Path string `yaml:"path"`
+	Path          string `yaml:"path"`
+	MaxDBSize     Size   `yaml:"max_db_size"`
+	MaxMediaCache Size   `yaml:"max_media_cache"`
 }
 
 func Load(path string) (Config, error) {
@@ -71,6 +73,9 @@ func EnsureRuntimeDirs(cfg Config) error {
 		filepath.Join(cfg.Storage.Path, "sessions"),
 		filepath.Join(cfg.Storage.Path, "logs"),
 		filepath.Join(cfg.Storage.Path, "backup"),
+		filepath.Join(cfg.Storage.Path, "uploads"),
+		filepath.Join(cfg.Storage.Path, "index"),
+		filepath.Join(cfg.Storage.Path, "thumbnails"),
 	} {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			return fmt.Errorf("create runtime directory %s: %w", path, err)
@@ -90,7 +95,9 @@ func defaultConfig() Config {
 			HistoryBatchSize: 100,
 		},
 		Storage: StorageConfig{
-			Path: "/data/tg-provider",
+			Path:          "/data/tg-search",
+			MaxDBSize:     Size(10 * 1000 * 1000 * 1000),
+			MaxMediaCache: Size(20 * 1000 * 1000 * 1000),
 		},
 	}
 }
@@ -124,6 +131,12 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Storage.Path == "" {
 		cfg.Storage.Path = defaults.Storage.Path
+	}
+	if cfg.Storage.MaxDBSize == 0 {
+		cfg.Storage.MaxDBSize = defaults.Storage.MaxDBSize
+	}
+	if cfg.Storage.MaxMediaCache == 0 {
+		cfg.Storage.MaxMediaCache = defaults.Storage.MaxMediaCache
 	}
 }
 

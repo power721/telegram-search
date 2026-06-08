@@ -41,8 +41,14 @@ telegram:
 	if cfg.Sync.HistoryBatchSize != 100 {
 		t.Fatalf("history batch size = %d, want 100", cfg.Sync.HistoryBatchSize)
 	}
-	if cfg.Storage.Path != "/data/tg-provider" {
-		t.Fatalf("storage path = %q, want /data/tg-provider", cfg.Storage.Path)
+	if cfg.Storage.Path != "/data/tg-search" {
+		t.Fatalf("storage path = %q, want /data/tg-search", cfg.Storage.Path)
+	}
+	if cfg.Storage.MaxDBSize != Size(10*1000*1000*1000) {
+		t.Fatalf("max db size = %d, want 10GB", cfg.Storage.MaxDBSize)
+	}
+	if cfg.Storage.MaxMediaCache != Size(20*1000*1000*1000) {
+		t.Fatalf("max media cache = %d, want 20GB", cfg.Storage.MaxMediaCache)
 	}
 }
 
@@ -71,7 +77,7 @@ func TestEnsureRuntimeDirsCreatesStorageLayout(t *testing.T) {
 		t.Fatalf("EnsureRuntimeDirs returned error: %v", err)
 	}
 
-	for _, rel := range []string{"sessions", "logs", "backup"} {
+	for _, rel := range []string{"sessions", "logs", "backup", "uploads", "index", "thumbnails"} {
 		path := filepath.Join(cfg.Storage.Path, rel)
 		info, err := os.Stat(path)
 		if err != nil {

@@ -88,6 +88,11 @@ function username(channel: TelegramChannel) {
   return channel.username ? `@${channel.username}` : '-'
 }
 
+function channelWebUrl(channel: TelegramChannel) {
+  if (!channel.username) return ''
+  return `https://t.me/s/${encodeURIComponent(channel.username)}`
+}
+
 function channelTypeLabel(type: string) {
   const labels: Record<string, string> = {
     channel: '频道',
@@ -127,8 +132,8 @@ function webAccessState(channel: TelegramChannel) {
 }
 
 function webAccessUrl(channel: TelegramChannel) {
-  if (channel.web_access !== true || !channel.username) return ''
-  return `https://t.me/s/${encodeURIComponent(channel.username)}`
+  if (channel.web_access !== true) return ''
+  return channelWebUrl(channel)
 }
 
 function canCheckWebAccess(channel: TelegramChannel) {
@@ -236,7 +241,18 @@ async function enableListening(channel: TelegramChannel) {
         <tbody>
           <tr v-for="channel in filteredChannels" :key="channel.id">
             <td>{{ channel.title }}</td>
-            <td>{{ username(channel) }}</td>
+            <td>
+              <a
+                v-if="channelWebUrl(channel)"
+                class="channel-username-link"
+                :href="channelWebUrl(channel)"
+                target="_blank"
+                rel="noreferrer"
+              >
+                {{ username(channel) }}
+              </a>
+              <span v-else>{{ username(channel) }}</span>
+            </td>
             <td>{{ channelTypeLabel(channel.type) }}</td>
             <td>{{ syncStateLabel(channel.sync_state) }}</td>
             <td>{{ listenStateLabel(channel.listen_state) }}</td>
@@ -347,6 +363,15 @@ th {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 120px;
+}
+
+.channel-username-link {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.channel-username-link:hover {
+  text-decoration: underline;
 }
 
 .web-access-link {

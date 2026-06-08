@@ -90,6 +90,7 @@ func (g *GotdClient) ListChannels(ctx context.Context, account AccountSession) (
 		if err != nil {
 			return err
 		}
+		channels = g.enrichChannels(ctx, client.API(), channels)
 		out = append(out, channels...)
 		return nil
 	})
@@ -130,6 +131,7 @@ func peerChannelID(peer tg.PeerClass) (int64, bool) {
 func channelFromTG(channel *tg.Channel) Channel {
 	accessHash, _ := channel.GetAccessHash()
 	username, _ := channel.GetUsername()
+	participants, _ := channel.GetParticipantsCount()
 	typ := "channel"
 	if channel.Megagroup {
 		typ = "supergroup"
@@ -140,7 +142,38 @@ func channelFromTG(channel *tg.Channel) Channel {
 		Title:             channel.Title,
 		Username:          username,
 		Type:              typ,
+		MemberCount:       int64(participants),
+		AvatarState:       "unknown",
 	}
+}
+
+func (g *GotdClient) enrichChannels(ctx context.Context, api *tg.Client, channels []Channel) []Channel {
+	for i := range channels {
+		full, err := api.ChannelsGetFullChannel(ctx, inputChannel(channels[i]))
+		if err != nil {
+			g.logger.Debug("failed to load full channel metadata", zap.Error(err))
+			continue
+		}
+		channelFull, ok := full.FullChat.(*tg.ChannelFull)
+		if !ok {
+			continue
+		}
+		channels[i] = applyFullChannelMetadata(channels[i], channelFull)
+	}
+	return channels
+}
+
+func applyFullChannelMetadata(channel Channel, full *tg.ChannelFull) Channel {
+	if full == nil {
+		return channel
+	}
+	if full.About != "" {
+		channel.Description = full.About
+	}
+	if participants, ok := full.GetParticipantsCount(); ok && participants > 0 {
+		channel.MemberCount = int64(participants)
+	}
+	return channel
 }
 
 func (g *GotdClient) FetchHistory(ctx context.Context, account AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error) {
@@ -226,6 +259,13 @@ func inputPeer(channel ChannelRef) tg.InputPeerClass {
 		return &tg.InputPeerSelf{}
 	}
 	return &tg.InputPeerChannel{
+		ChannelID:  channel.TelegramChannelID,
+		AccessHash: channel.AccessHash,
+	}
+}
+
+func inputChannel(channel Channel) tg.InputChannelClass {
+	return &tg.InputChannel{
 		ChannelID:  channel.TelegramChannelID,
 		AccessHash: channel.AccessHash,
 	}

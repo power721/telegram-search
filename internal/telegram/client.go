@@ -33,6 +33,9 @@ type Channel struct {
 	Title             string
 	Username          string
 	Type              string
+	MemberCount       int64
+	Description       string
+	AvatarState       string
 }
 
 type ChannelRef struct {

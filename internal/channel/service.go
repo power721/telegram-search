@@ -45,6 +45,11 @@ func (s *Service) SyncAccount(ctx context.Context, account model.Account) ([]mod
 			Title:             item.Title,
 			Username:          item.Username,
 			Type:              item.Type,
+			MemberCount:       item.MemberCount,
+			Description:       item.Description,
+			AvatarState:       firstNonEmpty(item.AvatarState, "unknown"),
+			SyncState:         "metadata_only",
+			ListenState:       "disabled",
 		}
 		id, err := s.channels.Save(ctx, channel)
 		if err != nil {
@@ -54,4 +59,11 @@ func (s *Service) SyncAccount(ctx context.Context, account model.Account) ([]mod
 		out = append(out, channel)
 	}
 	return out, nil
+}
+
+func firstNonEmpty(value string, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
 }

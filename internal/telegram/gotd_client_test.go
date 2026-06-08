@@ -47,6 +47,29 @@ func TestListDialogChannelsCollectsAllDialogPages(t *testing.T) {
 	}
 }
 
+func TestApplyFullChannelMetadata(t *testing.T) {
+	channel := Channel{
+		TelegramChannelID: 1001,
+		Title:             "Private Channel",
+		MemberCount:       12,
+		Description:       "dialog description",
+	}
+	full := &tg.ChannelFull{
+		ID:    1001,
+		About: "full description",
+	}
+	full.SetParticipantsCount(1234)
+
+	got := applyFullChannelMetadata(channel, full)
+
+	if got.Description != "full description" {
+		t.Fatalf("description = %q, want full description", got.Description)
+	}
+	if got.MemberCount != 1234 {
+		t.Fatalf("member_count = %d, want 1234", got.MemberCount)
+	}
+}
+
 func testDialog(channelID int64) tg.DialogClass {
 	return &tg.Dialog{Peer: &tg.PeerChannel{ChannelID: channelID}}
 }

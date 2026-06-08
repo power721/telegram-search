@@ -864,11 +864,33 @@ func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, pr
 	account.LastName = profile.LastName
 	account.Username = profile.Username
 	account.Status = model.AccountStatusOnline
+	account.SessionPath = h.sessionPath(account.ID)
+	now := time.Now().UTC()
+	account.LastOnlineAt = &now
+	account.LastError = ""
 	if err := h.deps.Accounts.Update(c.Request.Context(), account); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"status": model.AccountStatusOnline})
+	metadataSync := gin.H{"status": "skipped", "channel_count": 0}
+	if h.deps.ChannelSync != nil {
+		items, err := h.deps.ChannelSync.SyncAccount(c.Request.Context(), account)
+		if err != nil {
+			account.LastError = err.Error()
+			if updateErr := h.deps.Accounts.Update(c.Request.Context(), account); updateErr != nil {
+				errorJSON(c, http.StatusInternalServerError, updateErr)
+				return
+			}
+			metadataSync = gin.H{"status": "failed", "channel_count": 0, "error": err.Error()}
+		} else {
+			metadataSync = gin.H{"status": "succeeded", "channel_count": len(items)}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":        model.AccountStatusOnline,
+		"account":       account,
+		"metadata_sync": metadataSync,
+	})
 }
 
 func (h handlers) sessionPath(accountID int64) string {

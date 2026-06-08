@@ -126,7 +126,7 @@ func toResponse(key model.APIKey, plaintext string) model.APIKeyResponse {
 }
 
 func newPlaintext() (string, error) {
-	buf := make([]byte, 32)
+	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {
 		return "", fmt.Errorf("generate api key: %w", err)
 	}

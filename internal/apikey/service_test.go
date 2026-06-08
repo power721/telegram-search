@@ -19,8 +19,8 @@ func TestServiceEnsureActiveCreatesViewableKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ensure active: %v", err)
 	}
-	if resp.Key == "" || len(resp.Prefix) != 8 || resp.Prefix != resp.Key[:8] {
-		t.Fatalf("response = %+v, want viewable key with prefix", resp)
+	if len(resp.Key) != 32 || len(resp.Prefix) != 8 || resp.Prefix != resp.Key[:8] {
+		t.Fatalf("response = %+v, want 32-character viewable key with prefix", resp)
 	}
 
 	again, err := service.EnsureActive(ctx)

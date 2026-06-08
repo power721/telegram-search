@@ -471,7 +471,7 @@ func TestSetupAPIKeyAutoGeneratesAndSkipIsDisabled(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode api key: %v", err)
 	}
-	if body.Name != "default" || len(body.Prefix) != 8 || len(body.Key) != 64 || body.Prefix != body.Key[:8] || strings.Contains(body.Key, "-") {
+	if body.Name != "default" || len(body.Prefix) != 8 || len(body.Key) != 32 || body.Prefix != body.Key[:8] || strings.Contains(body.Key, "-") {
 		t.Fatalf("api key response = %+v", body)
 	}
 	count, err := deps.APIKeys.CountEnabled(context.Background())

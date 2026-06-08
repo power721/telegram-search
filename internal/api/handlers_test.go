@@ -1462,6 +1462,9 @@ func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
 	if !body.HistorySyncEnabled || body.SyncProfile != "Quick" || !body.ListenEnabled || body.RemoteSearchAllowed {
 		t.Fatalf("response control = %+v", body)
 	}
+	if body.SyncState != "pending" || body.ListenState != "enabled" {
+		t.Fatalf("response states = sync:%q listen:%q, want pending/enabled", body.SyncState, body.ListenState)
+	}
 
 	stored, err := deps.Channels.FindByID(ctx, channelID)
 	if err != nil {
@@ -1469,6 +1472,9 @@ func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
 	}
 	if !stored.HistorySyncEnabled || stored.SyncProfile != "Quick" || !stored.ListenEnabled || stored.RemoteSearchAllowed {
 		t.Fatalf("stored control = %+v", stored)
+	}
+	if stored.SyncState != "pending" || stored.ListenState != "enabled" {
+		t.Fatalf("stored states = sync:%q listen:%q, want pending/enabled", stored.SyncState, stored.ListenState)
 	}
 }
 

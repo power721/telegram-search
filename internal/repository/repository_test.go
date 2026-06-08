@@ -558,4 +558,23 @@ func TestChannelControlFields(t *testing.T) {
 	if got.HistorySyncEnabled || got.SyncProfile != "Quick" || !got.ListenEnabled || got.RemoteSearchAllowed {
 		t.Fatalf("updated control = %+v", got)
 	}
+	if got.SyncState != "metadata_only" || got.ListenState != "enabled" {
+		t.Fatalf("updated states = sync:%q listen:%q, want metadata_only/enabled", got.SyncState, got.ListenState)
+	}
+
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Normal",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("UpdateControl enable history returned error: %v", err)
+	}
+	got, err = channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find history-enabled channel: %v", err)
+	}
+	if got.SyncState != "pending" || got.ListenState != "disabled" {
+		t.Fatalf("history-enabled states = sync:%q listen:%q, want pending/disabled", got.SyncState, got.ListenState)
+	}
 }

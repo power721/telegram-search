@@ -67,11 +67,19 @@ func (r *ChannelRepository) UpdateControl(ctx context.Context, id int64, control
 	if control.SyncProfile == "" {
 		control.SyncProfile = "Normal"
 	}
+	syncState := "metadata_only"
+	if control.HistorySyncEnabled {
+		syncState = "pending"
+	}
+	listenState := "disabled"
+	if control.ListenEnabled {
+		listenState = "enabled"
+	}
 	res, err := r.db.ExecContext(ctx, `
 UPDATE telegram_channels
-SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, updated_at = ?
+SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, sync_state = ?, listen_state = ?, updated_at = ?
 WHERE id = ?`,
-		control.HistorySyncEnabled, control.SyncProfile, control.ListenEnabled, control.RemoteSearchAllowed, time.Now().UTC(), id)
+		control.HistorySyncEnabled, control.SyncProfile, control.ListenEnabled, control.RemoteSearchAllowed, syncState, listenState, time.Now().UTC(), id)
 	if err != nil {
 		return fmt.Errorf("update channel control: %w", err)
 	}

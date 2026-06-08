@@ -2,8 +2,10 @@ package channel
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -82,6 +84,43 @@ func TestWebAccessServiceStoresFalseWithoutUsername(t *testing.T) {
 	}
 	if stored.WebAccess == nil || *stored.WebAccess != false {
 		t.Fatalf("stored web_access = %v, want false", stored.WebAccess)
+	}
+	if stored.WebAccessError != "" {
+		t.Fatalf("stored web_access_error = %q, want empty", stored.WebAccessError)
+	}
+}
+
+func TestWebAccessServiceStoresErrorWhenCheckerFails(t *testing.T) {
+	ctx := context.Background()
+	accounts, channels, closeStore := setupWebAccessStore(t)
+	defer closeStore()
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 104,
+		Title:             "Error",
+		Username:          "error_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	checker := &recordingWebAccessChecker{errs: map[string]error{"error_channel": errors.New("http 500")}}
+	service := NewWebAccessService(channels, checker)
+
+	results, err := service.CheckMany(ctx, []int64{channelID})
+	if err != nil {
+		t.Fatalf("CheckMany returned error: %v", err)
+	}
+	if len(results) != 1 || results[0].WebAccess || results[0].WebAccessError == "" {
+		t.Fatalf("results = %+v, want false web access with error", results)
+	}
+	stored, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if stored.WebAccess == nil || *stored.WebAccess != false {
+		t.Fatalf("stored web_access = %v, want false", stored.WebAccess)
+	}
+	if !strings.Contains(stored.WebAccessError, "http 500") {
+		t.Fatalf("stored web_access_error = %q, want http 500", stored.WebAccessError)
 	}
 }
 
@@ -219,6 +258,23 @@ func TestHTTPWebAccessCheckerReturnsFalseForStatusOKWithoutMessages(t *testing.T
 	}
 }
 
+func TestHTTPWebAccessCheckerReturnsErrorForHTTPFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "server failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	checker := NewHTTPWebAccessChecker(time.Second)
+	checker.baseURL = server.URL
+
+	access, err := checker.Check(context.Background(), "public_channel")
+	if err == nil {
+		t.Fatal("Check returned nil error, want HTTP status error")
+	}
+	if access {
+		t.Fatal("Check returned true, want false on HTTP failure")
+	}
+}
+
 func setupWebAccessStore(t *testing.T) (*repository.AccountRepository, *repository.ChannelRepository, func()) {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
@@ -249,6 +305,7 @@ func stringResponse(status int, body string) *http.Response {
 type recordingWebAccessChecker struct {
 	mu      sync.Mutex
 	results map[string]bool
+	errs    map[string]error
 	calls   []string
 }
 
@@ -256,6 +313,9 @@ func (c *recordingWebAccessChecker) Check(ctx context.Context, username string) 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.calls = append(c.calls, username)
+	if c.errs != nil && c.errs[username] != nil {
+		return false, c.errs[username]
+	}
 	return c.results[username], nil
 }
 

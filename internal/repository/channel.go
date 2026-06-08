@@ -53,7 +53,6 @@ ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   sync_profile = excluded.sync_profile,
   listen_enabled = excluded.listen_enabled,
   remote_search_allowed = excluded.remote_search_allowed,
-  web_access_error = excluded.web_access_error,
   updated_at = excluded.updated_at
 RETURNING id`,
 		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.HistorySyncEnabled, channel.SyncProfile, channel.ListenEnabled, channel.RemoteSearchAllowed, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
@@ -139,10 +138,14 @@ FROM telegram_channels ` + where + ` ORDER BY title, id`
 }
 
 func (r *ChannelRepository) UpdateWebAccess(ctx context.Context, channelID int64, access bool, checkedAt time.Time) error {
+	return r.UpdateWebAccessResult(ctx, channelID, access, checkedAt, "")
+}
+
+func (r *ChannelRepository) UpdateWebAccessResult(ctx context.Context, channelID int64, access bool, checkedAt time.Time, errorText string) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE telegram_channels
-SET web_access = ?, web_access_checked_at = ?, updated_at = ?
-WHERE id = ?`, access, checkedAt, time.Now().UTC(), channelID)
+SET web_access = ?, web_access_checked_at = ?, web_access_error = ?, updated_at = ?
+WHERE id = ?`, access, checkedAt, errorText, time.Now().UTC(), channelID)
 	if err != nil {
 		return fmt.Errorf("update channel web access: %w", err)
 	}

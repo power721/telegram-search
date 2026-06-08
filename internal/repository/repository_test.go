@@ -244,8 +244,8 @@ func TestChannelRepositoryUpdatesWebAccess(t *testing.T) {
 	}
 
 	checkedAt := time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)
-	if err := channels.UpdateWebAccess(ctx, channelID, true, checkedAt); err != nil {
-		t.Fatalf("UpdateWebAccess returned error: %v", err)
+	if err := channels.UpdateWebAccessResult(ctx, channelID, true, checkedAt, ""); err != nil {
+		t.Fatalf("UpdateWebAccessResult returned error: %v", err)
 	}
 
 	checked, err := channels.FindByID(ctx, channelID)
@@ -257,6 +257,21 @@ func TestChannelRepositoryUpdatesWebAccess(t *testing.T) {
 	}
 	if checked.WebAccessCheckedAt == nil || !checked.WebAccessCheckedAt.Equal(checkedAt) {
 		t.Fatalf("checked_at = %v, want %v", checked.WebAccessCheckedAt, checkedAt)
+	}
+	if checked.WebAccessError != "" {
+		t.Fatalf("web_access_error = %q, want empty", checked.WebAccessError)
+	}
+
+	errorAt := checkedAt.Add(time.Minute)
+	if err := channels.UpdateWebAccessResult(ctx, channelID, false, errorAt, "http 500"); err != nil {
+		t.Fatalf("UpdateWebAccessResult error update returned error: %v", err)
+	}
+	errored, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find errored channel: %v", err)
+	}
+	if errored.WebAccess == nil || *errored.WebAccess != false || errored.WebAccessError != "http 500" {
+		t.Fatalf("errored web access fields = %+v", errored)
 	}
 
 	_, err = channels.Save(ctx, model.Channel{
@@ -273,7 +288,9 @@ func TestChannelRepositoryUpdatesWebAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find upserted channel: %v", err)
 	}
-	if afterUpsert.WebAccess == nil || *afterUpsert.WebAccess != true || afterUpsert.WebAccessCheckedAt == nil || !afterUpsert.WebAccessCheckedAt.Equal(checkedAt) {
+	if afterUpsert.WebAccess == nil || *afterUpsert.WebAccess != false ||
+		afterUpsert.WebAccessCheckedAt == nil || !afterUpsert.WebAccessCheckedAt.Equal(errorAt) ||
+		afterUpsert.WebAccessError != "http 500" {
 		t.Fatalf("upsert changed web access fields: %+v", afterUpsert)
 	}
 }

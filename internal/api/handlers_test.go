@@ -1016,6 +1016,38 @@ func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 	}
 }
 
+func TestChannelWebAccessCheckAPIStoresErrors(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 32,
+		Title:             "Public",
+		Username:          "public_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	checker := &apiWebAccessChecker{errors: map[string]error{"public_channel": errors.New("telegram web 500")}}
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, checker)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	stored, err := deps.Channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if stored.WebAccess == nil || *stored.WebAccess != false || !strings.Contains(stored.WebAccessError, "telegram web 500") {
+		t.Fatalf("stored web access = %+v, want false with error", stored)
+	}
+}
+
 func TestChannelWebAccessCheckAPIValidatesChannelIDs(t *testing.T) {
 	deps := testDeps(t)
 	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, &apiWebAccessChecker{})
@@ -1378,11 +1410,15 @@ func (f *fakeTelegram) FetchHistory(ctx context.Context, account telegram.Accoun
 
 type apiWebAccessChecker struct {
 	results map[string]bool
+	errors  map[string]error
 	calls   []string
 }
 
 func (c *apiWebAccessChecker) Check(ctx context.Context, username string) (bool, error) {
 	c.calls = append(c.calls, username)
+	if c.errors != nil && c.errors[username] != nil {
+		return false, c.errors[username]
+	}
 	return c.results[username], nil
 }
 

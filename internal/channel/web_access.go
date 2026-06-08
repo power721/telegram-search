@@ -24,9 +24,10 @@ type WebAccessChecker interface {
 }
 
 type WebAccessResult struct {
-	ChannelID int64     `json:"channel_id"`
-	WebAccess bool      `json:"web_access"`
-	CheckedAt time.Time `json:"checked_at"`
+	ChannelID      int64     `json:"channel_id"`
+	WebAccess      bool      `json:"web_access"`
+	CheckedAt      time.Time `json:"checked_at"`
+	WebAccessError string    `json:"web_access_error"`
 }
 
 type WebAccessService struct {
@@ -54,22 +55,28 @@ func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([
 	accesses := s.checkWebAccess(ctx, loaded)
 	results := make([]WebAccessResult, 0, len(loaded))
 	for i, item := range loaded {
-		access := accesses[i]
+		result := accesses[i]
 		checkedAt := s.now().UTC()
-		if err := s.channels.UpdateWebAccess(ctx, item.ID, access, checkedAt); err != nil {
+		if err := s.channels.UpdateWebAccessResult(ctx, item.ID, result.access, checkedAt, result.errorText); err != nil {
 			return nil, err
 		}
 		results = append(results, WebAccessResult{
-			ChannelID: item.ID,
-			WebAccess: access,
-			CheckedAt: checkedAt,
+			ChannelID:      item.ID,
+			WebAccess:      result.access,
+			CheckedAt:      checkedAt,
+			WebAccessError: result.errorText,
 		})
 	}
 	return results, nil
 }
 
-func (s *WebAccessService) checkWebAccess(ctx context.Context, channels []model.Channel) []bool {
-	accesses := make([]bool, len(channels))
+type webAccessCheck struct {
+	access    bool
+	errorText string
+}
+
+func (s *WebAccessService) checkWebAccess(ctx context.Context, channels []model.Channel) []webAccessCheck {
+	accesses := make([]webAccessCheck, len(channels))
 	sem := make(chan struct{}, maxWebAccessConcurrency)
 	var wg sync.WaitGroup
 	for i, item := range channels {
@@ -83,9 +90,11 @@ func (s *WebAccessService) checkWebAccess(ctx context.Context, channels []model.
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			checked, err := s.checker.Check(ctx, username)
-			if err == nil {
-				accesses[i] = checked
+			if err != nil {
+				accesses[i] = webAccessCheck{access: false, errorText: err.Error()}
+				return
 			}
+			accesses[i] = webAccessCheck{access: checked}
 		}(i, item)
 	}
 	wg.Wait()
@@ -113,7 +122,8 @@ func (s *WebAccessService) loadUniqueChannels(ctx context.Context, channelIDs []
 }
 
 type HTTPWebAccessChecker struct {
-	client *http.Client
+	client  *http.Client
+	baseURL string
 }
 
 func NewHTTPWebAccessChecker(timeout time.Duration) *HTTPWebAccessChecker {
@@ -121,7 +131,8 @@ func NewHTTPWebAccessChecker(timeout time.Duration) *HTTPWebAccessChecker {
 		timeout = defaultWebAccessTimeout
 	}
 	return &HTTPWebAccessChecker{
-		client: &http.Client{Timeout: timeout},
+		client:  &http.Client{Timeout: timeout},
+		baseURL: "https://t.me",
 	}
 }
 
@@ -130,7 +141,11 @@ func (c *HTTPWebAccessChecker) Check(ctx context.Context, username string) (bool
 	if username == "" {
 		return false, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://t.me/s/"+url.PathEscape(username), nil)
+	baseURL := c.baseURL
+	if baseURL == "" {
+		baseURL = "https://t.me"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(baseURL, "/")+"/s/"+url.PathEscape(username), nil)
 	if err != nil {
 		return false, err
 	}
@@ -145,7 +160,7 @@ func (c *HTTPWebAccessChecker) Check(ctx context.Context, username string) (bool
 	defer resp.Body.Close()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
-		return false, nil
+		return false, fmt.Errorf("telegram web access returned HTTP %d", resp.StatusCode)
 	}
 	return hasTelegramMessageWrap(resp.Body), nil
 }
@@ -155,24 +170,21 @@ func hasTelegramMessageWrap(r io.Reader) bool {
 	if err != nil {
 		return false
 	}
-	var walk func(*html.Node, bool) bool
-	walk = func(n *html.Node, insideContainer bool) bool {
+	var walk func(*html.Node) bool
+	walk = func(n *html.Node) bool {
 		if n.Type == html.ElementNode && n.Data == "div" {
-			if hasClass(n, "tgme_container") {
-				insideContainer = true
-			}
-			if insideContainer && hasClass(n, "tgme_widget_message_wrap") {
+			if hasClass(n, "tgme_widget_message_wrap") {
 				return true
 			}
 		}
 		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			if walk(child, insideContainer) {
+			if walk(child) {
 				return true
 			}
 		}
 		return false
 	}
-	return walk(doc, false)
+	return walk(doc)
 }
 
 func hasClass(n *html.Node, className string) bool {

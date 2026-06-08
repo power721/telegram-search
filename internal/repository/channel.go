@@ -31,12 +31,15 @@ func (r *ChannelRepository) Save(ctx context.Context, channel model.Channel) (in
 	if channel.ListenState == "" {
 		channel.ListenState = "disabled"
 	}
+	if channel.SyncProfile == "" {
+		channel.SyncProfile = "Normal"
+	}
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
 INSERT INTO telegram_channels
-  (account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access_error, created_at, updated_at)
+  (account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access_error, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   access_hash = excluded.access_hash,
   title = excluded.title,
@@ -46,15 +49,34 @@ ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   avatar_state = excluded.avatar_state,
   sync_state = excluded.sync_state,
   listen_state = excluded.listen_state,
+  history_sync_enabled = excluded.history_sync_enabled,
+  sync_profile = excluded.sync_profile,
+  listen_enabled = excluded.listen_enabled,
+  remote_search_allowed = excluded.remote_search_allowed,
   web_access_error = excluded.web_access_error,
   updated_at = excluded.updated_at
 RETURNING id`,
-		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
+		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.HistorySyncEnabled, channel.SyncProfile, channel.ListenEnabled, channel.RemoteSearchAllowed, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("save channel: %w", err)
 	}
 	return id, nil
+}
+
+func (r *ChannelRepository) UpdateControl(ctx context.Context, id int64, control model.ChannelControl) error {
+	if control.SyncProfile == "" {
+		control.SyncProfile = "Normal"
+	}
+	res, err := r.db.ExecContext(ctx, `
+UPDATE telegram_channels
+SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, updated_at = ?
+WHERE id = ?`,
+		control.HistorySyncEnabled, control.SyncProfile, control.ListenEnabled, control.RemoteSearchAllowed, time.Now().UTC(), id)
+	if err != nil {
+		return fmt.Errorf("update channel control: %w", err)
+	}
+	return requireRows(res, "channel not found")
 }
 
 func (r *ChannelRepository) UpdateCursor(ctx context.Context, channelID int64, lastMessageID int64, syncTime time.Time) error {
@@ -78,13 +100,13 @@ WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
 
 func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels WHERE id = ?`, id))
 }
 
 func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels WHERE account_id = ? AND telegram_channel_id = ?`, accountID, telegramChannelID))
 }
 
@@ -98,7 +120,7 @@ func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64
 
 func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
 	query := `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels ` + where + ` ORDER BY title, id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -153,6 +175,10 @@ func scanChannelRows(row interface {
 		&channel.AvatarState,
 		&channel.SyncState,
 		&channel.ListenState,
+		&channel.HistorySyncEnabled,
+		&channel.SyncProfile,
+		&channel.ListenEnabled,
+		&channel.RemoteSearchAllowed,
 		&channel.LastMessageID,
 		&lastSync,
 		&webAccess,

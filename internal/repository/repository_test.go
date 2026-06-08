@@ -486,3 +486,59 @@ func TestChannelRepositoryPersistsExpandedMetadata(t *testing.T) {
 		t.Fatalf("channel metadata = %+v", got)
 	}
 }
+
+func TestChannelControlFields(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   201,
+		Title:               "Control Channel",
+		Type:                model.ChannelTypeChannel,
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Deep",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+
+	got, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if !got.HistorySyncEnabled || got.SyncProfile != "Deep" || got.ListenEnabled || !got.RemoteSearchAllowed {
+		t.Fatalf("saved control = %+v", got)
+	}
+
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{
+		HistorySyncEnabled:  false,
+		SyncProfile:         "Quick",
+		ListenEnabled:       true,
+		RemoteSearchAllowed: false,
+	}); err != nil {
+		t.Fatalf("UpdateControl returned error: %v", err)
+	}
+	got, err = channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find updated channel: %v", err)
+	}
+	if got.HistorySyncEnabled || got.SyncProfile != "Quick" || !got.ListenEnabled || got.RemoteSearchAllowed {
+		t.Fatalf("updated control = %+v", got)
+	}
+}

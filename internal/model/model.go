@@ -86,25 +86,36 @@ type StorageUsage struct {
 }
 
 type Channel struct {
-	ID                 int64      `json:"id"`
-	AccountID          int64      `json:"account_id"`
-	TelegramChannelID  int64      `json:"telegram_channel_id"`
-	AccessHash         int64      `json:"access_hash"`
-	Title              string     `json:"title"`
-	Username           string     `json:"username"`
-	Type               string     `json:"type"`
-	MemberCount        int64      `json:"member_count"`
-	Description        string     `json:"description"`
-	AvatarState        string     `json:"avatar_state"`
-	SyncState          string     `json:"sync_state"`
-	ListenState        string     `json:"listen_state"`
-	LastMessageID      int64      `json:"last_message_id"`
-	LastSyncTime       *time.Time `json:"last_sync_time,omitempty"`
-	WebAccess          *bool      `json:"web_access,omitempty"`
-	WebAccessCheckedAt *time.Time `json:"web_access_checked_at,omitempty"`
-	WebAccessError     string     `json:"web_access_error"`
-	CreatedAt          time.Time  `json:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at"`
+	ID                  int64      `json:"id"`
+	AccountID           int64      `json:"account_id"`
+	TelegramChannelID   int64      `json:"telegram_channel_id"`
+	AccessHash          int64      `json:"access_hash"`
+	Title               string     `json:"title"`
+	Username            string     `json:"username"`
+	Type                string     `json:"type"`
+	MemberCount         int64      `json:"member_count"`
+	Description         string     `json:"description"`
+	AvatarState         string     `json:"avatar_state"`
+	SyncState           string     `json:"sync_state"`
+	ListenState         string     `json:"listen_state"`
+	HistorySyncEnabled  bool       `json:"history_sync_enabled"`
+	SyncProfile         string     `json:"sync_profile"`
+	ListenEnabled       bool       `json:"listen_enabled"`
+	RemoteSearchAllowed bool       `json:"remote_search_allowed"`
+	LastMessageID       int64      `json:"last_message_id"`
+	LastSyncTime        *time.Time `json:"last_sync_time,omitempty"`
+	WebAccess           *bool      `json:"web_access,omitempty"`
+	WebAccessCheckedAt  *time.Time `json:"web_access_checked_at,omitempty"`
+	WebAccessError      string     `json:"web_access_error"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+type ChannelControl struct {
+	HistorySyncEnabled  bool   `json:"history_sync_enabled"`
+	SyncProfile         string `json:"sync_profile"`
+	ListenEnabled       bool   `json:"listen_enabled"`
+	RemoteSearchAllowed bool   `json:"remote_search_allowed"`
 }
 
 type WatchRule struct {

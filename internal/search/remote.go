@@ -12,6 +12,7 @@ import (
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/session"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -60,6 +61,10 @@ func NewRemoteService(opts RemoteOptions) *RemoteService {
 }
 
 func (s *RemoteService) Search(ctx context.Context, channelID int64, query string, limit int) (model.RemoteSearchTask, error) {
+	return s.SearchWithProgress(ctx, channelID, query, limit, nil)
+}
+
+func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64, query string, limit int, progress taskpkg.ProgressSink) (model.RemoteSearchTask, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return model.RemoteSearchTask{}, ErrEmptyQuery
@@ -92,6 +97,9 @@ func (s *RemoteService) Search(ctx context.Context, channelID int64, query strin
 	account, err := s.accounts.FindByID(ctx, channel.AccountID)
 	if err != nil {
 		return model.RemoteSearchTask{}, fmt.Errorf("load account: %w", err)
+	}
+	if err := checkRemoteProgressStatus(ctx, progress); err != nil {
+		return model.RemoteSearchTask{}, err
 	}
 	sessionPath := ""
 	if s.sessions != nil {
@@ -146,7 +154,26 @@ func (s *RemoteService) Search(ctx context.Context, channelID int64, query strin
 	s.mu.Lock()
 	s.results[task.ID] = results
 	s.mu.Unlock()
+	if progress != nil {
+		if err := progress.Progress(ctx, int64(len(results)), int64(limit), "remote search completed"); err != nil {
+			return model.RemoteSearchTask{}, err
+		}
+	}
 	return task, nil
+}
+
+func checkRemoteProgressStatus(ctx context.Context, progress taskpkg.ProgressSink) error {
+	if progress == nil {
+		return nil
+	}
+	status, err := progress.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if taskpkg.IsCancelingStatus(status) {
+		return context.Canceled
+	}
+	return nil
 }
 
 func (s *RemoteService) Results(ctx context.Context, taskID int64) (model.RemoteSearchResults, error) {

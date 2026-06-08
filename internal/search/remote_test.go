@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/session"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -120,6 +122,114 @@ func TestRemoteSearchRejectsSyncedChannel(t *testing.T) {
 	if err != ErrRemoteSearchRequiresUnsynced {
 		t.Fatalf("error = %v, want ErrRemoteSearchRequiresUnsynced", err)
 	}
+}
+
+func TestRemoteSearchWithProgressStopsBeforeTelegramSearch(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	tasks := repository.NewRemoteSearchTaskRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   100,
+		AccessHash:          200,
+		Title:               "Remote",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: true,
+	})
+	client := &remoteSearchTelegramClient{}
+	service := NewRemoteService(RemoteOptions{
+		Accounts: accounts,
+		Channels: channels,
+		Tasks:    tasks,
+		Cursors:  repository.NewSyncCursorRepository(conn),
+		Telegram: client,
+		Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+	})
+
+	_, err = service.SearchWithProgress(ctx, channelID, "ubuntu", 10, &remoteProgressSink{status: model.TaskStatusCanceling})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if client.calls != 0 {
+		t.Fatalf("telegram search calls = %d, want 0", client.calls)
+	}
+}
+
+func TestRemoteSearchWithProgressReportsResultCount(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	tasks := repository.NewRemoteSearchTaskRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   100,
+		AccessHash:          200,
+		Title:               "Remote",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: true,
+	})
+	client := &remoteSearchTelegramClient{items: []telegram.Message{
+		{TelegramMessageID: 10, Text: "ubuntu remote", RawJSON: "{}", Date: time.Now().UTC()},
+	}}
+	sink := &remoteProgressSink{status: model.TaskStatusRunning}
+	service := NewRemoteService(RemoteOptions{
+		Accounts: accounts,
+		Channels: channels,
+		Tasks:    tasks,
+		Cursors:  repository.NewSyncCursorRepository(conn),
+		Telegram: client,
+		Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+	})
+
+	if _, err := service.SearchWithProgress(ctx, channelID, "ubuntu", 10, sink); err != nil {
+		t.Fatalf("SearchWithProgress returned error: %v", err)
+	}
+	if len(sink.updates) != 1 || sink.updates[0].progress != 1 || sink.updates[0].total != 10 {
+		t.Fatalf("progress updates = %+v, want one 1/10 update", sink.updates)
+	}
+}
+
+type remoteProgressUpdate struct {
+	progress int64
+	total    int64
+	message  string
+}
+
+type remoteProgressSink struct {
+	status  string
+	updates []remoteProgressUpdate
+}
+
+var _ taskpkg.ProgressSink = (*remoteProgressSink)(nil)
+
+func (s *remoteProgressSink) Progress(ctx context.Context, progress int64, total int64, message string) error {
+	s.updates = append(s.updates, remoteProgressUpdate{progress: progress, total: total, message: message})
+	return nil
+}
+
+func (s *remoteProgressSink) Status(ctx context.Context) (string, error) {
+	return s.status, nil
 }
 
 type remoteSearchTelegramClient struct {

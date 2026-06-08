@@ -2,6 +2,7 @@ package channel
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/session"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -145,6 +147,76 @@ func TestSyncAccountStoresExpandedMetadataOnly(t *testing.T) {
 	if saved.Title != "Saved Messages" || saved.SyncState != "metadata_only" || saved.ListenState != "disabled" {
 		t.Fatalf("saved metadata = %+v", saved)
 	}
+}
+
+func TestSyncAccountWithProgressStopsAfterCancel(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	client := &recordingChannelClient{items: map[int64][]telegram.Channel{
+		accountID: {
+			{TelegramChannelID: 100, Title: "One", Type: model.ChannelTypeChannel},
+			{TelegramChannelID: 101, Title: "Two", Type: model.ChannelTypeChannel},
+		},
+	}}
+	service := NewService(channels, client, session.NewManager(filepath.Join(t.TempDir(), "sessions")))
+	sink := &channelProgressSink{statusAfterUpdates: model.TaskStatusCanceling}
+	account, _ := accounts.FindByID(ctx, accountID)
+
+	items, err := service.SyncAccountWithProgress(ctx, account, sink)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items len = %d, want first channel only", len(items))
+	}
+	if len(sink.updates) != 1 || sink.updates[0].progress != 1 || sink.updates[0].total != 2 {
+		t.Fatalf("progress updates = %+v, want one 1/2 update", sink.updates)
+	}
+	stored, err := channels.FindByAccountID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find channels: %v", err)
+	}
+	if len(stored) != 1 || stored[0].Title != "One" {
+		t.Fatalf("stored channels = %+v, want first channel only", stored)
+	}
+}
+
+type channelProgressUpdate struct {
+	progress int64
+	total    int64
+	message  string
+}
+
+type channelProgressSink struct {
+	updates            []channelProgressUpdate
+	statusAfterUpdates string
+}
+
+var _ taskpkg.ProgressSink = (*channelProgressSink)(nil)
+
+func (s *channelProgressSink) Progress(ctx context.Context, progress int64, total int64, message string) error {
+	s.updates = append(s.updates, channelProgressUpdate{progress: progress, total: total, message: message})
+	return nil
+}
+
+func (s *channelProgressSink) Status(ctx context.Context) (string, error) {
+	if s.statusAfterUpdates != "" && len(s.updates) > 0 {
+		return s.statusAfterUpdates, nil
+	}
+	return model.TaskStatusRunning, nil
 }
 
 type recordingChannelClient struct {

@@ -16,6 +16,7 @@ import (
 	"tg-search/internal/repository"
 	"tg-search/internal/retry"
 	"tg-search/internal/session"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -66,6 +67,7 @@ type SyncManyResult struct {
 }
 
 var ErrChannelSyncInProgress = errors.New("channel sync already in progress")
+var ErrTaskPaused = errors.New("task is paused")
 
 func NewService(opts Options) *Service {
 	if opts.Telegram == nil {
@@ -109,11 +111,15 @@ func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult,
 }
 
 func (s *Service) SyncChannelWithProfile(ctx context.Context, channelID int64, profile string) (SyncResult, error) {
+	return s.SyncChannelWithProgress(ctx, channelID, profile, nil)
+}
+
+func (s *Service) SyncChannelWithProgress(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
 	if !s.tryAcquireChannel(channelID) {
 		return SyncResult{}, ErrChannelSyncInProgress
 	}
 	defer s.releaseChannel(channelID)
-	return s.syncChannelWithRetry(ctx, channelID, profile)
+	return s.syncChannelWithRetry(ctx, channelID, profile, progress)
 }
 
 func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
@@ -161,7 +167,7 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 					mu.Unlock()
 					continue
 				}
-				syncResult, err := s.syncChannelWithRetry(ctx, channelID, "")
+				syncResult, err := s.syncChannelWithRetry(ctx, channelID, "", nil)
 				s.releaseChannel(channelID)
 				mu.Lock()
 				if err != nil {
@@ -188,23 +194,26 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 	return result
 }
 
-func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string) (SyncResult, error) {
+func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
 	var result SyncResult
 	err := s.retryPolicy.Run(ctx, func() error {
-		next, err := s.syncChannelOnce(ctx, channelID, profile)
-		if err == nil {
-			result = next
-		}
+		next, err := s.syncChannelOnce(ctx, channelID, profile, progress)
+		result = next
 		return err
 	}, func(ctx context.Context, attempt retry.Attempt) {
 		if attempt.Classification.Kind == retry.KindFloodWait {
 			s.markChannelAccountStatus(ctx, channelID, model.AccountStatusFloodWait)
+			if progress != nil {
+				if sink, ok := progress.(taskpkg.FloodWaitSink); ok {
+					_ = sink.FloodWait(ctx, time.Now().UTC().Add(attempt.Delay), attempt.Classification.Err.Error())
+				}
+			}
 		}
 	})
 	return result, err
 }
 
-func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string) (SyncResult, error) {
+func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string, progress taskpkg.ProgressSink) (SyncResult, error) {
 	channel, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load channel: %w", err)
@@ -244,6 +253,9 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 	var maxSeen int64
 	offsetID := int64(0)
 	for {
+		if err := checkTaskStatus(ctx, progress); err != nil {
+			return result, err
+		}
 		fetchLimit := s.historyBatchSize
 		if profileLimit > 0 {
 			remaining := profileLimit - result.Messages
@@ -292,6 +304,9 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 			}
 			result.Links += links
 		}
+		if err := reportTaskProgress(ctx, progress, result.Messages, profileLimit, "history sync batch stored"); err != nil {
+			return result, err
+		}
 		if minID == 0 || minID == offsetID {
 			break
 		}
@@ -303,6 +318,30 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 		offsetID = minID
 	}
 	return result, nil
+}
+
+func reportTaskProgress(ctx context.Context, progress taskpkg.ProgressSink, current int, total int, message string) error {
+	if progress == nil {
+		return nil
+	}
+	return progress.Progress(ctx, int64(current), int64(total), message)
+}
+
+func checkTaskStatus(ctx context.Context, progress taskpkg.ProgressSink) error {
+	if progress == nil {
+		return nil
+	}
+	status, err := progress.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if taskpkg.IsCancelingStatus(status) {
+		return context.Canceled
+	}
+	if status == model.TaskStatusPaused {
+		return ErrTaskPaused
+	}
+	return nil
 }
 
 func (s *Service) tryAcquireChannel(channelID int64) bool {

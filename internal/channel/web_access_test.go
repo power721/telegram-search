@@ -216,6 +216,47 @@ func TestWebAccessServiceChecksWithMaxConcurrencyFive(t *testing.T) {
 	}
 }
 
+func TestWebAccessServiceWithProgressStopsAfterCancel(t *testing.T) {
+	ctx := context.Background()
+	accounts, channels, closeStore := setupWebAccessStore(t)
+	defer closeStore()
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	firstID, _ := channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 300, Title: "First", Username: "first", Type: model.ChannelTypeChannel,
+	})
+	secondID, _ := channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 301, Title: "Second", Username: "second", Type: model.ChannelTypeChannel,
+	})
+	checker := &recordingWebAccessChecker{results: map[string]bool{"first": true, "second": true}}
+	service := NewWebAccessService(channels, checker)
+	sink := &channelProgressSink{statusAfterUpdates: model.TaskStatusCanceling}
+
+	results, err := service.CheckManyWithProgress(ctx, []int64{firstID, secondID}, sink)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if len(results) != 1 || results[0].ChannelID != firstID {
+		t.Fatalf("results = %+v, want first result only", results)
+	}
+	if len(sink.updates) != 1 || sink.updates[0].progress != 1 || sink.updates[0].total != 2 {
+		t.Fatalf("progress updates = %+v, want one 1/2 update", sink.updates)
+	}
+	first, err := channels.FindByID(ctx, firstID)
+	if err != nil {
+		t.Fatalf("find first: %v", err)
+	}
+	second, err := channels.FindByID(ctx, secondID)
+	if err != nil {
+		t.Fatalf("find second: %v", err)
+	}
+	if first.WebAccess == nil || *first.WebAccess != true {
+		t.Fatalf("first web access = %v, want true", first.WebAccess)
+	}
+	if second.WebAccess != nil {
+		t.Fatalf("second web access = %v, want untouched nil", second.WebAccess)
+	}
+}
+
 func TestHTTPWebAccessCheckerRequiresTelegramMessageWrappers(t *testing.T) {
 	checker := &HTTPWebAccessChecker{
 		client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

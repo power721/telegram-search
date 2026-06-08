@@ -17,6 +17,7 @@ import (
 	"tg-search/internal/repository"
 	"tg-search/internal/retry"
 	"tg-search/internal/session"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -442,6 +443,177 @@ func TestSyncChannelWithoutWatchRuleKeepsExistingBehavior(t *testing.T) {
 	if len(latest) != 2 {
 		t.Fatalf("latest len = %d, want 2 messages when no watch rule exists", len(latest))
 	}
+}
+
+func TestHistorySyncTaskProgressUsesProfileLimit(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel,
+		SyncProfile: "Quick",
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {{TelegramMessageID: 3, Text: "first", RawJSON: "{}", Date: now}},
+		3: {{TelegramMessageID: 2, Text: "second", RawJSON: "{}", Date: now}},
+		2: {},
+	}}
+	sink := &recordingProgressSink{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 1,
+	})
+
+	result, err := service.SyncChannelWithProgress(ctx, channelID, "", sink)
+	if err != nil {
+		t.Fatalf("SyncChannelWithProgress returned error: %v", err)
+	}
+	if result.Messages != 2 {
+		t.Fatalf("messages = %d, want 2", result.Messages)
+	}
+	if len(sink.updates) != 2 {
+		t.Fatalf("progress updates = %+v, want 2 updates", sink.updates)
+	}
+	if sink.updates[0].progress != 1 || sink.updates[0].total != 100 {
+		t.Fatalf("first progress = %+v, want progress=1 total=100", sink.updates[0])
+	}
+	if sink.updates[1].progress != 2 || sink.updates[1].total != 100 {
+		t.Fatalf("second progress = %+v, want progress=2 total=100", sink.updates[1])
+	}
+}
+
+func TestHistorySyncTaskProgressFullProfileUsesUnknownTotal(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{SyncProfile: "Full"}); err != nil {
+		t.Fatalf("update controls: %v", err)
+	}
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {{TelegramMessageID: 3, Text: "first", RawJSON: "{}", Date: now}},
+		3: {},
+	}}
+	sink := &recordingProgressSink{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 1,
+	})
+
+	if _, err := service.SyncChannelWithProgress(ctx, channelID, "", sink); err != nil {
+		t.Fatalf("SyncChannelWithProgress returned error: %v", err)
+	}
+	if len(sink.updates) != 1 || sink.updates[0].total != 0 {
+		t.Fatalf("progress updates = %+v, want one unknown-total update", sink.updates)
+	}
+}
+
+func TestHistorySyncTaskCancelStopsFutureBatches(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {{TelegramMessageID: 3, Text: "first", RawJSON: "{}", Date: now}},
+		3: {{TelegramMessageID: 2, Text: "second", RawJSON: "{}", Date: now}},
+	}}
+	sink := &recordingProgressSink{statusAfterUpdates: model.TaskStatusCanceling}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 1,
+	})
+
+	result, err := service.SyncChannelWithProgress(ctx, channelID, "", sink)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if result.Messages != 1 {
+		t.Fatalf("messages = %d, want first batch only", result.Messages)
+	}
+	latest, err := messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if len(latest) != 1 || latest[0].TelegramMessageID != 3 {
+		t.Fatalf("stored messages = %+v, want only first batch", latest)
+	}
+}
+
+func TestHistorySyncTaskFloodWaitNotifiesSink(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	fake := &floodThenEmptyHistoryClient{}
+	sink := &recordingProgressSink{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  2,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+
+	before := time.Now().UTC()
+	_, err := service.SyncChannelWithProgress(ctx, channelID, "", sink)
+	if err != nil {
+		t.Fatalf("SyncChannelWithProgress returned error: %v", err)
+	}
+	if len(sink.floodWaits) != 1 {
+		t.Fatalf("flood waits = %+v, want one", sink.floodWaits)
+	}
+	if sink.floodWaits[0].nextRunAt.Before(before) || sink.floodWaits[0].message == "" {
+		t.Fatalf("flood wait = %+v, want future next run and message", sink.floodWaits[0])
+	}
+}
+
+type progressUpdate struct {
+	progress int64
+	total    int64
+	message  string
+}
+
+type floodWaitUpdate struct {
+	nextRunAt time.Time
+	message   string
+}
+
+type recordingProgressSink struct {
+	updates            []progressUpdate
+	statusAfterUpdates string
+	floodWaits         []floodWaitUpdate
+}
+
+var _ taskpkg.ProgressSink = (*recordingProgressSink)(nil)
+
+func (s *recordingProgressSink) Progress(ctx context.Context, progress int64, total int64, message string) error {
+	s.updates = append(s.updates, progressUpdate{progress: progress, total: total, message: message})
+	return nil
+}
+
+func (s *recordingProgressSink) Status(ctx context.Context) (string, error) {
+	if s.statusAfterUpdates != "" && len(s.updates) > 0 {
+		return s.statusAfterUpdates, nil
+	}
+	return model.TaskStatusRunning, nil
+}
+
+func (s *recordingProgressSink) FloodWait(ctx context.Context, nextRunAt time.Time, message string) error {
+	s.floodWaits = append(s.floodWaits, floodWaitUpdate{nextRunAt: nextRunAt, message: message})
+	return nil
 }
 
 func setupHistoryTestStore(t *testing.T) (*sql.DB, *repository.AccountRepository, *repository.ChannelRepository, *repository.MessageRepository, *repository.LinkRepository) {

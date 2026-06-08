@@ -14,6 +14,7 @@ import (
 
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	taskpkg "tg-search/internal/task"
 )
 
 const defaultWebAccessTimeout = 5 * time.Second
@@ -48,6 +49,10 @@ func NewWebAccessService(channels *repository.ChannelRepository, checker WebAcce
 }
 
 func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([]WebAccessResult, error) {
+	return s.CheckManyWithProgress(ctx, channelIDs, nil)
+}
+
+func (s *WebAccessService) CheckManyWithProgress(ctx context.Context, channelIDs []int64, progress taskpkg.ProgressSink) ([]WebAccessResult, error) {
 	loaded, err := s.loadUniqueChannels(ctx, channelIDs)
 	if err != nil {
 		return nil, err
@@ -55,6 +60,9 @@ func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([
 	accesses := s.checkWebAccess(ctx, loaded)
 	results := make([]WebAccessResult, 0, len(loaded))
 	for i, item := range loaded {
+		if err := checkProgressStatus(ctx, progress); err != nil {
+			return results, err
+		}
 		result := accesses[i]
 		checkedAt := s.now().UTC()
 		if err := s.channels.UpdateWebAccessResult(ctx, item.ID, result.access, checkedAt, result.errorText); err != nil {
@@ -66,6 +74,11 @@ func (s *WebAccessService) CheckMany(ctx context.Context, channelIDs []int64) ([
 			CheckedAt:      checkedAt,
 			WebAccessError: result.errorText,
 		})
+		if progress != nil {
+			if err := progress.Progress(ctx, int64(i+1), int64(len(loaded)), "web access result stored"); err != nil {
+				return results, err
+			}
+		}
 	}
 	return results, nil
 }

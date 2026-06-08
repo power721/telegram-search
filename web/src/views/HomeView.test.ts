@@ -27,7 +27,7 @@ vi.mock('@/api/client', () => ({
         media_over_quota: false
       })
     }
-    if (path === '/api/resources/grouped?limit=50') {
+    if (path === '/api/resources/grouped') {
       return Promise.resolve({
         grouped: { cloud_drive: 2, magnet: 1, ed2k: 0, http: 3, files: 4 }
       })

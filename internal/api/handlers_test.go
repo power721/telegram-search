@@ -149,6 +149,59 @@ func TestResourcesAPI(t *testing.T) {
 	}
 }
 
+func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+
+	messages := make([]model.Message, 0, 202)
+	for i := 0; i < 201; i++ {
+		messages = append(messages, model.Message{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: int64(i + 1),
+			Text: "http resource", RawJSON: "{}", Date: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	messages = append(messages, model.Message{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1000,
+		Text: "cloud resource", RawJSON: "{}", Date: now.Add(-time.Hour),
+	})
+	stored, err := deps.Messages.SaveBatch(ctx, messages)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for i := 0; i < 201; i++ {
+		if _, err := deps.Links.SaveBatch(ctx, stored[i].ID, []model.Link{{
+			Type: "url", Category: "http", URL: "https://example.com/" + strconv.Itoa(i),
+		}}); err != nil {
+			t.Fatalf("save http link %d: %v", i, err)
+		}
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[201].ID, []model.Link{{
+		Type: "aliyun", Category: "cloud_drive", URL: "https://www.alipan.com/s/older",
+	}}); err != nil {
+		t.Fatalf("save cloud link: %v", err)
+	}
+
+	router := NewRouter(deps)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources/grouped", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Grouped map[string]int `json:"grouped"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
+		t.Fatalf("grouped = %+v, want http=201 cloud_drive=1", body.Grouped)
+	}
+}
+
 func TestSetupAndAuthAPIs(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
@@ -1939,6 +1992,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
 	files := repository.NewFileRepository(conn)
+	resourceStats := repository.NewResourceStatsRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
@@ -1952,10 +2006,11 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	client := telegram.NopClient{}
 	watchFilter := messagefilter.New(watchRules)
 	searchService := search.NewService(messages, links, files, channels)
-	resourceService := resource.NewService(links, files)
+	resourceService := resource.NewService(links, files, resourceStats)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
-		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
+		Resources: resourceService,
+		Telegram:  client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
 	})
 	channelService := channel.NewService(channels, client, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)

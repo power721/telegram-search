@@ -1571,17 +1571,12 @@ func (h handlers) resourcesGrouped(c *gin.Context) {
 		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
 		return
 	}
-	query, ok := readResourceQuery(c)
-	if !ok {
-		return
-	}
-	query.Limit = 200
-	result, err := h.deps.Resources.List(c.Request.Context(), query)
+	grouped, err := h.deps.Resources.GlobalGrouped(c.Request.Context())
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"grouped": result.Grouped})
+	c.JSON(http.StatusOK, gin.H{"grouped": grouped})
 }
 
 func (h handlers) resource(c *gin.Context) {

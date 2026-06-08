@@ -14,6 +14,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	"tg-search/internal/retry"
 	"tg-search/internal/session"
 	taskpkg "tg-search/internal/task"
@@ -26,6 +27,7 @@ type Options struct {
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
 	Links            *repository.LinkRepository
+	Resources        *resource.Service
 	Cursors          *repository.SyncCursorRepository
 	Telegram         telegram.Client
 	Sessions         *session.Manager
@@ -42,6 +44,7 @@ type Service struct {
 	channels         *repository.ChannelRepository
 	messages         *repository.MessageRepository
 	links            *repository.LinkRepository
+	resources        *resource.Service
 	cursors          *repository.SyncCursorRepository
 	telegram         telegram.Client
 	sessions         *session.Manager
@@ -94,6 +97,7 @@ func NewService(opts Options) *Service {
 		channels:         opts.Channels,
 		messages:         opts.Messages,
 		links:            opts.Links,
+		resources:        opts.Resources,
 		cursors:          opts.Cursors,
 		telegram:         opts.Telegram,
 		sessions:         opts.Sessions,
@@ -210,7 +214,13 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 			}
 		}
 	})
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	if result.Messages > 0 {
+		return result, s.refreshResourceStats(ctx)
+	}
+	return result, nil
 }
 
 func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string, progress taskpkg.ProgressSink) (SyncResult, error) {
@@ -342,6 +352,13 @@ func checkTaskStatus(ctx context.Context, progress taskpkg.ProgressSink) error {
 		return ErrTaskPaused
 	}
 	return nil
+}
+
+func (s *Service) refreshResourceStats(ctx context.Context) error {
+	if s.resources == nil {
+		return nil
+	}
+	return s.resources.RefreshGlobalGrouped(ctx)
 }
 
 func (s *Service) tryAcquireChannel(channelID int64) bool {

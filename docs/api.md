@@ -591,7 +591,7 @@ Response:
 
 ### `GET /api/resources/grouped`
 
-Returns grouped resource counts.
+Returns cached global resource counts for dashboard summaries. Search result grouping is returned by `GET /api/resources`.
 
 ### `GET /api/resources/:id`
 

@@ -15,6 +15,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	"tg-search/internal/retry"
 	"tg-search/internal/session"
 	taskpkg "tg-search/internal/task"
@@ -153,6 +154,8 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	resourceStats := repository.NewResourceStatsRepository(conn)
+	resources := resource.NewService(links, nil, resourceStats)
 	status := repository.NewStatusRepository(conn)
 
 	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
@@ -188,6 +191,7 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 		Channels:         channels,
 		Messages:         messages,
 		Links:            links,
+		Resources:        resources,
 		Telegram:         fake,
 		Sessions:         session.NewManager(filepath.Join(t.TempDir(), "sessions")),
 		Extractor:        link.NewExtractor(),
@@ -211,6 +215,13 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	}
 	if counts.Links != 2 {
 		t.Fatalf("stored link count = %d, want 2", counts.Links)
+	}
+	grouped, found, err := resourceStats.GetGrouped(ctx)
+	if err != nil {
+		t.Fatalf("get resource stats: %v", err)
+	}
+	if !found || grouped["cloud_drive"] != 1 || grouped["magnet"] != 1 {
+		t.Fatalf("resource stats = %+v found=%v, want cloud_drive=1 magnet=1", grouped, found)
 	}
 
 	linkResults, err := links.Search(ctx, repository.LinkSearchParams{Type: "aliyun", Limit: 10})

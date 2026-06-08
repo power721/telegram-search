@@ -268,6 +268,17 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 2,
+		name:    "resource_group_count_cache",
+		sql: `
+CREATE TABLE IF NOT EXISTS resource_group_counts (
+  category TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

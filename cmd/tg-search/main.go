@@ -76,6 +76,7 @@ func run(configPath string) error {
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
 	files := repository.NewFileRepository(conn)
+	resourceStats := repository.NewResourceStatsRepository(conn)
 	cursors := repository.NewSyncCursorRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
@@ -94,11 +95,13 @@ func run(configPath string) error {
 	tgClient := telegram.NewGotdClient(cfg.Telegram.APIID, cfg.Telegram.APIHash, logs.Telegram)
 	retryPolicy := retry.DefaultPolicy()
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
+	resourceService := resource.NewService(links, files, resourceStats)
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
 		DB:        conn,
 		Channels:  channels,
 		Messages:  messages,
 		Links:     links,
+		Resources: resourceService,
 		Cursors:   cursors,
 		Tasks:     taskService,
 		Extractor: link.NewExtractor(),
@@ -113,7 +116,6 @@ func run(configPath string) error {
 		Logger:      logs.Telegram,
 	})
 	searchService := search.NewService(messages, links, files, channels)
-	resourceService := resource.NewService(links, files)
 	remoteSearchService := search.NewRemoteService(search.RemoteOptions{
 		Accounts: accounts,
 		Channels: channels,
@@ -124,7 +126,8 @@ func run(configPath string) error {
 	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
-		Telegram: tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
+		Resources: resourceService,
+		Telegram:  tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
 		Filter:           watchFilter,
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 		Workers:          cfg.Sync.Workers,

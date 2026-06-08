@@ -161,6 +161,7 @@ func run(configPath string) error {
 		logs.App.Error("account manager start failed", zap.Error(err))
 		return err
 	}
+	historyService.StartListenBacklog(ctx)
 	cleanupScheduler := scheduler.New(scheduler.Options{
 		Interval: time.Hour,
 		Jobs: []scheduler.Job{
@@ -216,6 +217,10 @@ func run(configPath string) error {
 	logs.App.Info("api server shutdown completed")
 	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
 		logs.App.Error("cleanup scheduler stop failed", zap.Error(err))
+		return err
+	}
+	if err := historyService.StopListenBacklog(shutdownCtx); err != nil {
+		logs.App.Error("listen backlog sync stop failed", zap.Error(err))
 		return err
 	}
 	if err := syncQueue.Stop(shutdownCtx); err != nil {

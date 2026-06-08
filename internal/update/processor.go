@@ -74,7 +74,13 @@ func (p *Processor) Process(ctx context.Context, event Event) error {
 		if err := p.enqueueGapRecovery(ctx, channel, event); err != nil {
 			return err
 		}
-		return p.storeMessage(ctx, channel, event)
+		if err := p.storeMessage(ctx, channel, event); err != nil {
+			return err
+		}
+		if event.Type == EventNewMessage {
+			return p.advanceHistoryCursor(ctx, channel, event)
+		}
+		return nil
 	case EventDeleteMessage:
 		return p.deleteMessage(ctx, channel, event)
 	default:
@@ -180,6 +186,35 @@ func (p *Processor) refreshResourceStats(ctx context.Context) error {
 		return nil
 	}
 	return p.resources.RefreshGlobalGrouped(ctx)
+}
+
+func (p *Processor) advanceHistoryCursor(ctx context.Context, channel model.Channel, event Event) error {
+	if p.cursors == nil || event.MessageID <= 0 {
+		return nil
+	}
+	cursor, err := p.cursors.Find(ctx, event.AccountID, channel.ID, "history")
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("load history cursor for update advance: %w", err)
+	}
+	if err == nil {
+		if cursor.LastMessageID >= event.MessageID {
+			return nil
+		}
+		if event.MessageID > cursor.LastMessageID+1 {
+			return nil
+		}
+	}
+	date := event.Date
+	if date.IsZero() {
+		date = event.EditDateOrNow()
+	}
+	return p.cursors.Save(ctx, model.SyncCursor{
+		AccountID:     event.AccountID,
+		ChannelID:     channel.ID,
+		CursorType:    "history",
+		LastMessageID: event.MessageID,
+		Date:          date,
+	})
 }
 
 func (e Event) EditDateOrNow() time.Time {

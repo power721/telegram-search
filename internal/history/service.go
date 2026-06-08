@@ -61,6 +61,8 @@ type Service struct {
 	logger           *zap.Logger
 	mu               sync.Mutex
 	runningChannels  map[int64]struct{}
+	backlogCancel    context.CancelFunc
+	backlogWG        sync.WaitGroup
 }
 
 type SyncResult struct {
@@ -243,6 +245,284 @@ func (s *Service) SyncManyWithMaxMessages(ctx context.Context, channelIDs []int6
 		zap.Duration("duration", time.Since(started)),
 	)
 	return result
+}
+
+func (s *Service) StartListenBacklog(ctx context.Context) {
+	s.mu.Lock()
+	if s.backlogCancel != nil {
+		s.mu.Unlock()
+		s.logger.Info("listen backlog sync already running")
+		return
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	s.backlogCancel = cancel
+	s.backlogWG.Add(1)
+	s.mu.Unlock()
+
+	go func() {
+		defer s.backlogWG.Done()
+		started := time.Now()
+		result := s.SyncListenBacklog(runCtx)
+		s.logger.Info("listen backlog sync completed",
+			zap.Int("queued", result.Queued),
+			zap.Int("skipped", result.Skipped),
+			zap.Int("failures", len(result.Failures)),
+			zap.Duration("duration", time.Since(started)),
+		)
+		s.mu.Lock()
+		s.backlogCancel = nil
+		s.mu.Unlock()
+	}()
+	s.logger.Info("listen backlog sync started")
+}
+
+func (s *Service) StopListenBacklog(ctx context.Context) error {
+	s.mu.Lock()
+	cancel := s.backlogCancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	return waitForHistoryWorkers(ctx, &s.backlogWG)
+}
+
+func (s *Service) SyncListenBacklog(ctx context.Context) SyncManyResult {
+	result := SyncManyResult{
+		Results:  map[int64]SyncResult{},
+		Failures: map[int64]string{},
+	}
+	if s.channels == nil {
+		return result
+	}
+	channels, err := s.channels.FindAll(ctx)
+	if err != nil {
+		result.Failures[0] = err.Error()
+		return result
+	}
+	channelIDs := make([]int64, 0, len(channels))
+	listenChannels := make(map[int64]model.Channel, len(channels))
+	for _, channel := range channels {
+		if !channel.ListenEnabled {
+			result.Skipped++
+			continue
+		}
+		channelIDs = append(channelIDs, channel.ID)
+		listenChannels[channel.ID] = channel
+	}
+	if len(channelIDs) == 0 {
+		return result
+	}
+
+	workers := s.workers
+	if workers <= 0 {
+		workers = 1
+	}
+	if workers > len(channelIDs) {
+		workers = len(channelIDs)
+	}
+
+	jobs := make(chan int64)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for channelID := range jobs {
+				channel := listenChannels[channelID]
+				if !s.tryAcquireChannel(channelID) {
+					mu.Lock()
+					result.Skipped++
+					mu.Unlock()
+					continue
+				}
+				syncResult, err := s.syncListenBacklogChannel(ctx, channel)
+				s.releaseChannel(channelID)
+				mu.Lock()
+				if err != nil {
+					result.Failures[channelID] = err.Error()
+				} else if syncResult.Messages == 0 {
+					result.Skipped++
+				} else {
+					result.Queued++
+					result.Results[channelID] = syncResult
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+	for _, channelID := range channelIDs {
+		select {
+		case <-ctx.Done():
+			mu.Lock()
+			result.Failures[channelID] = ctx.Err().Error()
+			mu.Unlock()
+		case jobs <- channelID:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	return result
+}
+
+func (s *Service) syncListenBacklogChannel(ctx context.Context, channel model.Channel) (SyncResult, error) {
+	var result SyncResult
+	err := s.retryPolicy.Run(ctx, func() error {
+		next, err := s.syncListenBacklogChannelOnce(ctx, channel)
+		result = next
+		return err
+	}, func(ctx context.Context, attempt retry.Attempt) {
+		s.logger.Warn("listen backlog sync retry scheduled",
+			zap.Int64("channel_id", channel.ID),
+			zap.Int("attempt", attempt.Number),
+			zap.Duration("delay", attempt.Delay),
+			zap.String("classification", string(attempt.Classification.Kind)),
+			zap.Error(attempt.Classification.Err),
+		)
+		if attempt.Classification.Kind == retry.KindFloodWait {
+			s.markChannelAccountStatus(ctx, channel.ID, model.AccountStatusFloodWait)
+		}
+	})
+	if err != nil {
+		return result, err
+	}
+	if result.Messages > 0 {
+		if err := s.refreshResourceStats(ctx); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) syncListenBacklogChannelOnce(ctx context.Context, channel model.Channel) (SyncResult, error) {
+	var result SyncResult
+	lowerBound, err := s.listenBacklogLowerBound(ctx, channel)
+	if err != nil {
+		return result, err
+	}
+	if lowerBound <= 0 {
+		s.logger.Info("listen backlog sync skipped because channel has no history cursor", zap.Int64("channel_id", channel.ID))
+		return result, nil
+	}
+	account, err := s.accounts.FindByID(ctx, channel.AccountID)
+	if err != nil {
+		return result, fmt.Errorf("load account: %w", err)
+	}
+	sessionPath := ""
+	if s.sessions != nil {
+		sessionPath = s.sessions.PathForAccount(account.ID)
+	}
+	accountSession := telegram.AccountSession{
+		AccountID:   account.ID,
+		Phone:       account.Phone,
+		SessionPath: sessionPath,
+	}
+	ref := telegram.ChannelRef{
+		TelegramChannelID: channel.TelegramChannelID,
+		AccessHash:        channel.AccessHash,
+		Type:              channel.Type,
+	}
+
+	firstBatch, err := s.telegram.FetchHistory(ctx, accountSession, ref, 0, 1)
+	if err != nil {
+		return result, fmt.Errorf("fetch latest history: %w", err)
+	}
+	latestID := maxTelegramMessageID(firstBatch)
+	if latestID <= lowerBound {
+		return result, nil
+	}
+
+	maxSeen := latestID
+	offsetID := int64(0)
+	batch := firstBatch
+	for {
+		if len(batch) == 0 {
+			break
+		}
+		minID := int64(0)
+		reachedLowerBound := false
+		modelMessages := make([]model.Message, 0, len(batch))
+		for _, item := range batch {
+			if item.TelegramMessageID <= 0 {
+				continue
+			}
+			if minID == 0 || item.TelegramMessageID < minID {
+				minID = item.TelegramMessageID
+			}
+			if item.TelegramMessageID > maxSeen {
+				maxSeen = item.TelegramMessageID
+			}
+			if item.TelegramMessageID <= lowerBound {
+				reachedLowerBound = true
+				continue
+			}
+			modelMessages = append(modelMessages, model.Message{
+				AccountID:         account.ID,
+				ChannelID:         channel.ID,
+				TelegramMessageID: item.TelegramMessageID,
+				SenderID:          item.SenderID,
+				Text:              item.Text,
+				RawJSON:           item.RawJSON,
+				Date:              item.Date,
+				EditDate:          item.EditDate,
+				Files:             item.Files,
+			})
+		}
+		if len(modelMessages) > 0 {
+			links, err := s.storeBatch(ctx, account.ID, channel.ID, maxSeen, time.Now().UTC(), modelMessages)
+			if err != nil {
+				return result, err
+			}
+			result.Messages += len(modelMessages)
+			result.Links += links
+		}
+		if reachedLowerBound || minID == 0 || minID == offsetID {
+			break
+		}
+		offsetID = minID
+		batch, err = s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
+		if err != nil {
+			return result, fmt.Errorf("fetch backlog history: %w", err)
+		}
+	}
+	return result, nil
+}
+
+func (s *Service) listenBacklogLowerBound(ctx context.Context, channel model.Channel) (int64, error) {
+	if s.cursors != nil {
+		cursor, err := s.cursors.Find(ctx, channel.AccountID, channel.ID, "history")
+		if err == nil {
+			return cursor.LastMessageID, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("load history cursor: %w", err)
+		}
+	}
+	return channel.LastMessageID, nil
+}
+
+func maxTelegramMessageID(messages []telegram.Message) int64 {
+	var maxID int64
+	for _, msg := range messages {
+		if msg.TelegramMessageID > maxID {
+			maxID = msg.TelegramMessageID
+		}
+	}
+	return maxID
+}
+
+func waitForHistoryWorkers(ctx context.Context, wg *sync.WaitGroup) error {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string, maxMessages int, progress taskpkg.ProgressSink) (SyncResult, error) {

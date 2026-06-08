@@ -338,6 +338,88 @@ func TestSyncChannelSkipsWhenHistorySyncDisabled(t *testing.T) {
 	}
 }
 
+func TestSyncListenBacklogSyncsListenChannelToHistoryCursor(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:          accountID,
+		TelegramChannelID:  200,
+		AccessHash:         300,
+		Title:              "Listen",
+		Type:               model.ChannelTypeChannel,
+		HistorySyncEnabled: false,
+		ListenEnabled:      true,
+	})
+	if err != nil {
+		t.Fatalf("save listen channel: %v", err)
+	}
+	disabledID, err := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 201,
+		AccessHash:        301,
+		Title:             "Disabled",
+		Type:              model.ChannelTypeChannel,
+		ListenEnabled:     false,
+	})
+	if err != nil {
+		t.Fatalf("save disabled channel: %v", err)
+	}
+	cursors := repository.NewSyncCursorRepository(conn)
+	if err := cursors.Save(ctx, model.SyncCursor{
+		AccountID: accountID, ChannelID: channelID, CursorType: "history", LastMessageID: 10, Date: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("save cursor: %v", err)
+	}
+	if err := cursors.Save(ctx, model.SyncCursor{
+		AccountID: accountID, ChannelID: disabledID, CursorType: "history", LastMessageID: 10, Date: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("save disabled cursor: %v", err)
+	}
+
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0:  {{TelegramMessageID: 15, Text: "latest https://pan.quark.cn/s/15", RawJSON: "{}", Date: now}},
+		15: {{TelegramMessageID: 14, Text: "m14", RawJSON: "{}", Date: now}, {TelegramMessageID: 13, Text: "m13", RawJSON: "{}", Date: now}},
+		13: {{TelegramMessageID: 12, Text: "m12", RawJSON: "{}", Date: now}, {TelegramMessageID: 11, Text: "m11", RawJSON: "{}", Date: now}, {TelegramMessageID: 10, Text: "old", RawJSON: "{}", Date: now}},
+	}}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 3, Workers: 1,
+	})
+
+	result := service.SyncListenBacklog(ctx)
+	if result.Queued != 1 || result.Skipped != 1 || len(result.Failures) != 0 {
+		t.Fatalf("result = %+v, want queued=1 skipped=1 failures=0", result)
+	}
+	if result.Results[channelID].Messages != 5 {
+		t.Fatalf("messages = %d, want 5", result.Results[channelID].Messages)
+	}
+	latest, err := messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if len(latest) != 5 {
+		t.Fatalf("stored messages = %d, want 5", len(latest))
+	}
+	for _, msg := range latest {
+		if msg.TelegramMessageID <= 10 {
+			t.Fatalf("stored message id = %d, want only ids > 10", msg.TelegramMessageID)
+		}
+	}
+	cursor, err := cursors.Find(ctx, accountID, channelID, "history")
+	if err != nil {
+		t.Fatalf("find cursor: %v", err)
+	}
+	if cursor.LastMessageID != 15 {
+		t.Fatalf("cursor last message id = %d, want 15", cursor.LastMessageID)
+	}
+}
+
 type fakeTelegramClient struct {
 	telegram.NopClient
 	batches map[int64][]telegram.Message

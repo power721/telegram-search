@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiDelete, apiGet, apiPost, clearAPIKey, setAPIKey } from './client'
+import { ApiError, apiDelete, apiGet, apiPost, apiPut, clearAPIKey, setAPIKey } from './client'
 
 describe('api client', () => {
   const originalFetch = globalThis.fetch
@@ -7,10 +7,12 @@ describe('api client', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     clearAPIKey()
+    localStorage.clear()
   })
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    localStorage.clear()
   })
 
   it('returns JSON for successful GET requests', async () => {
@@ -67,6 +69,44 @@ describe('api client', () => {
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/status', {
       credentials: 'include',
       headers: { Accept: 'application/json', 'X-API-Key': 'secret-key' }
+    })
+  })
+
+  it('restores X-API-Key after the client module is reloaded', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ service: 'ok' })
+    } as Response)
+
+    setAPIKey('secret-key')
+    vi.resetModules()
+    const { apiGet: reloadedApiGet } = await import('./client')
+    await reloadedApiGet('/api/status')
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/status', {
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'X-API-Key': 'secret-key' }
+    })
+  })
+
+  it('sends X-API-Key for PUT requests when an api key is loaded', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ updated: true })
+    } as Response)
+
+    setAPIKey('secret-key')
+    await apiPut('/api/listen-rules', { message_types: ['link'] })
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/listen-rules', {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-API-Key': 'secret-key'
+      },
+      body: JSON.stringify({ message_types: ['link'] })
     })
   })
 

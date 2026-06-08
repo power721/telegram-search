@@ -117,5 +117,6 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.POST("/maintenance/sqlite", h.maintenanceSQLite)
 	api.POST("/maintenance/backup", h.maintenanceBackup)
 
+	router.NoRoute(h.frontend)
 	return router
 }

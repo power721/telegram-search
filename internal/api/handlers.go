@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"mime"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +28,7 @@ import (
 	searchsvc "tg-search/internal/search"
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
+	webui "tg-search/internal/web"
 )
 
 type handlers struct {
@@ -40,6 +44,47 @@ func (h handlers) setupStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) frontend(c *gin.Context) {
+	if c.Request.Method != http.MethodGet || strings.HasPrefix(c.Request.URL.Path, "/api/") {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	dist, err := webui.Dist()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	name := strings.TrimPrefix(path.Clean(c.Request.URL.Path), "/")
+	if name == "." || name == "" {
+		name = "index.html"
+	}
+	data, err := readFrontendFile(dist, name)
+	if err != nil {
+		data, err = readFrontendFile(dist, "index.html")
+		name = "index.html"
+	}
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	contentType := mime.TypeByExtension(path.Ext(name))
+	if contentType == "" || name == "index.html" {
+		contentType = "text/html; charset=utf-8"
+	}
+	c.Data(http.StatusOK, contentType, data)
+}
+
+func readFrontendFile(dist fs.FS, name string) ([]byte, error) {
+	info, err := fs.Stat(dist, name)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fs.ErrInvalid
+	}
+	return fs.ReadFile(dist, name)
 }
 
 func (h handlers) setupAdmin(c *gin.Context) {

@@ -42,6 +42,15 @@ docker compose logs -f tg-search
 
 The container stores database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`, mounted as `./data` in the example Compose file.
 
+Back up and restore local runtime data:
+
+```bash
+DATA_DIR=./data scripts/backup.sh
+docker compose stop tg-search
+DATA_DIR=./data scripts/restore.sh ./data/backup/tg-search-YYYYMMDDTHHMMSSZ.db
+docker compose up -d
+```
+
 Start the web admin shell:
 
 ```bash

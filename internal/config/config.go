@@ -64,6 +64,10 @@ func Address(cfg Config) string {
 	return fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 }
 
+func DatabasePath(cfg Config) string {
+	return filepath.Join(cfg.Storage.Path, "tg-search.db")
+}
+
 func EnsureRuntimeDirs(cfg Config) error {
 	if cfg.Storage.Path == "" {
 		return errors.New("storage.path is required")

@@ -60,7 +60,7 @@ func run(configPath string) error {
 	defer logs.Sync()
 	logs.App.Info("tg-search starting", zap.String("address", config.Address(cfg)))
 
-	conn, err := db.Open(filepath.Join(cfg.Storage.Path, "telegram.db"))
+	conn, err := db.Open(config.DatabasePath(cfg))
 	if err != nil {
 		return err
 	}

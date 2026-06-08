@@ -16,11 +16,15 @@
 - `/data/tg-search/logs` exists and has enough disk space.
 - `/data/tg-search/backup` is included in operational backup retention.
 - `/data/tg-search/index` and `/data/tg-search/thumbnails` exist.
+- `scripts/backup.sh` can write a SQLite backup into `/data/tg-search/backup`.
+- Restore drills stop the service before replacing `/data/tg-search/tg-search.db`.
 
 ## Runtime
 
 - `tg-search` starts with `go run ./cmd/tg-search -config config.yaml` or the packaged binary.
-- `GET /api/status` returns `{"service":"ok"}`.
+- `GET /api/health` returns process health.
+- `GET /api/ready` returns readiness after checking SQLite and runtime directory write access.
+- `GET /api/status` returns `{"service":"ok"}` with current counts.
 - `GET /api/storage/usage` reports DB, index, media cache, total bytes, and quota flags.
 - `GET /api/tasks` returns a JSON task list.
 - `GET /api/events` responds with `Content-Type: text/event-stream`.

@@ -25,7 +25,7 @@ func (s *UsageService) Config() config.Config {
 
 func (s *UsageService) Usage() (model.StorageUsage, error) {
 	root := s.cfg.Storage.Path
-	dbBytes, err := fileSize(filepath.Join(root, "tg-search.db"))
+	dbBytes, err := fileSize(config.DatabasePath(s.cfg))
 	if err != nil {
 		return model.StorageUsage{}, err
 	}

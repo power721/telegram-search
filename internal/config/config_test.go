@@ -136,3 +136,12 @@ func TestRuntimeDirectoryValidationDetectsUnwritableDirectory(t *testing.T) {
 		t.Fatalf("ValidateRuntimeDirs returned %v, want not writable error", err)
 	}
 }
+
+func TestDatabasePathUsesProductDatabaseName(t *testing.T) {
+	cfg := Config{}
+	cfg.Storage.Path = "/data/tg-search"
+
+	if got := DatabasePath(cfg); got != "/data/tg-search/tg-search.db" {
+		t.Fatalf("DatabasePath = %q, want /data/tg-search/tg-search.db", got)
+	}
+}

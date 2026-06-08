@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet, apiPatch, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import ChannelsView from './ChannelsView.vue'
 
 vi.mock('@/api/client', () => ({
@@ -71,6 +71,7 @@ vi.mock('@/api/client', () => ({
       }
     ]
   }),
+  apiDelete: vi.fn().mockResolvedValue({ deleted: true }),
   apiPatch: vi.fn().mockResolvedValue({
     id: 1,
     title: 'Movies',
@@ -84,7 +85,56 @@ vi.mock('@/api/client', () => ({
     listen_enabled: true,
     remote_search_allowed: true
   }),
-  apiPost: vi.fn().mockResolvedValue({ job_id: 'job-1', status: 'queued' })
+  apiPost: vi.fn((path: string) => {
+    if (path === '/api/channels/1/analyze') {
+      return Promise.resolve({
+        channel: { id: 1, title: 'Movies' },
+        control: {
+          history_sync_enabled: false,
+          sync_profile: 'Normal',
+          listen_enabled: false,
+          remote_search_allowed: true
+        },
+        indexed_counts: { messages: 0, links: 0, files: 0 }
+      })
+    }
+    if (path === '/api/channels/2/analyze') {
+      return Promise.resolve({
+        channel: { id: 2, title: 'Anime' },
+        control: {
+          history_sync_enabled: true,
+          sync_profile: 'Normal',
+          listen_enabled: true,
+          remote_search_allowed: true
+        },
+        watch_rule: {
+          id: 9,
+          channel_id: 2,
+          enabled: true,
+          includes: ['动漫'],
+          excludes: ['预告'],
+          message_types: ['link'],
+          link_types: ['cloud_drive']
+        },
+        indexed_counts: { messages: 0, links: 0, files: 0 }
+      })
+    }
+    if (path === '/api/watch-rules') {
+      return Promise.resolve({ id: 10, channel_id: 1, enabled: true })
+    }
+    return Promise.resolve({ job_id: 'job-1', status: 'queued' })
+  }),
+  apiPut: vi.fn((path: string) => {
+    if (path === '/api/listen-rules') {
+      return Promise.resolve({
+        includes: ['全局'],
+        excludes: [],
+        message_types: ['link', 'text'],
+        link_types: ['cloud_drive', 'magnet']
+      })
+    }
+    return Promise.resolve({ id: 9, channel_id: 2, enabled: true })
+  })
 }))
 
 describe('ChannelsView', () => {
@@ -128,6 +178,14 @@ describe('ChannelsView', () => {
             props: ['value'],
             template: '<input v-bind="$attrs" :value="value" @input="$emit(\'update:value\', $event.target.value)" />'
           },
+          'n-checkbox-group': { template: '<div><slot /></div>' },
+          'n-checkbox': {
+            props: ['value'],
+            template:
+              '<label><input type="checkbox" :value="value" @change="$emit(\'update:checked\', $event.target.checked)" /><slot /></label>'
+          },
+          'n-form': { template: '<form><slot /></form>' },
+          'n-form-item': { props: ['label'], template: '<label>{{ label }}<slot /></label>' },
           'n-select': {
             props: ['value', 'options'],
             template:
@@ -178,6 +236,8 @@ describe('ChannelsView', () => {
     expect(webAccessLink?.attributes('target')).toBe('_blank')
     expect(wrapper.text()).toContain('同步')
     expect(wrapper.text()).toContain('监听')
+    expect(wrapper.text()).toContain('规则')
+    expect(wrapper.text()).toContain('全局规则')
     expect(wrapper.find('.channel-search').exists()).toBe(true)
     expect(wrapper.find('.type-filter').exists()).toBe(true)
     expect(wrapper.find('.sync-state-filter').exists()).toBe(true)
@@ -278,7 +338,7 @@ describe('ChannelsView', () => {
     expect(moviesButtons.find((button) => button.text() === '监听')?.attributes('data-loading')).toBe('false')
   })
 
-  it('syncs history and enables listening from row actions', async () => {
+  it('syncs history and toggles listening from row actions', async () => {
     const wrapper = mountChannelsView()
     await flushPromises()
 
@@ -293,6 +353,10 @@ describe('ChannelsView', () => {
       .findAll('button')
       .find((button) => button.text() === '监听')
       ?.trigger('click')
+    await channelRow(wrapper, 'Anime')
+      .findAll('button')
+      .find((button) => button.text() === '取消监听')
+      ?.trigger('click')
 
     expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1], max_messages: 250 })
     expect(apiPatch).toHaveBeenCalledWith('/api/channels/1/control', {
@@ -301,5 +365,130 @@ describe('ChannelsView', () => {
       listen_enabled: true,
       remote_search_allowed: true
     })
+    expect(apiPatch).toHaveBeenCalledWith('/api/channels/2/control', {
+      history_sync_enabled: true,
+      sync_profile: 'Normal',
+      listen_enabled: false,
+      remote_search_allowed: true
+    })
+  })
+
+  it('edits global listen rules from the channel toolbar', async () => {
+    vi.mocked(apiGet).mockImplementation((path: string) => {
+      if (path === '/api/listen-rules') {
+        return Promise.resolve({
+          includes: ['电影'],
+          excludes: ['预告'],
+          message_types: ['link'],
+          link_types: ['cloud_drive']
+        })
+      }
+      return Promise.resolve({
+        items: [
+          {
+            id: 1,
+            title: 'Movies',
+            username: 'movies',
+            type: 'channel',
+            sync_state: 'metadata_only',
+            listen_state: 'disabled',
+            sync_profile: 'Normal',
+            indexed_message_count: 42,
+            member_count: 1200,
+            description: 'Public movie releases',
+            web_access: true,
+            history_sync_enabled: false,
+            listen_enabled: false,
+            remote_search_allowed: true
+          },
+          {
+            id: 2,
+            title: 'Anime',
+            username: 'animehub',
+            type: 'group',
+            sync_state: 'synced',
+            listen_state: 'enabled',
+            sync_profile: 'Normal',
+            indexed_message_count: 8,
+            member_count: 200,
+            description: 'Private anime discussion',
+            web_access: false,
+            history_sync_enabled: true,
+            listen_enabled: true,
+            remote_search_allowed: true
+          }
+        ]
+      })
+    })
+    const wrapper = mountChannelsView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '全局规则')?.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.listen-rule-modal').text()).toContain('全局监听规则')
+    expect(wrapper.find('.rule-includes').element).toHaveProperty('value', '电影')
+    await wrapper.find('.rule-includes').setValue('全局, 资源')
+    await wrapper.find('.rule-excludes').setValue('广告')
+    await wrapper.findAll('button').find((button) => button.text() === '保存规则')?.trigger('click')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/listen-rules')
+    expect(apiPut).toHaveBeenCalledWith('/api/listen-rules', {
+      includes: ['全局', '资源'],
+      excludes: ['广告'],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
+  })
+
+  it('creates updates and removes channel listen rules', async () => {
+    const wrapper = mountChannelsView()
+    await flushPromises()
+
+    await channelRow(wrapper, 'Movies')
+      .findAll('button')
+      .find((button) => button.text() === '规则')
+      ?.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.listen-rule-modal').text()).toContain('Movies')
+    await wrapper.find('.rule-includes').setValue('电影')
+    await wrapper.find('.rule-excludes').setValue('预告')
+    await wrapper.findAll('button').find((button) => button.text() === '保存规则')?.trigger('click')
+    await flushPromises()
+    expect(apiPost).toHaveBeenCalledWith('/api/watch-rules', {
+      channel_id: 1,
+      enabled: true,
+      includes: ['电影'],
+      excludes: ['预告'],
+      message_types: ['link', 'text'],
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+    })
+
+    await channelRow(wrapper, 'Anime')
+      .findAll('button')
+      .find((button) => button.text() === '规则')
+      ?.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.rule-includes').element).toHaveProperty('value', '动漫')
+    await wrapper.find('.rule-includes').setValue('动画')
+    await wrapper.findAll('button').find((button) => button.text() === '保存规则')?.trigger('click')
+    await flushPromises()
+    expect(apiPut).toHaveBeenCalledWith('/api/watch-rules/9', {
+      channel_id: 2,
+      enabled: true,
+      includes: ['动画'],
+      excludes: ['预告'],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
+
+    await channelRow(wrapper, 'Anime')
+      .findAll('button')
+      .find((button) => button.text() === '规则')
+      ?.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((button) => button.text() === '使用全局规则')?.trigger('click')
+    await flushPromises()
+    expect(apiDelete).toHaveBeenCalledWith('/api/watch-rules/9')
   })
 })

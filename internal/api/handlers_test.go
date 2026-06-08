@@ -643,6 +643,12 @@ func createAdminSession(t *testing.T, router *gin.Engine) *http.Cookie {
 
 func withAPIKey(t *testing.T, deps Dependencies, req *http.Request) *http.Request {
 	t.Helper()
+	req.Header.Set("X-API-Key", testAPIKey(t, deps))
+	return req
+}
+
+func testAPIKey(t *testing.T, deps Dependencies) string {
+	t.Helper()
 	service := deps.APIKeyService
 	if service == nil {
 		service = apikey.NewService(deps.APIKeys, deps.Settings)
@@ -651,8 +657,7 @@ func withAPIKey(t *testing.T, deps Dependencies, req *http.Request) *http.Reques
 	if err != nil {
 		t.Fatalf("ensure test api key: %v", err)
 	}
-	req.Header.Set("X-API-Key", resp.Key)
-	return req
+	return resp.Key
 }
 
 func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
@@ -938,8 +943,7 @@ func TestEventsAPI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
-	withAPIKey(t, deps, req)
+	req := httptest.NewRequest(http.MethodGet, "/api/events?api_key="+url.QueryEscape(testAPIKey(t, deps)), nil).WithContext(ctx)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -958,6 +962,55 @@ func assertTelegramAPISettingsResponse(t *testing.T, data []byte, configured boo
 	}
 	if body.Configured != configured || body.AppID != appID || body.AppHashSet != configured {
 		t.Fatalf("telegram api settings = %+v, want configured=%v app_id=%d", body, configured, appID)
+	}
+}
+
+func TestGlobalListenRulesAPI(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["link","text"],"link_types":["cloud_drive","magnet"]}`))
+	withAPIKey(t, deps, req)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var updated model.ListenRules
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode update listen rules: %v", err)
+	}
+	if !sameStringSlices(updated.Includes, []string{"庆余年"}) ||
+		!sameStringSlices(updated.Excludes, []string{"预告"}) ||
+		!sameStringSlices(updated.MessageTypes, []string{"link", "text"}) ||
+		!sameStringSlices(updated.LinkTypes, []string{"cloud_drive", "magnet"}) {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/listen-rules", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var got model.ListenRules
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode get listen rules: %v", err)
+	}
+	if !sameStringSlices(got.Includes, []string{"庆余年"}) ||
+		!sameStringSlices(got.MessageTypes, []string{"link", "text"}) {
+		t.Fatalf("got = %+v", got)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"message_types":[],"link_types":["cloud_drive"]}`))
+	withAPIKey(t, deps, req)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid update status = %d body=%s, want 400", w.Code, w.Body.String())
 	}
 }
 

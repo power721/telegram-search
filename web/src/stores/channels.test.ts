@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet, apiPatch, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import { useChannelsStore } from './channels'
 
 vi.mock('@/api/client', () => ({
@@ -24,6 +24,7 @@ vi.mock('@/api/client', () => ({
     }
     return Promise.resolve({ id: 1, sync_profile: 'Deep' })
   }),
+  apiDelete: vi.fn(() => Promise.resolve({ deleted: true })),
   apiPost: vi.fn((path: string) => {
     if (path.endsWith('/analyze')) {
       return Promise.resolve({ channel: { id: 1 }, indexed_counts: { messages: 0, links: 0, files: 0 } })
@@ -32,7 +33,8 @@ vi.mock('@/api/client', () => ({
       return Promise.resolve({ id: 1, status: 'queued', source: 'remote' })
     }
     return Promise.resolve({ items: [] })
-  })
+  }),
+  apiPut: vi.fn(() => Promise.resolve({ id: 1, enabled: true }))
 }))
 
 describe('channels store', () => {
@@ -59,6 +61,22 @@ describe('channels store', () => {
     await store.checkWebAccess([1])
     await store.syncChannels([1], 250)
     await store.analyzeChannel(1)
+    await store.updateWatchRule(7, {
+      channel_id: 1,
+      enabled: true,
+      includes: ['movie'],
+      excludes: [],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
+    await store.deleteWatchRule(7)
+    await store.loadGlobalListenRules()
+    await store.updateGlobalListenRules({
+      includes: ['movie'],
+      excludes: [],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
     await store.createRemoteSearch(1, 'ubuntu iso')
 
     expect(apiGet).toHaveBeenCalledWith('/api/channels?account_id=1')
@@ -80,6 +98,22 @@ describe('channels store', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1] })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1], max_messages: 250 })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/1/analyze')
+    expect(apiPut).toHaveBeenCalledWith('/api/watch-rules/7', {
+      channel_id: 1,
+      enabled: true,
+      includes: ['movie'],
+      excludes: [],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
+    expect(apiDelete).toHaveBeenCalledWith('/api/watch-rules/7')
+    expect(apiGet).toHaveBeenCalledWith('/api/listen-rules')
+    expect(apiPut).toHaveBeenCalledWith('/api/listen-rules', {
+      includes: ['movie'],
+      excludes: [],
+      message_types: ['link'],
+      link_types: ['cloud_drive']
+    })
     expect(apiPost).toHaveBeenCalledWith('/api/search/remote', { channel_id: 1, query: 'ubuntu iso' })
   })
 })

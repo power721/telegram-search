@@ -87,6 +87,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	business := api.Group("")
 	business.Use(h.requireAPIKey())
+	business.GET("/listen-rules", h.getListenRules)
+	business.PUT("/listen-rules", h.updateListenRules)
 	business.GET("/storage/usage", h.storageUsage)
 	business.GET("/status", h.status)
 	business.GET("/tasks", h.tasks)

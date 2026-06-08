@@ -40,6 +40,19 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return readResponse<T>(response)
 }
 
+export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+  return readResponse<T>(response)
+}
+
 export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'PATCH',

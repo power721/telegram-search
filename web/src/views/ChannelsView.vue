@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import type { TelegramChannel } from '@/api/types'
+import type { ListenRulesPayload, TelegramChannel, WatchRule } from '@/api/types'
 import WebAccessBadge from '@/components/channels/WebAccessBadge.vue'
 import { useChannelsStore } from '@/stores/channels'
 
 const channels = useChannelsStore()
 const showSyncModal = ref(false)
+const showRuleModal = ref(false)
 const syncTarget = ref<TelegramChannel | null>(null)
+const ruleTarget = ref<TelegramChannel | null>(null)
+const ruleScope = ref<'global' | 'channel'>('global')
 const syncMaxMessages = ref<number | null>(1000)
 const searchQuery = ref('')
 const typeFilter = ref('')
@@ -19,7 +22,28 @@ const syncingChannelIds = ref(new Set<number>())
 const checkingWebAccessChannelIds = ref(new Set<number>())
 const listeningChannelIds = ref(new Set<number>())
 const batchCheckingWebAccess = ref(false)
+const ruleLoading = ref(false)
+const ruleSaving = ref(false)
+const channelRuleId = ref<number | null>(null)
 const canConfirmSync = computed(() => Number.isInteger(syncMaxMessages.value) && Number(syncMaxMessages.value) > 0)
+
+const defaultMessageTypes = ['link', 'text']
+const defaultLinkTypes = ['cloud_drive', 'magnet', 'ed2k', 'other']
+
+const ruleForm = ref({
+  enabled: true,
+  includes: '',
+  excludes: '',
+  message_types: [...defaultMessageTypes],
+  link_types: [...defaultLinkTypes]
+})
+
+const ruleTitle = computed(() => {
+  if (ruleScope.value === 'global') return '全局监听规则'
+  return `${ruleTarget.value?.title ?? '频道'} 监听规则`
+})
+
+const canUseGlobalRule = computed(() => ruleScope.value === 'channel' && channelRuleId.value !== null)
 
 const typeOptions = [
   { label: '全部类型', value: '' },
@@ -185,6 +209,12 @@ function closeSyncModal() {
   syncTarget.value = null
 }
 
+function closeRuleModal() {
+  showRuleModal.value = false
+  ruleTarget.value = null
+  channelRuleId.value = null
+}
+
 function setLoadingChannel(target: typeof syncingChannelIds, channelId: number, loading: boolean) {
   const next = new Set(target.value)
   if (loading) {
@@ -231,17 +261,121 @@ async function batchCheckWebAccess() {
   }
 }
 
-async function enableListening(channel: TelegramChannel) {
+function isListeningEnabled(channel: TelegramChannel) {
+  return channel.listen_enabled || channel.listen_state === 'enabled'
+}
+
+async function toggleListening(channel: TelegramChannel) {
   setLoadingChannel(listeningChannelIds, channel.id, true)
   try {
     await channels.updateControl(channel.id, {
       history_sync_enabled: channel.history_sync_enabled,
       sync_profile: channel.sync_profile,
-      listen_enabled: true,
+      listen_enabled: !isListeningEnabled(channel),
       remote_search_allowed: channel.remote_search_allowed
     })
   } finally {
     setLoadingChannel(listeningChannelIds, channel.id, false)
+  }
+}
+
+function terms(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function joinTerms(value: string[] | undefined) {
+  return (value ?? []).join(', ')
+}
+
+function applyRuleToForm(rule?: Partial<ListenRulesPayload & Pick<WatchRule, 'enabled'>>) {
+  ruleForm.value = {
+    enabled: rule?.enabled ?? true,
+    includes: joinTerms(rule?.includes),
+    excludes: joinTerms(rule?.excludes),
+    message_types: rule?.message_types?.length ? [...rule.message_types] : [...defaultMessageTypes],
+    link_types: rule?.link_types?.length ? [...rule.link_types] : [...defaultLinkTypes]
+  }
+}
+
+function rulePayload(): ListenRulesPayload {
+  return {
+    includes: terms(ruleForm.value.includes),
+    excludes: terms(ruleForm.value.excludes),
+    message_types: [...ruleForm.value.message_types],
+    link_types: [...ruleForm.value.link_types]
+  }
+}
+
+async function openGlobalRules() {
+  ruleScope.value = 'global'
+  ruleTarget.value = null
+  channelRuleId.value = null
+  applyRuleToForm()
+  showRuleModal.value = true
+  ruleLoading.value = true
+  try {
+    const rules = await channels.loadGlobalListenRules()
+    applyRuleToForm(rules)
+  } finally {
+    ruleLoading.value = false
+  }
+}
+
+async function openChannelRules(channel: TelegramChannel) {
+  ruleScope.value = 'channel'
+  ruleTarget.value = channel
+  channelRuleId.value = null
+  applyRuleToForm()
+  showRuleModal.value = true
+  ruleLoading.value = true
+  try {
+    const analysis = await channels.analyzeChannel(channel.id)
+    if (analysis.watch_rule) {
+      channelRuleId.value = analysis.watch_rule.id
+      applyRuleToForm(analysis.watch_rule)
+    }
+  } finally {
+    ruleLoading.value = false
+  }
+}
+
+async function saveRule() {
+  ruleSaving.value = true
+  try {
+    const payload = rulePayload()
+    if (ruleScope.value === 'global') {
+      await channels.updateGlobalListenRules(payload)
+    } else if (ruleTarget.value) {
+      const channelPayload = {
+        channel_id: ruleTarget.value.id,
+        enabled: ruleForm.value.enabled,
+        ...payload
+      }
+      if (channelRuleId.value === null) {
+        await channels.createWatchRule(channelPayload)
+      } else {
+        await channels.updateWatchRule(channelRuleId.value, channelPayload)
+      }
+      await channels.loadChannels()
+    }
+    closeRuleModal()
+  } finally {
+    ruleSaving.value = false
+  }
+}
+
+async function useGlobalRule() {
+  if (channelRuleId.value === null) return
+  ruleSaving.value = true
+  try {
+    await channels.deleteWatchRule(channelRuleId.value)
+    await channels.loadChannels()
+    closeRuleModal()
+  } finally {
+    ruleSaving.value = false
   }
 }
 </script>
@@ -269,6 +403,9 @@ async function enableListening(channel: TelegramChannel) {
         @click="batchCheckWebAccess"
       >
         批量检测
+      </n-button>
+      <n-button class="global-rule-button" :loading="ruleLoading && ruleScope === 'global'" @click="openGlobalRules">
+        全局规则
       </n-button>
     </div>
 
@@ -343,7 +480,12 @@ async function enableListening(channel: TelegramChannel) {
               >
                 检测
               </n-button>
-              <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="enableListening(channel)">监听</n-button>
+              <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
+                {{ isListeningEnabled(channel) ? '取消监听' : '监听' }}
+              </n-button>
+              <n-button size="small" :loading="ruleLoading && ruleTarget?.id === channel.id" @click="openChannelRules(channel)">
+                规则
+              </n-button>
             </td>
           </tr>
           <tr v-if="filteredChannels.length === 0">
@@ -367,6 +509,45 @@ async function enableListening(channel: TelegramChannel) {
           >
             开始同步
           </n-button>
+        </div>
+      </n-card>
+    </n-modal>
+
+    <n-modal v-model:show="showRuleModal">
+      <n-card class="listen-rule-modal" :bordered="false">
+        <h2 class="rule-modal-title">{{ ruleTitle }}</h2>
+        <n-form class="rule-form">
+          <n-form-item v-if="ruleScope === 'channel'" label="规则状态">
+            <n-checkbox v-model:checked="ruleForm.enabled">启用专属规则</n-checkbox>
+          </n-form-item>
+          <n-form-item label="包含关键词">
+            <n-input v-model:value="ruleForm.includes" class="rule-includes" placeholder="多个关键词用英文逗号分隔" />
+          </n-form-item>
+          <n-form-item label="排除关键词">
+            <n-input v-model:value="ruleForm.excludes" class="rule-excludes" placeholder="多个关键词用英文逗号分隔" />
+          </n-form-item>
+          <n-form-item label="消息类型">
+            <n-checkbox-group v-model:value="ruleForm.message_types" class="rule-message-types">
+              <n-checkbox value="link">链接</n-checkbox>
+              <n-checkbox value="video">视频</n-checkbox>
+              <n-checkbox value="audio">音频</n-checkbox>
+              <n-checkbox value="file">文件</n-checkbox>
+              <n-checkbox value="text">文本</n-checkbox>
+            </n-checkbox-group>
+          </n-form-item>
+          <n-form-item label="链接类型">
+            <n-checkbox-group v-model:value="ruleForm.link_types" class="rule-link-types">
+              <n-checkbox value="cloud_drive">网盘</n-checkbox>
+              <n-checkbox value="magnet">磁力</n-checkbox>
+              <n-checkbox value="ed2k">ED2K</n-checkbox>
+              <n-checkbox value="other">其他</n-checkbox>
+            </n-checkbox-group>
+          </n-form-item>
+        </n-form>
+        <div class="rule-modal-actions">
+          <n-button v-if="canUseGlobalRule" :loading="ruleSaving" @click="useGlobalRule">使用全局规则</n-button>
+          <n-button @click="closeRuleModal">取消</n-button>
+          <n-button type="primary" :loading="ruleSaving || ruleLoading" @click="saveRule">保存规则</n-button>
         </div>
       </n-card>
     </n-modal>
@@ -402,7 +583,7 @@ async function enableListening(channel: TelegramChannel) {
 .channel-toolbar {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto auto;
   margin-bottom: 12px;
 }
 
@@ -474,13 +655,25 @@ th {
   width: calc(100vw - 32px);
 }
 
-.sync-modal-title {
+.sync-modal-title,
+.rule-modal-title {
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 14px;
 }
 
-.sync-modal-actions {
+.listen-rule-modal {
+  max-width: 560px;
+  width: calc(100vw - 32px);
+}
+
+.rule-form {
+  display: grid;
+  gap: 4px;
+}
+
+.sync-modal-actions,
+.rule-modal-actions {
   display: flex;
   gap: 8px;
   justify-content: flex-end;

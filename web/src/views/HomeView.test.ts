@@ -32,6 +32,11 @@ vi.mock('@/api/client', () => ({
         grouped: { cloud_drive: 2, magnet: 1, ed2k: 0, http: 3, files: 4 }
       })
     }
+    if (path === '/api/tasks') {
+      return Promise.resolve({
+        items: [{ id: 1, type: 'history_sync', status: 'failed', error_message: 'temporary failure' }]
+      })
+    }
     return Promise.reject(new Error('unexpected path'))
   })
 }))
@@ -48,5 +53,7 @@ describe('HomeView', () => {
     expect(wrapper.text()).toContain('4.3 GB')
     expect(wrapper.text()).toContain('Top Resource Types')
     expect(wrapper.text()).toContain('Cloud Drive')
+    expect(wrapper.text()).toContain('Recent Task Errors')
+    expect(wrapper.text()).toContain('temporary failure')
   })
 })

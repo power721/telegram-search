@@ -2,13 +2,16 @@
 import { computed, onMounted } from 'vue'
 import { useResourcesStore } from '@/stores/resources'
 import { useStatusStore } from '@/stores/status'
+import { useTasksStore } from '@/stores/tasks'
 
 const status = useStatusStore()
 const resources = useResourcesStore()
+const tasks = useTasksStore()
 
 onMounted(() => {
   void status.load()
   void resources.loadGrouped()
+  void tasks.loadTasks()
 })
 
 const cards = computed(() => [
@@ -25,6 +28,10 @@ const resourceTypes = computed(() => [
   { label: 'HTTP', value: resources.grouped.http ?? 0 },
   { label: 'Files', value: resources.grouped.files ?? 0 }
 ])
+
+const failedTasks = computed(() =>
+  tasks.items.filter((task) => task.status === 'failed').slice(0, 4)
+)
 
 function formatBytes(value = 0) {
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} GB`
@@ -82,6 +89,17 @@ function formatBytes(value = 0) {
             <strong>{{ item.value }}</strong>
           </span>
         </div>
+      </section>
+
+      <section class="panel">
+        <h2>Recent Task Errors</h2>
+        <div v-if="failedTasks.length === 0" class="muted">No recent task errors</div>
+        <ul v-else class="task-errors">
+          <li v-for="task in failedTasks" :key="task.id">
+            <span>{{ task.type }}</span>
+            <strong>{{ task.error_message || task.message || task.status }}</strong>
+          </li>
+        </ul>
       </section>
     </div>
   </section>
@@ -174,6 +192,36 @@ dd {
   display: inline-flex;
   gap: 8px;
   padding: 6px 8px;
+}
+
+.muted {
+  color: #667085;
+}
+
+.task-errors {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task-errors li {
+  border: 1px solid #edf0f5;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.task-errors span {
+  color: #667085;
+  display: block;
+  font-size: 13px;
+}
+
+.task-errors strong {
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 840px) {

@@ -150,6 +150,34 @@ export interface RemoteSearchTask {
   expires_at: string
 }
 
+export interface Task {
+  id: number
+  type: string
+  status: string
+  progress: number
+  total: number
+  message?: string
+  error_code?: string
+  error_message?: string
+  retry_count: number
+  next_run_at?: string
+  payload_json?: string
+  started_at?: string
+  finished_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TasksResponse {
+  items: Task[]
+}
+
+export interface RuntimeEvent<T = unknown> {
+  type: string
+  payload?: T
+  created_at: string
+}
+
 export interface ListResult<T> {
   items: T[]
   total: number

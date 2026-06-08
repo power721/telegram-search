@@ -118,6 +118,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/search/remote/:task_id", h.getRemoteSearchTask)
 	api.GET("/messages/latest", h.latest)
 	api.GET("/links/merged", h.mergedLinks)
+	api.GET("/links/grouped", h.linksGrouped)
 	api.GET("/links", h.links)
 	api.GET("/resources/grouped", h.resourcesGrouped)
 	api.GET("/resources/:id", h.resource)

@@ -11,6 +11,7 @@ const tasks = useTasksStore()
 onMounted(() => {
   void status.load()
   void resources.loadGrouped()
+  void resources.loadLinkTypesGrouped()
   void tasks.loadTasks()
 })
 
@@ -18,7 +19,8 @@ const cards = computed(() => [
   { label: '账号', value: status.service?.accounts ?? 0 },
   { label: '频道', value: status.service?.channels ?? 0 },
   { label: '消息', value: status.service?.messages ?? 0 },
-  { label: '链接', value: status.service?.links ?? 0 }
+  { label: '链接', value: status.service?.links ?? 0 },
+  { label: '任务', value: tasks.total }
 ])
 
 const resourceTypes = computed(() => [
@@ -28,6 +30,12 @@ const resourceTypes = computed(() => [
   { label: 'HTTP', value: resources.grouped.http ?? 0 },
   { label: '文件', value: resources.grouped.files ?? 0 }
 ])
+
+const linkTypes = computed(() =>
+  Object.entries(resources.linkTypesGrouped)
+    .map(([type, value]) => ({ label: linkTypeLabel(type), type, value }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+)
 
 const failedTasks = computed(() =>
   tasks.items.filter((task) => task.status === 'failed').slice(0, 4)
@@ -49,6 +57,26 @@ function taskTypeLabel(type: string) {
   }
   return labels[type] ?? type
 }
+
+function linkTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    '115': '115',
+    '123': '123',
+    aliyun: '阿里云盘',
+    baidu: '百度网盘',
+    ed2k: 'ED2K',
+    guangya: '光亚盘',
+    magnet: '磁力',
+    mobile: '移动云盘',
+    pikpak: 'PikPak',
+    quark: '夸克',
+    tianyi: '天翼云盘',
+    uc: 'UC',
+    url: '普通链接',
+    xunlei: '迅雷云盘'
+  }
+  return labels[type] ?? type
+}
 </script>
 
 <template>
@@ -58,7 +86,6 @@ function taskTypeLabel(type: string) {
         <p class="page-kicker">概览</p>
         <h1 class="page-title">本地 Telegram 索引</h1>
       </div>
-      <n-input class="global-search" placeholder="搜索消息、链接、文件、频道" />
     </div>
 
     <div class="metric-grid">
@@ -92,9 +119,20 @@ function taskTypeLabel(type: string) {
       </section>
 
       <section class="panel">
-        <h2>资源类型排行</h2>
+        <h2>资源类型统计</h2>
         <div class="resource-types">
           <span v-for="item in resourceTypes" :key="item.label">
+            {{ item.label }}
+            <strong>{{ item.value }}</strong>
+          </span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>链接类型统计</h2>
+        <div v-if="linkTypes.length === 0" class="muted">暂无链接类型统计</div>
+        <div v-else class="resource-types">
+          <span v-for="item in linkTypes" :key="item.type">
             {{ item.label }}
             <strong>{{ item.value }}</strong>
           </span>
@@ -134,14 +172,10 @@ function taskTypeLabel(type: string) {
   margin: 0;
 }
 
-.global-search {
-  max-width: 420px;
-}
-
 .metric-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 16px;
 }
 

@@ -23,17 +23,23 @@ describe('useResourcesStore', () => {
       .mockResolvedValueOnce({
         grouped: { cloud_drive: 1, magnet: 2, ed2k: 0, http: 3, files: 4 }
       })
+      .mockResolvedValueOnce({
+        grouped: { aliyun: 1, quark: 3, magnet: 2 }
+      })
     const store = useResourcesStore()
 
     await store.load({ keyword: 'course', category: 'cloud_drive' })
     await store.loadGrouped()
+    await store.loadLinkTypesGrouped()
 
     expect(apiGet).toHaveBeenNthCalledWith(
       1,
       '/api/resources?q=course&category=cloud_drive&limit=50'
     )
+    expect(apiGet).toHaveBeenNthCalledWith(3, '/api/links/grouped')
     expect(store.items[0].title).toBe('Course')
     expect(store.grouped.files).toBe(4)
+    expect(store.linkTypesGrouped.quark).toBe(3)
   })
 
   it('passes page offsets when loading resources', async () => {

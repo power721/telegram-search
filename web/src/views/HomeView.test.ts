@@ -32,9 +32,14 @@ vi.mock('@/api/client', () => ({
         grouped: { cloud_drive: 2, magnet: 1, ed2k: 0, http: 3, files: 4 }
       })
     }
+    if (path === '/api/links/grouped') {
+      return Promise.resolve({
+        grouped: { aliyun: 2, quark: 3, magnet: 1 }
+      })
+    }
     if (path.startsWith('/api/tasks')) {
       return Promise.resolve({
-        total: 1,
+        total: 6,
         items: [{ id: 1, type: 'history_sync', status: 'failed', error_message: 'temporary failure' }]
       })
     }
@@ -52,9 +57,15 @@ describe('HomeView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(wrapper.text()).toContain('存储使用')
     expect(wrapper.text()).toContain('4.3 GB')
-    expect(wrapper.text()).toContain('资源类型排行')
+    expect(wrapper.text()).toContain('资源类型统计')
     expect(wrapper.text()).toContain('网盘')
+    expect(wrapper.text()).toContain('链接类型统计')
+    expect(wrapper.text()).toContain('夸克')
+    expect(wrapper.text()).toContain('任务')
+    expect(wrapper.text()).toContain('6')
     expect(wrapper.text()).toContain('最近任务错误')
     expect(wrapper.text()).toContain('temporary failure')
+    expect(wrapper.find('.global-search').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('搜索消息、链接、文件、频道')
   })
 })

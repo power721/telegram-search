@@ -1590,6 +1590,19 @@ func (h handlers) links(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h handlers) linksGrouped(c *gin.Context) {
+	if h.deps.Links == nil {
+		errorText(c, http.StatusServiceUnavailable, "links are unavailable")
+		return
+	}
+	grouped, err := h.deps.Links.CountByType(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"grouped": grouped})
+}
+
 func (h handlers) mergedLinks(c *gin.Context) {
 	accountID, channelID, limit, offset, ok := readFilters(c)
 	if !ok {

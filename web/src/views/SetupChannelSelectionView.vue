@@ -15,10 +15,10 @@ const selected = reactive<Record<number, boolean>>({})
 const profiles = reactive<Record<number, SyncProfile>>({})
 
 const profileOptions = [
-  { label: 'Quick - latest 100', value: 'Quick' },
-  { label: 'Normal - latest 1000', value: 'Normal' },
-  { label: 'Deep - latest 10000', value: 'Deep' },
-  { label: 'Full - all history', value: 'Full' }
+  { label: '快速 - 最近 100 条', value: 'Quick' },
+  { label: '普通 - 最近 1000 条', value: 'Normal' },
+  { label: '深度 - 最近 10000 条', value: 'Deep' },
+  { label: '完整 - 全部历史', value: 'Full' }
 ]
 
 onMounted(async () => {
@@ -57,10 +57,10 @@ async function finish() {
       await channels.syncChannels(selectedIds)
     }
     await setup.completeSetup()
-    message.success('Setup complete')
+    message.success('设置完成')
     await router.push('/')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not save channel selection')
+    message.error(error instanceof Error ? error.message : '无法保存频道选择')
   }
 }
 </script>
@@ -70,22 +70,22 @@ async function finish() {
     <section class="setup-panel">
       <div class="page-header">
         <div>
-          <p class="eyebrow">First Run Setup</p>
-          <h1>Select Channels</h1>
+          <p class="eyebrow">首次运行设置</p>
+          <h1>选择频道</h1>
         </div>
-        <n-button :loading="channels.loading" @click="channels.loadChannels">Refresh</n-button>
+        <n-button :loading="channels.loading" @click="channels.loadChannels">刷新</n-button>
       </div>
 
       <div class="table-panel">
         <table>
           <thead>
             <tr>
-              <th>Listen</th>
-              <th>Title</th>
-              <th>Username</th>
-              <th>Members</th>
-              <th>Description</th>
-              <th>History</th>
+              <th>监听</th>
+              <th>标题</th>
+              <th>用户名</th>
+              <th>成员数</th>
+              <th>描述</th>
+              <th>历史同步</th>
             </tr>
           </thead>
           <tbody>
@@ -106,7 +106,7 @@ async function finish() {
               </td>
             </tr>
             <tr v-if="channels.items.length === 0">
-              <td colspan="6" class="empty-cell">No channels found</td>
+              <td colspan="6" class="empty-cell">未找到频道</td>
             </tr>
           </tbody>
         </table>
@@ -114,7 +114,7 @@ async function finish() {
 
       <div class="actions">
         <n-button type="primary" :loading="channels.loading || setup.loading" @click="finish">
-          Save and Start
+          保存并开始
         </n-button>
       </div>
     </section>

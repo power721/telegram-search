@@ -21,7 +21,7 @@ const form = ref<ChannelControlPayload>({
   remote_search_allowed: true
 })
 
-const title = computed(() => props.channel?.title ?? 'Channel Controls')
+const title = computed(() => props.channel?.title ?? '频道控制')
 
 watch(
   () => props.channel,
@@ -38,7 +38,7 @@ watch(
 )
 
 function save() {
-  if (form.value.sync_profile === 'Full' && !window.confirm('Use Full sync profile?')) {
+  if (form.value.sync_profile === 'Full' && !window.confirm('确定使用完整同步档位？')) {
     return
   }
   emit('save', { ...form.value })
@@ -50,22 +50,22 @@ function save() {
     <n-drawer-content :title="title">
       <div class="control-form">
         <label>
-          History Sync
+          历史同步
           <n-switch v-model:value="form.history_sync_enabled" />
         </label>
         <label>
-          Sync Profile
+          同步档位
           <SyncProfileSelect v-model:value="form.sync_profile" />
         </label>
         <label>
-          Listen
+          监听
           <n-switch v-model:value="form.listen_enabled" />
         </label>
         <label>
-          Remote Search
+          远程搜索
           <n-switch v-model:value="form.remote_search_allowed" />
         </label>
-        <n-button type="primary" :loading="loading" @click="save">Save</n-button>
+        <n-button type="primary" :loading="loading" @click="save">保存</n-button>
       </div>
     </n-drawer-content>
   </n-drawer>

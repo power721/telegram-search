@@ -5,13 +5,13 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 const route = useRoute()
 
 const navItems = [
-  { label: 'Home', to: '/', name: 'home' },
-  { label: 'Search', to: '/search', name: 'search' },
-  { label: 'Channels', to: '/channels', name: 'channels' },
-  { label: 'Resources', to: '/resources', name: 'resources' },
-  { label: 'Accounts', to: '/accounts', name: 'accounts' },
-  { label: 'Tasks', to: '/tasks', name: 'tasks' },
-  { label: 'Settings', to: '/settings', name: 'settings' }
+  { label: '首页', to: '/', name: 'home' },
+  { label: '搜索', to: '/search', name: 'search' },
+  { label: '频道', to: '/channels', name: 'channels' },
+  { label: '资源', to: '/resources', name: 'resources' },
+  { label: '账号', to: '/accounts', name: 'accounts' },
+  { label: '任务', to: '/tasks', name: 'tasks' },
+  { label: '设置', to: '/settings', name: 'settings' }
 ]
 
 const activeName = computed(() => String(route.name ?? 'home'))

@@ -8,8 +8,8 @@ const emit = defineEmits<{
 
 <template>
   <form class="search-filters" @submit.prevent="emit('submit')">
-    <n-input v-model:value="query" clearable placeholder="Search messages, links, files, channels" />
-    <n-button attr-type="submit" type="primary">Search</n-button>
+    <n-input v-model:value="query" clearable placeholder="搜索消息、链接、文件、频道" />
+    <n-button attr-type="submit" type="primary">搜索</n-button>
   </form>
 </template>
 

@@ -16,10 +16,10 @@ async function submit() {
   loading.value = true
   try {
     await setup.createAdmin(username.value, password.value)
-    message.success('Admin account created')
+    message.success('管理员账号已创建')
     await router.push('/login')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not create admin account')
+    message.error(error instanceof Error ? error.message : '无法创建管理员账号')
   } finally {
     loading.value = false
   }
@@ -29,16 +29,16 @@ async function submit() {
 <template>
   <main class="setup-page">
     <section class="setup-panel">
-      <p class="eyebrow">First Run Setup</p>
-      <h1>Create admin account</h1>
+      <p class="eyebrow">首次运行设置</p>
+      <h1>创建管理员账号</h1>
       <n-form @submit.prevent="submit">
-        <n-form-item label="Username">
+        <n-form-item label="用户名">
           <n-input v-model:value="username" autocomplete="username" />
         </n-form-item>
-        <n-form-item label="Password">
+        <n-form-item label="密码">
           <n-input v-model:value="password" type="password" autocomplete="new-password" />
         </n-form-item>
-        <n-button type="primary" block :loading="loading" @click="submit">Create Admin</n-button>
+        <n-button type="primary" block :loading="loading" @click="submit">创建管理员</n-button>
       </n-form>
     </section>
   </main>

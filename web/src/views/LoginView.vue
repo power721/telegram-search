@@ -18,7 +18,7 @@ async function submit() {
     await auth.login(username.value, password.value)
     await router.push('/')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Login failed')
+    message.error(error instanceof Error ? error.message : '登录失败')
   } finally {
     loading.value = false
   }
@@ -28,16 +28,16 @@ async function submit() {
 <template>
   <main class="login-page">
     <section class="login-panel">
-      <p class="eyebrow">Admin Console</p>
-      <h1>Sign in to tg-search</h1>
+      <p class="eyebrow">管理控制台</p>
+      <h1>登录 tg-search</h1>
       <n-form @submit.prevent="submit">
-        <n-form-item label="Username">
+        <n-form-item label="用户名">
           <n-input v-model:value="username" autocomplete="username" />
         </n-form-item>
-        <n-form-item label="Password">
+        <n-form-item label="密码">
           <n-input v-model:value="password" type="password" autocomplete="current-password" />
         </n-form-item>
-        <n-button type="primary" block :loading="loading" @click="submit">Sign In</n-button>
+        <n-button type="primary" block :loading="loading" @click="submit">登录</n-button>
       </n-form>
     </section>
   </main>

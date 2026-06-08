@@ -5,60 +5,69 @@ defineProps<{
   result: GlobalSearchResult | null
   remoteItems?: RemoteSearchItem[]
 }>()
+
+function sourceLabel(source?: string) {
+  const labels: Record<string, string> = {
+    local: '本地',
+    remote: '远程'
+  }
+  const label = labels[source ?? ''] ?? source
+  return label || '本地'
+}
 </script>
 
 <template>
   <div class="search-results">
     <section class="result-section">
       <header>
-        <h2>Messages</h2>
+        <h2>消息</h2>
         <span>{{ result?.messages.total ?? 0 }}</span>
       </header>
       <article v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`" class="result-row">
         <strong>{{ item.channel_title || 'Telegram' }}</strong>
         <p>{{ item.text }}</p>
-        <small>{{ item.source || 'local' }}</small>
+        <small>{{ sourceLabel(item.source) }}</small>
       </article>
       <article v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`" class="result-row">
-        <strong>{{ item.channel_title || 'Remote' }}</strong>
+        <strong>{{ item.channel_title || '远程结果' }}</strong>
         <p>{{ item.text }}</p>
-        <small>{{ item.source }}</small>
+        <small>{{ sourceLabel(item.source) }}</small>
       </article>
     </section>
 
     <section class="result-section">
       <header>
-        <h2>Links</h2>
+        <h2>链接</h2>
         <span>{{ result?.links.total ?? 0 }}</span>
       </header>
       <article v-for="item in result?.links.items ?? []" :key="`l-${item.id}`" class="result-row">
         <strong>{{ item.note || item.url }}</strong>
         <p>{{ item.url }}</p>
-        <small>{{ item.source || 'local' }}</small>
+        <small>{{ sourceLabel(item.source) }}</small>
       </article>
     </section>
 
     <section class="result-section">
       <header>
-        <h2>Files</h2>
+        <h2>文件</h2>
         <span>{{ result?.files.total ?? 0 }}</span>
       </header>
       <article v-for="item in result?.files.items ?? []" :key="`f-${item.id}`" class="result-row">
         <strong>{{ item.file_name }}</strong>
         <p>{{ item.extension }} {{ item.mime_type }}</p>
-        <small>{{ item.source || 'local' }}</small>
+        <small>{{ sourceLabel(item.source) }}</small>
       </article>
     </section>
 
     <section class="result-section">
       <header>
-        <h2>Channels</h2>
+        <h2>频道</h2>
         <span>{{ result?.channels.total ?? 0 }}</span>
       </header>
       <article v-for="item in result?.channels.items ?? []" :key="`c-${item.id}`" class="result-row">
         <strong>{{ item.title }}</strong>
-        <p>@{{ item.username || 'private' }}</p>
-        <small>{{ item.source || 'local' }}</small>
+        <p>@{{ item.username || '私有频道' }}</p>
+        <small>{{ sourceLabel(item.source) }}</small>
       </article>
     </section>
   </div>

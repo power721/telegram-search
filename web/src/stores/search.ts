@@ -65,7 +65,7 @@ export const useSearchStore = defineStore('search', {
       try {
         return await fn()
       } catch (error) {
-        this.error = error instanceof Error ? error.message : 'Request failed'
+        this.error = error instanceof Error ? error.message : '请求失败'
         throw error
       } finally {
         this.loading = false

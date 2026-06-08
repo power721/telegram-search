@@ -51,20 +51,20 @@ describe('AccountsView', () => {
     const wrapper = mountAccountsView()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Accounts')
-    expect(wrapper.text()).toContain('Phone')
-    expect(wrapper.text()).toContain('Status')
-    expect(wrapper.text()).toContain('Last Online')
-    expect(wrapper.text()).toContain('Actions')
-    expect(wrapper.text()).toContain('Logout')
-    expect(wrapper.text()).toContain('Delete')
+    expect(wrapper.text()).toContain('账号')
+    expect(wrapper.text()).toContain('手机号')
+    expect(wrapper.text()).toContain('状态')
+    expect(wrapper.text()).toContain('最后在线')
+    expect(wrapper.text()).toContain('操作')
+    expect(wrapper.text()).toContain('登出')
+    expect(wrapper.text()).toContain('删除')
   })
 
   it('logs out an account from the action column', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()
 
-    const logoutButton = wrapper.findAll('button').find((button) => button.text() === 'Logout')
+    const logoutButton = wrapper.findAll('button').find((button) => button.text() === '登出')
     expect(logoutButton).toBeTruthy()
     await logoutButton!.trigger('click')
     await flushPromises()
@@ -77,7 +77,7 @@ describe('AccountsView', () => {
     const wrapper = mountAccountsView()
     await flushPromises()
 
-    const deleteButton = wrapper.findAll('button').find((button) => button.text() === 'Delete')
+    const deleteButton = wrapper.findAll('button').find((button) => button.text() === '删除')
     expect(deleteButton).toBeTruthy()
     await deleteButton!.trigger('click')
     await flushPromises()

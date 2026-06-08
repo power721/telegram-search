@@ -21,8 +21,8 @@ onMounted(() => {
   <section class="page-section">
     <div class="page-header">
       <div>
-        <p class="page-kicker">Global Search</p>
-        <h1 class="page-title">Search</h1>
+        <p class="page-kicker">全局搜索</p>
+        <h1 class="page-title">搜索</h1>
       </div>
     </div>
 

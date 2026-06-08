@@ -7,18 +7,18 @@ const emit = defineEmits<{
 }>()
 
 const categories = [
-  { label: 'All', value: '' },
-  { label: 'Cloud Drive', value: 'cloud_drive' },
-  { label: 'Magnet', value: 'magnet' },
+  { label: '全部', value: '' },
+  { label: '网盘', value: 'cloud_drive' },
+  { label: '磁力', value: 'magnet' },
   { label: 'ED2K', value: 'ed2k' },
   { label: 'HTTP', value: 'http' },
-  { label: 'Files', value: 'files' }
+  { label: '文件', value: 'files' }
 ]
 </script>
 
 <template>
   <form class="resource-filters" @submit.prevent="emit('submit')">
-    <n-input v-model:value="keyword" clearable placeholder="Search resource library" />
+    <n-input v-model:value="keyword" clearable placeholder="搜索资源库" />
     <n-select
       v-model:value="category"
       :options="categories"
@@ -26,7 +26,7 @@ const categories = [
       label-field="label"
       value-field="value"
     />
-    <n-button attr-type="submit" type="primary">Search</n-button>
+    <n-button attr-type="submit" type="primary">搜索</n-button>
   </form>
 </template>
 

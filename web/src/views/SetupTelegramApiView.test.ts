@@ -48,8 +48,8 @@ describe('SetupTelegramApiView', () => {
       }
     })
     expect(wrapper.text()).toContain('Telegram API')
-    expect(wrapper.text()).toContain('App ID')
-    expect(wrapper.text()).toContain('App Hash')
+    expect(wrapper.text()).toContain('应用 ID')
+    expect(wrapper.text()).toContain('应用 Hash')
   })
 
   it('refreshes setup status before moving to telegram login', async () => {

@@ -17,10 +17,10 @@ async function submit() {
   try {
     await telegram.saveTelegramAPI(Number(appID.value), appHash.value)
     await setup.load()
-    message.success('Telegram API ready')
+    message.success('Telegram API 已就绪')
     await router.push('/setup/telegram-login')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not save Telegram API')
+    message.error(error instanceof Error ? error.message : '无法保存 Telegram API')
   }
 }
 </script>
@@ -28,26 +28,26 @@ async function submit() {
 <template>
   <main class="setup-page">
     <section class="setup-panel">
-      <p class="eyebrow">First Run Setup</p>
+      <p class="eyebrow">首次运行设置</p>
       <h1>Telegram API</h1>
       <n-form @submit.prevent="submit">
-        <n-form-item label="App ID (Optional)">
+        <n-form-item label="应用 ID（可选）">
           <n-input-number
             v-model:value="appID"
             class="full-width"
-            placeholder="Use built-in"
+            placeholder="使用内置配置"
             :show-button="false"
           />
         </n-form-item>
-        <n-form-item label="App Hash (Optional)">
+        <n-form-item label="应用 Hash（可选）">
           <n-input
             v-model:value="appHash"
             type="password"
             autocomplete="off"
-            placeholder="Use built-in"
+            placeholder="使用内置配置"
           />
         </n-form-item>
-        <n-button type="primary" block :loading="telegram.loading" @click="submit">Continue</n-button>
+        <n-button type="primary" block :loading="telegram.loading" @click="submit">继续</n-button>
       </n-form>
     </section>
   </main>

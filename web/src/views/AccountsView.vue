@@ -19,10 +19,21 @@ function displayName(firstName: string, lastName: string, username: string) {
 
 function formatDate(value?: string) {
   if (!value) return '-'
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(new Date(value))
+}
+
+function statusLabel(status: string) {
+  const labels: Record<string, string> = {
+    ONLINE: '在线',
+    LOGIN_REQUIRED: '需要登录',
+    PASSWORD_REQUIRED: '需要密码',
+    OFFLINE: '离线',
+    ERROR: '异常'
+  }
+  return labels[status] ?? status
 }
 
 async function logoutAccount(account: TelegramAccount) {
@@ -31,10 +42,10 @@ async function logoutAccount(account: TelegramAccount) {
 
 function confirmDeleteAccount(account: TelegramAccount) {
   dialog.warning({
-    title: 'Delete account',
-    content: `Delete ${account.phone}? This removes the account and its indexed data.`,
-    positiveText: 'Delete',
-    negativeText: 'Cancel',
+    title: '删除账号',
+    content: `确定删除 ${account.phone}？这会删除该账号及其索引数据。`,
+    positiveText: '删除',
+    negativeText: '取消',
     onPositiveClick: () => telegram.deleteAccount(account.id)
   })
 }
@@ -45,21 +56,21 @@ function confirmDeleteAccount(account: TelegramAccount) {
     <div class="page-header">
       <div>
         <p class="page-kicker">Telegram</p>
-        <h1 class="page-title">Accounts</h1>
+        <h1 class="page-title">账号</h1>
       </div>
-      <n-button :loading="telegram.loading" @click="telegram.loadAccounts">Refresh</n-button>
+      <n-button :loading="telegram.loading" @click="telegram.loadAccounts">刷新</n-button>
     </div>
 
     <div class="table-panel">
       <table>
         <thead>
           <tr>
-            <th>Phone</th>
-            <th>Name</th>
-            <th>Status</th>
-            <th>Last Online</th>
-            <th>Last Error</th>
-            <th>Actions</th>
+            <th>手机号</th>
+            <th>名称</th>
+            <th>状态</th>
+            <th>最后在线</th>
+            <th>最后错误</th>
+            <th>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -68,7 +79,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
             <td>{{ displayName(account.first_name, account.last_name, account.username) }}</td>
             <td>
               <n-tag size="small" :type="account.status === 'ONLINE' ? 'success' : 'default'">
-                {{ account.status }}
+                {{ statusLabel(account.status) }}
               </n-tag>
             </td>
             <td>{{ formatDate(account.last_online_at) }}</td>
@@ -76,7 +87,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
             <td>
               <div class="action-buttons">
                 <n-button size="small" :loading="telegram.loading" @click="logoutAccount(account)">
-                  Logout
+                  登出
                 </n-button>
                 <n-button
                   size="small"
@@ -85,13 +96,13 @@ function confirmDeleteAccount(account: TelegramAccount) {
                   :loading="telegram.loading"
                   @click="confirmDeleteAccount(account)"
                 >
-                  Delete
+                  删除
                 </n-button>
               </div>
             </td>
           </tr>
           <tr v-if="telegram.accounts.length === 0">
-            <td colspan="6" class="empty-cell">No accounts</td>
+            <td colspan="6" class="empty-cell">暂无账号</td>
           </tr>
         </tbody>
       </table>

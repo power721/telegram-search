@@ -4,21 +4,32 @@ import type { ResourceItem } from '@/api/types'
 defineProps<{
   items: ResourceItem[]
 }>()
+
+function categoryLabel(category: string) {
+  const labels: Record<string, string> = {
+    cloud_drive: '网盘',
+    magnet: '磁力',
+    ed2k: 'ED2K',
+    http: 'HTTP',
+    files: '文件'
+  }
+  return labels[category] ?? category
+}
 </script>
 
 <template>
   <div class="resource-table">
     <div class="table-head">
-      <span>Resource</span>
-      <span>Type</span>
-      <span>Source</span>
+      <span>资源</span>
+      <span>类型</span>
+      <span>来源</span>
     </div>
     <article v-for="item in items" :key="item.id" class="table-row">
       <div>
         <strong>{{ item.title || item.file_name || item.url }}</strong>
         <p>{{ item.url || item.file_name }}</p>
       </div>
-      <span>{{ item.category }}</span>
+      <span>{{ categoryLabel(item.category) }}</span>
       <span>{{ item.channel_title || 'Telegram' }}</span>
     </article>
   </div>

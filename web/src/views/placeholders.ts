@@ -7,7 +7,7 @@ export function placeholderView(title: string) {
       return () =>
         h('section', { class: 'page-section' }, [
           h('h1', { class: 'page-title' }, title),
-          h('p', { class: 'page-muted' }, 'This section will be implemented in a later phase.')
+          h('p', { class: 'page-muted' }, '该模块将在后续阶段实现。')
         ])
     }
   })

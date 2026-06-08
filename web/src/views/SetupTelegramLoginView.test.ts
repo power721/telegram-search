@@ -64,9 +64,9 @@ describe('SetupTelegramLoginView', () => {
         }
       }
     })
-    expect(wrapper.text()).toContain('Telegram Login')
-    expect(wrapper.text()).toContain('Phone')
-    expect(wrapper.text()).toContain('Code')
+    expect(wrapper.text()).toContain('Telegram 登录')
+    expect(wrapper.text()).toContain('手机号')
+    expect(wrapper.text()).toContain('验证码')
   })
 
   it('continues to listen rules after login instead of completing setup', async () => {

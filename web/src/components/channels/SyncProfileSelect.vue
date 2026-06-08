@@ -4,10 +4,10 @@ import type { SyncProfile } from '@/api/types'
 const value = defineModel<SyncProfile>('value', { required: true })
 
 const options = [
-  { label: 'Quick', value: 'Quick' },
-  { label: 'Normal', value: 'Normal' },
-  { label: 'Deep', value: 'Deep' },
-  { label: 'Full', value: 'Full' }
+  { label: '快速', value: 'Quick' },
+  { label: '普通', value: 'Normal' },
+  { label: '深度', value: 'Deep' },
+  { label: '完整', value: 'Full' }
 ]
 </script>
 

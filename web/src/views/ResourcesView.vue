@@ -9,11 +9,11 @@ const keyword = ref('')
 const category = ref('')
 
 const labels: Record<string, string> = {
-  cloud_drive: 'Cloud Drive',
-  magnet: 'Magnet',
+  cloud_drive: '网盘',
+  magnet: '磁力',
   ed2k: 'ED2K',
   http: 'HTTP',
-  files: 'Files'
+  files: '文件'
 }
 
 async function load() {
@@ -30,8 +30,8 @@ onMounted(() => {
   <section class="page-section">
     <div class="page-header">
       <div>
-        <p class="page-kicker">Telegram Resource Library</p>
-        <h1 class="page-title">Resources</h1>
+        <p class="page-kicker">Telegram 资源库</p>
+        <h1 class="page-title">资源</h1>
       </div>
     </div>
 

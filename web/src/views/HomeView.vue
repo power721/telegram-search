@@ -15,18 +15,18 @@ onMounted(() => {
 })
 
 const cards = computed(() => [
-  { label: 'Accounts', value: status.service?.accounts ?? 0 },
-  { label: 'Channels', value: status.service?.channels ?? 0 },
-  { label: 'Messages', value: status.service?.messages ?? 0 },
-  { label: 'Links', value: status.service?.links ?? 0 }
+  { label: '账号', value: status.service?.accounts ?? 0 },
+  { label: '频道', value: status.service?.channels ?? 0 },
+  { label: '消息', value: status.service?.messages ?? 0 },
+  { label: '链接', value: status.service?.links ?? 0 }
 ])
 
 const resourceTypes = computed(() => [
-  { label: 'Cloud Drive', value: resources.grouped.cloud_drive ?? 0 },
-  { label: 'Magnet', value: resources.grouped.magnet ?? 0 },
+  { label: '网盘', value: resources.grouped.cloud_drive ?? 0 },
+  { label: '磁力', value: resources.grouped.magnet ?? 0 },
   { label: 'ED2K', value: resources.grouped.ed2k ?? 0 },
   { label: 'HTTP', value: resources.grouped.http ?? 0 },
-  { label: 'Files', value: resources.grouped.files ?? 0 }
+  { label: '文件', value: resources.grouped.files ?? 0 }
 ])
 
 const failedTasks = computed(() =>
@@ -39,16 +39,26 @@ function formatBytes(value = 0) {
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB`
   return `${value} B`
 }
+
+function taskTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    history_sync: '历史同步',
+    web_access_detection: '网页访问检测',
+    metadata_sync: '元数据同步',
+    cleanup: '清理'
+  }
+  return labels[type] ?? type
+}
 </script>
 
 <template>
   <section class="page-section">
     <div class="page-header">
       <div>
-        <p class="page-kicker">Overview</p>
-        <h1 class="page-title">Local Telegram Index</h1>
+        <p class="page-kicker">概览</p>
+        <h1 class="page-title">本地 Telegram 索引</h1>
       </div>
-      <n-input class="global-search" placeholder="Search messages, links, files, channels" />
+      <n-input class="global-search" placeholder="搜索消息、链接、文件、频道" />
     </div>
 
     <div class="metric-grid">
@@ -60,29 +70,29 @@ function formatBytes(value = 0) {
 
     <div class="dashboard-grid">
       <section class="panel">
-        <h2>Storage Usage</h2>
+        <h2>存储使用</h2>
         <dl>
           <div>
-            <dt>DB</dt>
+            <dt>数据库</dt>
             <dd>{{ formatBytes(status.storage?.db_bytes) }}</dd>
           </div>
           <div>
-            <dt>Index</dt>
+            <dt>索引</dt>
             <dd>{{ formatBytes(status.storage?.index_bytes) }}</dd>
           </div>
           <div>
-            <dt>Media Cache</dt>
+            <dt>媒体缓存</dt>
             <dd>{{ formatBytes(status.storage?.media_cache_bytes) }}</dd>
           </div>
           <div>
-            <dt>Total</dt>
+            <dt>总计</dt>
             <dd>{{ formatBytes(status.storage?.total_bytes) }}</dd>
           </div>
         </dl>
       </section>
 
       <section class="panel">
-        <h2>Top Resource Types</h2>
+        <h2>资源类型排行</h2>
         <div class="resource-types">
           <span v-for="item in resourceTypes" :key="item.label">
             {{ item.label }}
@@ -92,11 +102,11 @@ function formatBytes(value = 0) {
       </section>
 
       <section class="panel">
-        <h2>Recent Task Errors</h2>
-        <div v-if="failedTasks.length === 0" class="muted">No recent task errors</div>
+        <h2>最近任务错误</h2>
+        <div v-if="failedTasks.length === 0" class="muted">暂无最近任务错误</div>
         <ul v-else class="task-errors">
           <li v-for="task in failedTasks" :key="task.id">
-            <span>{{ task.type }}</span>
+            <span>{{ taskTypeLabel(task.type) }}</span>
             <strong>{{ task.error_message || task.message || task.status }}</strong>
           </li>
         </ul>

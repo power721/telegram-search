@@ -28,10 +28,10 @@ async function submit() {
       message_types: messageTypes.value,
       link_types: linkTypes.value
     })
-    message.success('Listen rules saved')
+    message.success('监听规则已保存')
     await router.push('/setup/channels')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not save listen rules')
+    message.error(error instanceof Error ? error.message : '无法保存监听规则')
   }
 }
 </script>
@@ -39,33 +39,33 @@ async function submit() {
 <template>
   <main class="setup-page">
     <section class="setup-panel">
-      <p class="eyebrow">First Run Setup</p>
-      <h1>Listen Rules</h1>
+      <p class="eyebrow">首次运行设置</p>
+      <h1>监听规则</h1>
       <n-form @submit.prevent="submit">
-        <n-form-item label="Includes">
-          <n-input v-model:value="includes" placeholder="Comma separated keywords" />
+        <n-form-item label="包含关键词">
+          <n-input v-model:value="includes" placeholder="多个关键词用英文逗号分隔" />
         </n-form-item>
-        <n-form-item label="Excludes">
-          <n-input v-model:value="excludes" placeholder="Comma separated keywords" />
+        <n-form-item label="排除关键词">
+          <n-input v-model:value="excludes" placeholder="多个关键词用英文逗号分隔" />
         </n-form-item>
-        <n-form-item label="Message Types">
+        <n-form-item label="消息类型">
           <n-checkbox-group v-model:value="messageTypes">
-            <n-checkbox value="link">Links</n-checkbox>
-            <n-checkbox value="video">Video</n-checkbox>
-            <n-checkbox value="audio">Audio</n-checkbox>
-            <n-checkbox value="file">Files</n-checkbox>
-            <n-checkbox value="text">Text</n-checkbox>
+            <n-checkbox value="link">链接</n-checkbox>
+            <n-checkbox value="video">视频</n-checkbox>
+            <n-checkbox value="audio">音频</n-checkbox>
+            <n-checkbox value="file">文件</n-checkbox>
+            <n-checkbox value="text">文本</n-checkbox>
           </n-checkbox-group>
         </n-form-item>
-        <n-form-item label="Link Types">
+        <n-form-item label="链接类型">
           <n-checkbox-group v-model:value="linkTypes">
-            <n-checkbox value="cloud_drive">Cloud Drive</n-checkbox>
-            <n-checkbox value="magnet">Magnet</n-checkbox>
+            <n-checkbox value="cloud_drive">网盘</n-checkbox>
+            <n-checkbox value="magnet">磁力</n-checkbox>
             <n-checkbox value="ed2k">ED2K</n-checkbox>
-            <n-checkbox value="other">Other</n-checkbox>
+            <n-checkbox value="other">其他</n-checkbox>
           </n-checkbox-group>
         </n-form-item>
-        <n-button type="primary" block :loading="setup.loading" @click="submit">Continue</n-button>
+        <n-button type="primary" block :loading="setup.loading" @click="submit">继续</n-button>
       </n-form>
     </section>
   </main>

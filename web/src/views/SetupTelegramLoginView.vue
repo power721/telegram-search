@@ -18,18 +18,18 @@ const codeSent = ref(false)
 const metadataText = computed(() => {
   const sync = telegram.loginResult?.metadata_sync
   if (!sync) return ''
-  if (sync.status === 'succeeded') return `Metadata sync succeeded: ${sync.channel_count} channels`
-  if (sync.status === 'failed') return `Metadata sync failed: ${sync.error ?? 'unknown error'}`
-  return `Metadata sync ${sync.status}`
+  if (sync.status === 'succeeded') return `元数据同步成功：${sync.channel_count} 个频道`
+  if (sync.status === 'failed') return `元数据同步失败：${sync.error ?? '未知错误'}`
+  return `元数据同步状态：${sync.status}`
 })
 
 async function sendCode() {
   try {
     await telegram.sendCode(phone.value)
     codeSent.value = true
-    message.success('Code sent')
+    message.success('验证码已发送')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not send code')
+    message.error(error instanceof Error ? error.message : '无法发送验证码')
   }
 }
 
@@ -40,7 +40,7 @@ async function signIn() {
       await finish()
     }
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not sign in')
+    message.error(error instanceof Error ? error.message : '无法登录')
   }
 }
 
@@ -51,13 +51,13 @@ async function submitPassword() {
       await finish()
     }
   } catch (error) {
-    message.error(error instanceof Error ? error.message : 'Could not submit password')
+    message.error(error instanceof Error ? error.message : '无法提交密码')
   }
 }
 
 async function finish() {
   await setup.load()
-  message.success('Telegram account connected')
+  message.success('Telegram 账号已连接')
   await router.push('/setup/listen-rules')
 }
 </script>
@@ -65,16 +65,16 @@ async function finish() {
 <template>
   <main class="setup-page">
     <section class="setup-panel">
-      <p class="eyebrow">First Run Setup</p>
-      <h1>Telegram Login</h1>
+      <p class="eyebrow">首次运行设置</p>
+      <h1>Telegram 登录</h1>
       <n-form @submit.prevent>
-        <n-form-item label="Phone">
+        <n-form-item label="手机号">
           <n-input v-model:value="phone" autocomplete="tel" />
         </n-form-item>
-        <n-button type="primary" block :loading="telegram.loading" @click="sendCode">Send Code</n-button>
+        <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 
         <div class="form-block">
-          <n-form-item label="Code">
+          <n-form-item label="验证码">
             <n-input
               v-model:value="code"
               inputmode="numeric"
@@ -83,16 +83,16 @@ async function finish() {
             />
           </n-form-item>
           <n-button type="primary" block :disabled="!codeSent" :loading="telegram.loading" @click="signIn">
-            Sign In
+            登录
           </n-button>
         </div>
 
         <div v-if="telegram.passwordRequired" class="form-block">
-          <n-form-item label="2FA Password">
+          <n-form-item label="两步验证密码">
             <n-input v-model:value="password" type="password" autocomplete="current-password" />
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="submitPassword">
-            Submit Password
+            提交密码
           </n-button>
         </div>
       </n-form>

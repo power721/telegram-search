@@ -29,10 +29,10 @@ function selectTask(task: Task) {
   <section class="page-section">
     <div class="page-header">
       <div>
-        <p class="page-kicker">Runtime</p>
-        <h1 class="page-title">Tasks</h1>
+        <p class="page-kicker">运行状态</p>
+        <h1 class="page-title">任务</h1>
       </div>
-      <n-button :loading="tasks.loading" @click="tasks.loadTasks">Refresh</n-button>
+      <n-button :loading="tasks.loading" @click="tasks.loadTasks">刷新</n-button>
     </div>
 
     <div v-if="tasks.error" class="error-strip">{{ tasks.error }}</div>

@@ -25,7 +25,7 @@ export const useEventsStore = defineStore('events', {
       }
       source.onerror = () => {
         this.connected = false
-        this.error = 'events stream disconnected'
+        this.error = '事件流已断开'
       }
       this.source = source
     },

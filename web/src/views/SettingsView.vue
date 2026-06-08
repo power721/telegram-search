@@ -1,24 +1,24 @@
 <template>
   <section class="page-section">
-    <p class="page-kicker">Configuration</p>
-    <h1 class="page-title">Settings</h1>
+    <p class="page-kicker">配置</p>
+    <h1 class="page-title">设置</h1>
     <div class="settings-grid">
       <section class="panel">
-        <h2>Storage</h2>
+        <h2>存储</h2>
         <dl>
           <div>
-            <dt>Max DB Size</dt>
+            <dt>最大数据库容量</dt>
             <dd>10 GB</dd>
           </div>
           <div>
-            <dt>Max Media Cache</dt>
+            <dt>最大媒体缓存</dt>
             <dd>20 GB</dd>
           </div>
         </dl>
       </section>
       <section class="panel">
-        <h2>Admin</h2>
-        <p>Admin profile and API keys will be managed here.</p>
+        <h2>管理员</h2>
+        <p>管理员资料和 API 密钥将在这里管理。</p>
       </section>
     </div>
   </section>

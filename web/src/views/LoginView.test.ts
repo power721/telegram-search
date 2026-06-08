@@ -30,6 +30,6 @@ describe('LoginView', () => {
 
   it('renders the login heading', () => {
     const wrapper = mount(LoginView)
-    expect(wrapper.text()).toContain('Sign in to tg-search')
+    expect(wrapper.text()).toContain('登录 tg-search')
   })
 })

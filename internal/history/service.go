@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	channelpkg "tg-search/internal/channel"
 	dbpkg "tg-search/internal/db"
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
@@ -24,6 +25,7 @@ type Options struct {
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
 	Links            *repository.LinkRepository
+	Cursors          *repository.SyncCursorRepository
 	Telegram         telegram.Client
 	Sessions         *session.Manager
 	Extractor        *link.Extractor
@@ -39,6 +41,7 @@ type Service struct {
 	channels         *repository.ChannelRepository
 	messages         *repository.MessageRepository
 	links            *repository.LinkRepository
+	cursors          *repository.SyncCursorRepository
 	telegram         telegram.Client
 	sessions         *session.Manager
 	extractor        *link.Extractor
@@ -80,12 +83,16 @@ func NewService(opts Options) *Service {
 	if opts.RetryPolicy.MaxTries == 0 && opts.RetryPolicy.BaseDelay == 0 && opts.RetryPolicy.MaxDelay == 0 && opts.RetryPolicy.Sleep == nil {
 		opts.RetryPolicy = retry.DefaultPolicy()
 	}
+	if opts.Cursors == nil && opts.DB != nil {
+		opts.Cursors = repository.NewSyncCursorRepository(opts.DB)
+	}
 	return &Service{
 		db:               opts.DB,
 		accounts:         opts.Accounts,
 		channels:         opts.Channels,
 		messages:         opts.Messages,
 		links:            opts.Links,
+		cursors:          opts.Cursors,
 		telegram:         opts.Telegram,
 		sessions:         opts.Sessions,
 		extractor:        opts.Extractor,
@@ -98,11 +105,15 @@ func NewService(opts Options) *Service {
 }
 
 func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult, error) {
+	return s.SyncChannelWithProfile(ctx, channelID, "")
+}
+
+func (s *Service) SyncChannelWithProfile(ctx context.Context, channelID int64, profile string) (SyncResult, error) {
 	if !s.tryAcquireChannel(channelID) {
 		return SyncResult{}, ErrChannelSyncInProgress
 	}
 	defer s.releaseChannel(channelID)
-	return s.syncChannelWithRetry(ctx, channelID)
+	return s.syncChannelWithRetry(ctx, channelID, profile)
 }
 
 func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
@@ -150,7 +161,7 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 					mu.Unlock()
 					continue
 				}
-				syncResult, err := s.syncChannelWithRetry(ctx, channelID)
+				syncResult, err := s.syncChannelWithRetry(ctx, channelID, "")
 				s.releaseChannel(channelID)
 				mu.Lock()
 				if err != nil {
@@ -177,10 +188,10 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 	return result
 }
 
-func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64) (SyncResult, error) {
+func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string) (SyncResult, error) {
 	var result SyncResult
 	err := s.retryPolicy.Run(ctx, func() error {
-		next, err := s.syncChannelOnce(ctx, channelID)
+		next, err := s.syncChannelOnce(ctx, channelID, profile)
 		if err == nil {
 			result = next
 		}
@@ -193,7 +204,7 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64) (Sy
 	return result, err
 }
 
-func (s *Service) syncChannelOnce(ctx context.Context, channelID int64) (SyncResult, error) {
+func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string) (SyncResult, error) {
 	channel, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load channel: %w", err)
@@ -217,12 +228,33 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64) (SyncRes
 		AccessHash:        channel.AccessHash,
 		Type:              channel.Type,
 	}
+	profile := requestedProfile
+	if profile == "" {
+		profile = channel.SyncProfile
+	}
+	if profile == "" {
+		profile = channelpkg.SyncProfileNormal
+	}
+	profileLimit, err := channelpkg.ProfileLimit(profile)
+	if err != nil {
+		return SyncResult{}, err
+	}
 
 	var result SyncResult
 	var maxSeen int64
 	offsetID := int64(0)
 	for {
-		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
+		fetchLimit := s.historyBatchSize
+		if profileLimit > 0 {
+			remaining := profileLimit - result.Messages
+			if remaining <= 0 {
+				break
+			}
+			if fetchLimit > remaining {
+				fetchLimit = remaining
+			}
+		}
+		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, fetchLimit)
 		if err != nil {
 			return result, fmt.Errorf("fetch history: %w", err)
 		}
@@ -254,14 +286,19 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64) (SyncRes
 			})
 		}
 		if len(modelMessages) > 0 {
-			links, err := s.storeBatch(ctx, channel.ID, maxSeen, modelMessages)
+			links, err := s.storeBatch(ctx, account.ID, channel.ID, maxSeen, time.Now().UTC(), modelMessages)
 			if err != nil {
 				return result, err
 			}
 			result.Links += links
 		}
-		if len(batch) < s.historyBatchSize || minID == 0 || minID == offsetID {
+		if minID == 0 || minID == offsetID {
 			break
+		}
+		if profileLimit > 0 {
+			if result.Messages >= profileLimit || len(batch) < fetchLimit {
+				break
+			}
 		}
 		offsetID = minID
 	}
@@ -295,7 +332,7 @@ func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64,
 	_ = s.accounts.UpdateStatus(ctx, channel.AccountID, status)
 }
 
-func (s *Service) storeBatch(ctx context.Context, channelID int64, cursor int64, messages []model.Message) (int, error) {
+func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int64, cursor int64, cursorDate time.Time, messages []model.Message) (int, error) {
 	filtered := make([]model.Message, 0, len(messages))
 	linksByTelegramID := map[int64][]model.Link{}
 	for _, msg := range messages {
@@ -337,8 +374,14 @@ func (s *Service) storeBatch(ctx context.Context, channelID int64, cursor int64,
 				linkCount += len(extracted)
 			}
 		}
-		if cursor > 0 {
-			if err := s.channels.UpdateCursorTx(ctx, tx, channelID, cursor, time.Now().UTC()); err != nil {
+		if cursor > 0 && s.cursors != nil {
+			if err := s.cursors.SaveTx(ctx, tx, model.SyncCursor{
+				AccountID:     accountID,
+				ChannelID:     channelID,
+				CursorType:    "history",
+				LastMessageID: cursor,
+				Date:          cursorDate,
+			}); err != nil {
 				return err
 			}
 		}

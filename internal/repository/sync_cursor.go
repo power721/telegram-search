@@ -18,6 +18,14 @@ func NewSyncCursorRepository(db *sql.DB) *SyncCursorRepository {
 }
 
 func (r *SyncCursorRepository) Save(ctx context.Context, cursor model.SyncCursor) error {
+	return r.save(ctx, r.db, cursor)
+}
+
+func (r *SyncCursorRepository) SaveTx(ctx context.Context, tx *sql.Tx, cursor model.SyncCursor) error {
+	return r.save(ctx, tx, cursor)
+}
+
+func (r *SyncCursorRepository) save(ctx context.Context, exec executor, cursor model.SyncCursor) error {
 	if cursor.CursorType == "" {
 		cursor.CursorType = "history"
 	}
@@ -26,7 +34,7 @@ func (r *SyncCursorRepository) Save(ctx context.Context, cursor model.SyncCursor
 	if !cursor.Date.IsZero() {
 		date = cursor.Date
 	}
-	err := r.db.QueryRowContext(ctx, `
+	err := exec.QueryRowContext(ctx, `
 INSERT INTO telegram_sync_cursors
   (account_id, channel_id, cursor_type, last_message_id, pts, qts, date, created_at, updated_at)
 VALUES

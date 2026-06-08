@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,123 @@ import (
 	"tg-search/internal/session"
 	"tg-search/internal/telegram"
 )
+
+func TestSyncChannelUsesSyncProfile(t *testing.T) {
+	profiles := []struct {
+		name      string
+		available int
+		want      int
+	}{
+		{name: "Quick", available: 101, want: 100},
+		{name: "Normal", available: 1001, want: 1000},
+		{name: "Deep", available: 10001, want: 10000},
+	}
+	for _, tt := range profiles {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+			accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+			if err != nil {
+				t.Fatalf("save account: %v", err)
+			}
+			channelID, err := channels.Save(ctx, model.Channel{
+				AccountID:         accountID,
+				TelegramChannelID: 200,
+				AccessHash:        300,
+				Title:             "VIP",
+				Type:              model.ChannelTypeChannel,
+				SyncProfile:       tt.name,
+			})
+			if err != nil {
+				t.Fatalf("save channel: %v", err)
+			}
+
+			fake := &profileLimitHistoryClient{available: tt.available, startID: 50000}
+			service := NewService(Options{
+				DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+				Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+				Extractor: link.NewExtractor(), HistoryBatchSize: 600,
+			})
+
+			result, err := service.SyncChannel(ctx, channelID)
+			if err != nil {
+				t.Fatalf("SyncChannel returned error: %v", err)
+			}
+			if result.Messages != tt.want {
+				t.Fatalf("messages = %d, want %d", result.Messages, tt.want)
+			}
+			if fake.fetched != tt.want {
+				t.Fatalf("fetched = %d, want %d", fake.fetched, tt.want)
+			}
+
+			cursor, err := repository.NewSyncCursorRepository(conn).Find(ctx, accountID, channelID, "history")
+			if err != nil {
+				t.Fatalf("find sync cursor: %v", err)
+			}
+			if cursor.LastMessageID != 50000 {
+				t.Fatalf("cursor last message id = %d, want 50000", cursor.LastMessageID)
+			}
+			if cursor.Date.IsZero() {
+				t.Fatal("cursor date is zero")
+			}
+
+			channel, err := channels.FindByID(ctx, channelID)
+			if err != nil {
+				t.Fatalf("find channel: %v", err)
+			}
+			if channel.LastMessageID != 0 {
+				t.Fatalf("channel last message id = %d, want 0 because sync cursor table owns history state", channel.LastMessageID)
+			}
+		})
+	}
+}
+
+func TestSyncChannelFullProfileFetchesUntilEmptyBatch(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 200,
+		AccessHash:        300,
+		Title:             "VIP",
+		Type:              model.ChannelTypeChannel,
+		SyncProfile:       "Full",
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+
+	fake := &scriptedHistoryClient{batches: [][]telegram.Message{
+		{
+			{TelegramMessageID: 3, Text: "short batch 3", RawJSON: "{}", Date: time.Now().UTC()},
+			{TelegramMessageID: 2, Text: "short batch 2", RawJSON: "{}", Date: time.Now().UTC()},
+		},
+		{},
+	}}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 5,
+	})
+
+	result, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	if result.Messages != 2 {
+		t.Fatalf("messages = %d, want 2", result.Messages)
+	}
+	if fake.calls != 2 {
+		t.Fatalf("fetch calls = %d, want 2 so Full stops only after empty batch", fake.calls)
+	}
+	if !reflect.DeepEqual(fake.offsets, []int64{0, 2}) {
+		t.Fatalf("offsets = %v, want [0 2]", fake.offsets)
+	}
+}
 
 func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	ctx := context.Background()
@@ -102,12 +220,19 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 		t.Fatalf("aliyun links = %+v, want 1 aliyun link", linkResults)
 	}
 
+	cursor, err := repository.NewSyncCursorRepository(conn).Find(ctx, accountID, channelID, "history")
+	if err != nil {
+		t.Fatalf("find sync cursor: %v", err)
+	}
+	if cursor.LastMessageID != 11 {
+		t.Fatalf("cursor last message id = %d, want 11", cursor.LastMessageID)
+	}
 	channel, err := channels.FindByID(ctx, channelID)
 	if err != nil {
 		t.Fatalf("find channel: %v", err)
 	}
-	if channel.LastMessageID != 11 {
-		t.Fatalf("last message id = %d, want 11", channel.LastMessageID)
+	if channel.LastMessageID != 0 {
+		t.Fatalf("channel last message id = %d, want 0 because sync cursor table owns history state", channel.LastMessageID)
 	}
 }
 
@@ -118,6 +243,53 @@ type fakeTelegramClient struct {
 
 func (f *fakeTelegramClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
 	return f.batches[offsetID], nil
+}
+
+type profileLimitHistoryClient struct {
+	telegram.NopClient
+	available int
+	startID   int64
+	fetched   int
+}
+
+func (f *profileLimitHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	if f.fetched >= f.available {
+		return nil, nil
+	}
+	remaining := f.available - f.fetched
+	if limit > remaining {
+		limit = remaining
+	}
+	out := make([]telegram.Message, 0, limit)
+	now := time.Now().UTC()
+	for i := 0; i < limit; i++ {
+		out = append(out, telegram.Message{
+			TelegramMessageID: f.startID - int64(f.fetched+i),
+			Text:              "profile message",
+			RawJSON:           "{}",
+			Date:              now,
+		})
+	}
+	f.fetched += limit
+	return out, nil
+}
+
+type scriptedHistoryClient struct {
+	telegram.NopClient
+	batches [][]telegram.Message
+	calls   int
+	offsets []int64
+}
+
+func (f *scriptedHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.offsets = append(f.offsets, offsetID)
+	if f.calls >= len(f.batches) {
+		f.calls++
+		return nil, nil
+	}
+	batch := f.batches[f.calls]
+	f.calls++
+	return batch, nil
 }
 
 func TestSyncChannelRetriesTemporaryFetchError(t *testing.T) {

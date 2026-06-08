@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPatch, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import type {
   ChannelAnalysis,
   ChannelControlPayload,
   ChannelsResponse,
+  ListenRulesPayload,
   RemoteSearchTask,
   TelegramChannel,
+  WatchRule,
   WatchRulePayload,
   WebAccessCheckResponse
 } from '@/api/types'
@@ -66,7 +68,27 @@ export const useChannelsStore = defineStore('channels', {
     },
     async createWatchRule(payload: WatchRulePayload) {
       return this.withLoading(async () => {
-        return apiPost('/api/watch-rules', payload)
+        return apiPost<WatchRule>('/api/watch-rules', payload)
+      })
+    },
+    async updateWatchRule(ruleId: number, payload: WatchRulePayload) {
+      return this.withLoading(async () => {
+        return apiPut<WatchRule>(`/api/watch-rules/${ruleId}`, payload)
+      })
+    },
+    async deleteWatchRule(ruleId: number) {
+      return this.withLoading(async () => {
+        return apiDelete<{ deleted: boolean }>(`/api/watch-rules/${ruleId}`)
+      })
+    },
+    async loadGlobalListenRules() {
+      return this.withLoading(async () => {
+        return apiGet<ListenRulesPayload>('/api/listen-rules')
+      })
+    },
+    async updateGlobalListenRules(payload: ListenRulesPayload) {
+      return this.withLoading(async () => {
+        return apiPut<ListenRulesPayload>('/api/listen-rules', payload)
       })
     },
     async analyzeChannel(channelId: number) {

@@ -206,30 +206,11 @@ func (h handlers) setupListenRules(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	rules := model.ListenRules{
-		Includes:     normalizeSetupStrings(req.Includes),
-		Excludes:     normalizeSetupStrings(req.Excludes),
-		MessageTypes: normalizeSetupStrings(req.MessageTypes),
-		LinkTypes:    normalizeSetupStrings(req.LinkTypes),
-	}
-	if len(rules.MessageTypes) == 0 {
-		errorText(c, http.StatusBadRequest, "message_types is required")
+	rules, ok := h.validateListenRules(c, req)
+	if !ok {
 		return
 	}
-	if len(rules.LinkTypes) == 0 {
-		errorText(c, http.StatusBadRequest, "link_types is required")
-		return
-	}
-	data, err := json.Marshal(rules)
-	if err != nil {
-		errorJSON(c, http.StatusInternalServerError, err)
-		return
-	}
-	if err := h.deps.Settings.Set(c.Request.Context(), messagefilter.GlobalListenRulesSettingKey, string(data)); err != nil {
-		errorJSON(c, http.StatusInternalServerError, err)
-		return
-	}
-	if err := h.deps.Settings.Set(c.Request.Context(), setupListenRulesDoneKey, `true`); err != nil {
+	if err := h.saveListenRules(c.Request.Context(), rules); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -239,6 +220,82 @@ func (h handlers) setupListenRules(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) getListenRules(c *gin.Context) {
+	raw, ok, err := h.deps.Settings.Get(c.Request.Context(), messagefilter.GlobalListenRulesSettingKey)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if !ok {
+		c.JSON(http.StatusOK, emptyListenRules())
+		return
+	}
+	var rules model.ListenRules
+	if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+		errorJSON(c, http.StatusInternalServerError, fmt.Errorf("decode listen rules: %w", err))
+		return
+	}
+	c.JSON(http.StatusOK, normalizeListenRules(rules))
+}
+
+func (h handlers) updateListenRules(c *gin.Context) {
+	var req model.ListenRules
+	if !bindJSON(c, &req) {
+		return
+	}
+	rules, ok := h.validateListenRules(c, req)
+	if !ok {
+		return
+	}
+	if err := h.saveListenRules(c.Request.Context(), rules); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, rules)
+}
+
+func (h handlers) validateListenRules(c *gin.Context, req model.ListenRules) (model.ListenRules, bool) {
+	rules := normalizeListenRules(req)
+	if len(rules.MessageTypes) == 0 {
+		errorText(c, http.StatusBadRequest, "message_types is required")
+		return model.ListenRules{}, false
+	}
+	if len(rules.LinkTypes) == 0 {
+		errorText(c, http.StatusBadRequest, "link_types is required")
+		return model.ListenRules{}, false
+	}
+	return rules, true
+}
+
+func (h handlers) saveListenRules(ctx context.Context, rules model.ListenRules) error {
+	data, err := json.Marshal(rules)
+	if err != nil {
+		return err
+	}
+	if err := h.deps.Settings.Set(ctx, messagefilter.GlobalListenRulesSettingKey, string(data)); err != nil {
+		return err
+	}
+	return h.deps.Settings.Set(ctx, setupListenRulesDoneKey, `true`)
+}
+
+func normalizeListenRules(req model.ListenRules) model.ListenRules {
+	return model.ListenRules{
+		Includes:     normalizeSetupStrings(req.Includes),
+		Excludes:     normalizeSetupStrings(req.Excludes),
+		MessageTypes: normalizeSetupStrings(req.MessageTypes),
+		LinkTypes:    normalizeSetupStrings(req.LinkTypes),
+	}
+}
+
+func emptyListenRules() model.ListenRules {
+	return model.ListenRules{
+		Includes:     []string{},
+		Excludes:     []string{},
+		MessageTypes: []string{},
+		LinkTypes:    []string{},
+	}
 }
 
 func (h handlers) saveSetupTelegramAPI(c *gin.Context) {

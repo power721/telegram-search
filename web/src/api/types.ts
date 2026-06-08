@@ -35,6 +35,10 @@ export interface WatchRulePayload extends ListenRulesPayload {
   enabled: boolean
 }
 
+export interface WatchRule extends WatchRulePayload {
+  id: number
+}
+
 export interface User {
   id: number
   username: string
@@ -148,15 +152,7 @@ export interface WebAccessCheckResponse {
 export interface ChannelAnalysis {
   channel: TelegramChannel
   control: ChannelControlPayload
-  watch_rule?: {
-    id: number
-    channel_id: number
-    enabled: boolean
-    includes: string[]
-    excludes: string[]
-    message_types: string[]
-    link_types: string[]
-  }
+  watch_rule?: WatchRule
   indexed_counts: {
     messages: number
     links: number

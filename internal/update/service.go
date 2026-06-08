@@ -110,12 +110,18 @@ func (s *Service) Start(ctx context.Context) {
 		s.processorCtx, s.processorCancel = context.WithCancel(context.WithoutCancel(ctx))
 		s.workerWG.Add(1)
 		go s.worker()
+		s.logger.Info("update service started")
 	})
 }
 
 func (s *Service) StartAccount(ctx context.Context, account model.Account) error {
 	s.Start(ctx)
 	if ok, err := s.hasListenEnabledChannels(ctx, account.ID); err != nil || !ok {
+		if err != nil {
+			s.logger.Error("check listen-enabled channels failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		} else {
+			s.logger.Info("telegram update listener skipped because account has no listen-enabled channels", zap.Int64("account_id", account.ID))
+		}
 		return err
 	}
 	s.mu.Lock()
@@ -125,6 +131,7 @@ func (s *Service) StartAccount(ctx context.Context, account model.Account) error
 	}
 	if _, ok := s.listenerCancels[account.ID]; ok {
 		s.mu.Unlock()
+		s.logger.Info("telegram update listener already running", zap.Int64("account_id", account.ID))
 		return nil
 	}
 	accountCtx, cancel := context.WithCancel(s.listenerCtx)
@@ -136,6 +143,7 @@ func (s *Service) StartAccount(ctx context.Context, account model.Account) error
 	s.mu.Unlock()
 
 	go s.runListener(accountCtx, token, account)
+	s.logger.Info("telegram update listener starting", zap.Int64("account_id", account.ID))
 	return nil
 }
 
@@ -157,6 +165,7 @@ func (s *Service) Enqueue(ctx context.Context, event Event) error {
 }
 
 func (s *Service) Stop(ctx context.Context) error {
+	started := time.Now()
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
@@ -172,6 +181,7 @@ func (s *Service) Stop(ctx context.Context) error {
 	s.mu.Unlock()
 
 	if err := wait(ctx, &s.listenerWG); err != nil {
+		s.logger.Error("wait for update listeners failed", zap.Error(err))
 		return err
 	}
 	close(s.events)
@@ -179,6 +189,11 @@ func (s *Service) Stop(ctx context.Context) error {
 	if s.processorCancel != nil {
 		s.processorCancel()
 	}
+	if err != nil {
+		s.logger.Error("wait for update worker failed", zap.Error(err))
+		return err
+	}
+	s.logger.Info("update service stopped", zap.Duration("duration", time.Since(started)))
 	return err
 }
 
@@ -189,6 +204,7 @@ func (s *Service) StopAccount(ctx context.Context, accountID int64) error {
 		cancel()
 		delete(s.listenerCancels, accountID)
 		delete(s.listenerTokens, accountID)
+		s.logger.Info("telegram update listener stop requested", zap.Int64("account_id", accountID))
 	}
 	s.mu.Unlock()
 	return nil
@@ -218,10 +234,12 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 	}()
 	hadFailure := false
 	for {
+		s.logger.Info("telegram update listener running", zap.Int64("account_id", account.ID))
 		err := s.listener.Run(ctx, account, func(event Event) error {
 			return s.Enqueue(ctx, event)
 		})
 		if ctx.Err() != nil {
+			s.logger.Info("telegram update listener stopped by context", zap.Int64("account_id", account.ID))
 			return
 		}
 		if err == nil {
@@ -230,6 +248,7 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 					s.logger.Error("mark account online after listener reconnect", zap.Int64("account_id", account.ID), zap.Error(updateErr))
 				}
 			}
+			s.logger.Info("telegram update listener exited", zap.Int64("account_id", account.ID), zap.Bool("recovered", hadFailure))
 			return
 		}
 		s.logger.Warn("telegram update listener stopped", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -249,6 +268,11 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 		}
 		hadFailure = true
 		delay := s.retryPolicy.Delay(1, classification)
+		s.logger.Info("telegram update listener retry scheduled",
+			zap.Int64("account_id", account.ID),
+			zap.String("classification", string(classification.Kind)),
+			zap.Duration("delay", delay),
+		)
 		sleep := s.retryPolicy.Sleep
 		if sleep == nil {
 			sleep = sleepContext

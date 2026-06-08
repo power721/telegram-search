@@ -53,12 +53,15 @@ func (l Loggers) Sync() error {
 func fileCore(path string, level zapcore.LevelEnabler) zapcore.Core {
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
-	writer := zapcore.AddSync(&lumberjack.Logger{
-		Filename:   path,
-		MaxSize:    20,
-		MaxBackups: 5,
-		MaxAge:     30,
-		Compress:   true,
-	})
+	writer := zapcore.AddSync(newRotatingWriter(path))
 	return zapcore.NewCore(zapcore.NewJSONEncoder(encoderCfg), writer, level)
+}
+
+func newRotatingWriter(path string) *lumberjack.Logger {
+	return &lumberjack.Logger{
+		Filename:   path,
+		MaxSize:    10,
+		MaxBackups: 5,
+		Compress:   true,
+	}
 }

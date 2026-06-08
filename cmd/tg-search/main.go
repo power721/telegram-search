@@ -58,18 +58,27 @@ func run(configPath string) error {
 		return err
 	}
 	defer logs.Sync()
-	logs.App.Info("tg-search starting", zap.String("address", config.Address(cfg)))
+	logs.App.Info("tg-search starting",
+		zap.String("address", config.Address(cfg)),
+		zap.String("storage_path", cfg.Storage.Path),
+		zap.Int("sync_workers", cfg.Sync.Workers),
+		zap.Int("history_batch_size", cfg.Sync.HistoryBatchSize),
+	)
 
 	conn, err := db.Open(config.DatabasePath(cfg))
 	if err != nil {
+		logs.App.Error("open database failed", zap.String("path", config.DatabasePath(cfg)), zap.Error(err))
 		return err
 	}
 	defer conn.Close()
+	logs.App.Info("database opened", zap.String("path", config.DatabasePath(cfg)))
 
 	ctx := context.Background()
 	if err := db.Migrate(ctx, conn); err != nil {
+		logs.App.Error("database migration failed", zap.Error(err))
 		return err
 	}
+	logs.App.Info("database migration completed")
 
 	accounts := repository.NewAccountRepository(conn)
 	channels := repository.NewChannelRepository(conn)
@@ -123,6 +132,7 @@ func run(configPath string) error {
 		Cursors:  cursors,
 		Telegram: tgClient,
 		Sessions: sessions,
+		Logger:   logs.App,
 	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
@@ -132,18 +142,22 @@ func run(configPath string) error {
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 		Workers:          cfg.Sync.Workers,
 		RetryPolicy:      retryPolicy,
+		Logger:           logs.SyncLog,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	if err := taskService.RestoreUnfinished(ctx, time.Now().UTC()); err != nil {
+		logs.App.Error("restore unfinished tasks failed", zap.Error(err))
 		return err
 	}
+	logs.App.Info("unfinished tasks restored")
 	accountManager := account.NewManager(account.ManagerOptions{
 		Accounts: accounts,
 		Updates:  updateService,
 		Logger:   logs.Telegram,
 	})
 	if err := accountManager.Start(ctx); err != nil {
+		logs.App.Error("account manager start failed", zap.Error(err))
 		return err
 	}
 	cleanupScheduler := scheduler.New(scheduler.Options{
@@ -154,6 +168,7 @@ func run(configPath string) error {
 		Logger: logs.App,
 	})
 	cleanupScheduler.Start(ctx)
+	logs.App.Info("cleanup scheduler started", zap.Duration("interval", time.Hour))
 
 	router := api.NewRouter(api.Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, RuntimeConfig: cfg, StorageUsage: storageUsage,
@@ -185,21 +200,29 @@ func run(configPath string) error {
 	case sig := <-stop:
 		logs.App.Info("shutdown requested", zap.String("signal", sig.String()))
 	case err := <-errCh:
+		if err != nil {
+			logs.App.Error("api server stopped with error", zap.Error(err))
+		}
 		return err
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
+		logs.App.Error("api server shutdown failed", zap.Error(err))
 		return err
 	}
+	logs.App.Info("api server shutdown completed")
 	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
+		logs.App.Error("cleanup scheduler stop failed", zap.Error(err))
 		return err
 	}
 	if err := syncQueue.Stop(shutdownCtx); err != nil {
+		logs.App.Error("sync queue stop failed", zap.Error(err))
 		return err
 	}
 	if err := accountManager.Stop(shutdownCtx); err != nil {
+		logs.App.Error("account manager stop failed", zap.Error(err))
 		return err
 	}
 	logs.App.Info("tg-search stopped")

@@ -60,6 +60,7 @@ func NewManager(opts ManagerOptions) *Manager {
 }
 
 func (m *Manager) Start(ctx context.Context) error {
+	started := time.Now()
 	m.mu.Lock()
 	if m.started {
 		m.mu.Unlock()
@@ -76,9 +77,12 @@ func (m *Manager) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	autoStart := 0
 	for _, account := range accounts {
 		if shouldAutoStart(account.Status) {
+			autoStart++
 			if err := m.startAccount(ctx, account); err != nil {
+				m.logger.Error("account manager failed to start account", zap.Int64("account_id", account.ID), zap.String("status", account.Status), zap.Error(err))
 				return err
 			}
 		}
@@ -86,10 +90,16 @@ func (m *Manager) Start(ctx context.Context) error {
 
 	m.wg.Add(1)
 	go m.healthLoop()
+	m.logger.Info("account manager started",
+		zap.Int("accounts", len(accounts)),
+		zap.Int("auto_started", autoStart),
+		zap.Duration("duration", time.Since(started)),
+	)
 	return nil
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
+	started := time.Now()
 	m.mu.Lock()
 	if !m.started {
 		m.mu.Unlock()
@@ -114,12 +124,14 @@ func (m *Manager) Stop(ctx context.Context) error {
 
 	if m.updates != nil {
 		if err := m.updates.Stop(ctx); err != nil {
+			m.logger.Error("account manager failed to stop updates", zap.Error(err))
 			return err
 		}
 	}
 	m.mu.Lock()
 	m.active = map[int64]struct{}{}
 	m.mu.Unlock()
+	m.logger.Info("account manager stopped", zap.Duration("duration", time.Since(started)))
 	return nil
 }
 
@@ -128,6 +140,7 @@ func (m *Manager) Restart(ctx context.Context, accountID int64) error {
 	if err != nil {
 		return err
 	}
+	m.logger.Info("account restart requested", zap.Int64("account_id", accountID), zap.String("status", account.Status))
 	if err := m.TransitionStatus(ctx, account, model.AccountStatusReconnecting); err != nil {
 		return err
 	}
@@ -136,6 +149,7 @@ func (m *Manager) Restart(ctx context.Context, accountID int64) error {
 }
 
 func (m *Manager) StopAccount(ctx context.Context, accountID int64) error {
+	m.logger.Info("account stop requested", zap.Int64("account_id", accountID))
 	m.mu.Lock()
 	_, active := m.active[accountID]
 	if active {
@@ -153,6 +167,7 @@ func (m *Manager) StopAccount(ctx context.Context, accountID int64) error {
 			return err
 		}
 	}
+	m.logger.Info("account stopped", zap.Int64("account_id", accountID), zap.Bool("was_active", active))
 	return nil
 }
 
@@ -221,6 +236,7 @@ func (m *Manager) startAccount(ctx context.Context, account model.Account) error
 	m.mu.Unlock()
 
 	if m.updates == nil {
+		m.logger.Info("account marked active without update runtime", zap.Int64("account_id", account.ID), zap.String("status", account.Status))
 		return nil
 	}
 	if err := m.updates.StartAccount(ctx, account); err != nil {
@@ -229,6 +245,7 @@ func (m *Manager) startAccount(ctx context.Context, account model.Account) error
 		m.mu.Unlock()
 		return err
 	}
+	m.logger.Info("account started", zap.Int64("account_id", account.ID), zap.String("status", account.Status))
 	return nil
 }
 

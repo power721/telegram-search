@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/session"
@@ -27,6 +29,7 @@ type RemoteOptions struct {
 	Telegram telegram.Client
 	Sessions *session.Manager
 	TTL      time.Duration
+	Logger   *zap.Logger
 }
 
 type RemoteService struct {
@@ -37,6 +40,7 @@ type RemoteService struct {
 	telegram telegram.Client
 	sessions *session.Manager
 	ttl      time.Duration
+	logger   *zap.Logger
 	mu       sync.Mutex
 	results  map[int64][]model.RemoteSearchItem
 }
@@ -48,6 +52,9 @@ func NewRemoteService(opts RemoteOptions) *RemoteService {
 	if opts.TTL <= 0 {
 		opts.TTL = 30 * time.Minute
 	}
+	if opts.Logger == nil {
+		opts.Logger = zap.NewNop()
+	}
 	return &RemoteService{
 		accounts: opts.Accounts,
 		channels: opts.Channels,
@@ -56,6 +63,7 @@ func NewRemoteService(opts RemoteOptions) *RemoteService {
 		telegram: opts.Telegram,
 		sessions: opts.Sessions,
 		ttl:      opts.TTL,
+		logger:   opts.Logger,
 		results:  map[int64][]model.RemoteSearchItem{},
 	}
 }
@@ -65,6 +73,7 @@ func (s *RemoteService) Search(ctx context.Context, channelID int64, query strin
 }
 
 func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64, query string, limit int, progress taskpkg.ProgressSink) (model.RemoteSearchTask, error) {
+	started := time.Now()
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return model.RemoteSearchTask{}, ErrEmptyQuery
@@ -83,11 +92,13 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 		return model.RemoteSearchTask{}, ErrRemoteSearchNotAllowed
 	}
 	if channel.LastMessageID > 0 || channel.LastSyncTime != nil {
+		s.logger.Info("remote search rejected for synced channel", zap.Int64("channel_id", channelID), zap.Bool("has_last_sync_time", channel.LastSyncTime != nil), zap.Int64("last_message_id", channel.LastMessageID))
 		return model.RemoteSearchTask{}, ErrRemoteSearchRequiresUnsynced
 	}
 	if s.cursors != nil {
 		_, err := s.cursors.Find(ctx, channel.AccountID, channel.ID, "history")
 		if err == nil {
+			s.logger.Info("remote search rejected for channel with history cursor", zap.Int64("channel_id", channel.ID), zap.Int64("account_id", channel.AccountID))
 			return model.RemoteSearchTask{}, ErrRemoteSearchRequiresUnsynced
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -121,6 +132,13 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 	if err != nil {
 		return model.RemoteSearchTask{}, err
 	}
+	s.logger.Info("remote search started",
+		zap.Int64("task_id", task.ID),
+		zap.Int64("account_id", account.ID),
+		zap.Int64("channel_id", channel.ID),
+		zap.Int("query_length", len(query)),
+		zap.Int("limit", limit),
+	)
 
 	items, err := s.telegram.SearchMessages(ctx, telegram.AccountSession{
 		AccountID:   account.ID,
@@ -132,6 +150,13 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 		Type:              channel.Type,
 	}, query, limit)
 	if err != nil {
+		s.logger.Error("remote search failed",
+			zap.Int64("task_id", task.ID),
+			zap.Int64("account_id", account.ID),
+			zap.Int64("channel_id", channel.ID),
+			zap.Duration("duration", time.Since(started)),
+			zap.Error(err),
+		)
 		return model.RemoteSearchTask{}, fmt.Errorf("remote telegram search: %w", err)
 	}
 
@@ -159,6 +184,13 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 			return model.RemoteSearchTask{}, err
 		}
 	}
+	s.logger.Info("remote search completed",
+		zap.Int64("task_id", task.ID),
+		zap.Int64("account_id", account.ID),
+		zap.Int64("channel_id", channel.ID),
+		zap.Int("results", len(results)),
+		zap.Duration("duration", time.Since(started)),
+	)
 	return task, nil
 }
 

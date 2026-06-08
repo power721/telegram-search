@@ -84,7 +84,7 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 		args = append(args, params.ChannelID)
 	}
 	if params.Keyword != "" {
-		where = append(where, `m.text LIKE ?`)
+		where = append(where, `mc.text LIKE ?`)
 		args = append(args, "%"+params.Keyword+"%")
 	}
 	if params.DateFrom != nil {
@@ -98,9 +98,10 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''), l.created_at,
-       m.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE ` + strings.Join(where, " AND ") + `
 ORDER BY m.date DESC, l.id DESC
@@ -137,7 +138,7 @@ func (r *LinkRepository) SearchMerged(ctx context.Context, params MergedLinkSear
 		args = append(args, params.ChannelID)
 	}
 	if params.Keyword != "" {
-		where = append(where, `(m.text LIKE ? OR COALESCE(l.note, '') LIKE ?)`)
+		where = append(where, `(mc.text LIKE ? OR COALESCE(l.note, '') LIKE ?)`)
 		like := "%" + params.Keyword + "%"
 		args = append(args, like, like)
 	}
@@ -154,6 +155,7 @@ SELECT l.id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
        m.date, m.channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE ` + strings.Join(where, " AND ") + `
 ORDER BY m.date DESC, l.id DESC`

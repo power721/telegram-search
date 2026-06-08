@@ -66,14 +66,39 @@ CREATE TABLE IF NOT EXISTS telegram_messages (
   channel_id INTEGER NOT NULL,
   telegram_message_id INTEGER NOT NULL,
   sender_id INTEGER,
-  text TEXT,
-  raw_json TEXT,
+  message_type TEXT NOT NULL DEFAULT 'text',
+  media_summary TEXT NOT NULL DEFAULT '',
   date DATETIME,
   edit_date DATETIME,
   deleted INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   UNIQUE(channel_id, telegram_message_id),
+  FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS telegram_message_contents (
+  message_id INTEGER PRIMARY KEY,
+  text TEXT NOT NULL DEFAULT '',
+  raw_json TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY(message_id) REFERENCES telegram_messages(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS telegram_sync_cursors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL,
+  channel_id INTEGER NOT NULL,
+  cursor_type TEXT NOT NULL,
+  last_message_id INTEGER NOT NULL DEFAULT 0,
+  pts INTEGER NOT NULL DEFAULT 0,
+  qts INTEGER NOT NULL DEFAULT 0,
+  date DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE(account_id, channel_id, cursor_type),
   FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE CASCADE,
   FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
 );
@@ -152,30 +177,46 @@ CREATE INDEX IF NOT EXISTS idx_telegram_links_message_id ON telegram_links(messa
 CREATE INDEX IF NOT EXISTS idx_telegram_channels_account_id ON telegram_channels(account_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_date_id ON telegram_messages(account_id, date DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_messages(channel_id, date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_telegram_message_contents_updated_at ON telegram_message_contents(updated_at);
+CREATE INDEX IF NOT EXISTS idx_telegram_sync_cursors_channel_type ON telegram_sync_cursors(channel_id, cursor_type);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS telegram_messages_fts
-USING fts5(text, content='telegram_messages', content_rowid='id');
+USING fts5(text, content='telegram_message_contents', content_rowid='message_id');
 
-CREATE TRIGGER IF NOT EXISTS telegram_messages_ai AFTER INSERT ON telegram_messages
-WHEN new.deleted = 0
+CREATE TRIGGER IF NOT EXISTS telegram_message_contents_ai AFTER INSERT ON telegram_message_contents
+WHEN (SELECT deleted FROM telegram_messages WHERE id = new.message_id) = 0
 BEGIN
-  INSERT INTO telegram_messages_fts(rowid, text) VALUES (new.id, new.text);
+  INSERT INTO telegram_messages_fts(rowid, text) VALUES (new.message_id, new.text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS telegram_messages_ad AFTER DELETE ON telegram_messages
+CREATE TRIGGER IF NOT EXISTS telegram_message_contents_ad AFTER DELETE ON telegram_message_contents
+WHEN (SELECT deleted FROM telegram_messages WHERE id = old.message_id) = 0
 BEGIN
   INSERT INTO telegram_messages_fts(telegram_messages_fts, rowid, text)
-  VALUES ('delete', old.id, old.text);
+  VALUES ('delete', old.message_id, old.text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS telegram_messages_au AFTER UPDATE ON telegram_messages
+CREATE TRIGGER IF NOT EXISTS telegram_message_contents_au AFTER UPDATE ON telegram_message_contents
+WHEN (SELECT deleted FROM telegram_messages WHERE id = new.message_id) = 0
 BEGIN
   INSERT INTO telegram_messages_fts(telegram_messages_fts, rowid, text)
-  VALUES ('delete', old.id, old.text);
+  VALUES ('delete', old.message_id, old.text);
+  INSERT INTO telegram_messages_fts(rowid, text) VALUES (new.message_id, new.text);
+END;
+
+CREATE TRIGGER IF NOT EXISTS telegram_messages_deleted_au AFTER UPDATE OF deleted ON telegram_messages
+WHEN old.deleted <> new.deleted
+BEGIN
+  INSERT INTO telegram_messages_fts(telegram_messages_fts, rowid, text)
+  SELECT 'delete', old.id, c.text
+  FROM telegram_message_contents c
+  WHERE c.message_id = old.id AND old.deleted = 0;
   INSERT INTO telegram_messages_fts(rowid, text)
-  SELECT new.id, new.text WHERE new.deleted = 0;
+  SELECT new.id, c.text
+  FROM telegram_message_contents c
+  WHERE c.message_id = new.id AND new.deleted = 0;
 END;
 `,
 	},

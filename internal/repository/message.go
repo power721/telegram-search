@@ -39,13 +39,18 @@ func (r *MessageRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, message
 	if len(messages) == 0 {
 		return out, nil
 	}
-	stmt, err := tx.PrepareContext(ctx, saveMessageSQL)
+	messageStmt, err := tx.PrepareContext(ctx, saveMessageSQL)
 	if err != nil {
 		return nil, fmt.Errorf("prepare save message: %w", err)
 	}
-	defer stmt.Close()
+	defer messageStmt.Close()
+	contentStmt, err := tx.PrepareContext(ctx, saveMessageContentSQL)
+	if err != nil {
+		return nil, fmt.Errorf("prepare save message content: %w", err)
+	}
+	defer contentStmt.Close()
 	for _, msg := range messages {
-		stored, err := r.savePrepared(ctx, stmt, msg)
+		stored, err := r.savePrepared(ctx, messageStmt, contentStmt, msg)
 		if err != nil {
 			return nil, err
 		}
@@ -54,16 +59,26 @@ func (r *MessageRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, message
 	return out, nil
 }
 
-func (r *MessageRepository) save(ctx context.Context, exec queryRower, msg model.Message) (model.Message, error) {
-	return saveMessage(msg, func(args ...any) *sql.Row {
-		return exec.QueryRowContext(ctx, saveMessageSQL, args...)
+func (r *MessageRepository) savePrepared(ctx context.Context, messageStmt *sql.Stmt, contentStmt *sql.Stmt, msg model.Message) (model.Message, error) {
+	stored, err := saveMessageMetadata(msg, func(args ...any) *sql.Row {
+		return messageStmt.QueryRowContext(ctx, args...)
 	})
+	if err != nil {
+		return model.Message{}, err
+	}
+	if _, err := contentStmt.ExecContext(ctx, stored.ID, msg.Text, msg.RawJSON, stored.UpdatedAt, stored.UpdatedAt); err != nil {
+		return model.Message{}, fmt.Errorf("save message content %d/%d: %w", msg.ChannelID, msg.TelegramMessageID, err)
+	}
+	stored.Text = msg.Text
+	stored.RawJSON = msg.RawJSON
+	return stored, nil
 }
 
-func (r *MessageRepository) savePrepared(ctx context.Context, stmt *sql.Stmt, msg model.Message) (model.Message, error) {
-	return saveMessage(msg, func(args ...any) *sql.Row {
-		return stmt.QueryRowContext(ctx, args...)
-	})
+func saveMessageMetadata(msg model.Message, query func(args ...any) *sql.Row) (model.Message, error) {
+	if msg.MessageType == "" {
+		msg.MessageType = "text"
+	}
+	return saveMessage(msg, query)
 }
 
 func saveMessage(msg model.Message, query func(args ...any) *sql.Row) (model.Message, error) {
@@ -77,7 +92,7 @@ func saveMessage(msg model.Message, query func(args ...any) *sql.Row) (model.Mes
 		deleted = 1
 	}
 	err := query(
-		msg.AccountID, msg.ChannelID, msg.TelegramMessageID, msg.SenderID, msg.Text, msg.RawJSON, msg.Date, editDate, deleted, now, now,
+		msg.AccountID, msg.ChannelID, msg.TelegramMessageID, msg.SenderID, msg.MessageType, msg.MediaSummary, msg.Date, editDate, deleted, now, now,
 	).Scan(&msg.ID, &msg.CreatedAt, &msg.UpdatedAt)
 	if err != nil {
 		return model.Message{}, fmt.Errorf("save message %d/%d: %w", msg.ChannelID, msg.TelegramMessageID, err)
@@ -87,19 +102,29 @@ func saveMessage(msg model.Message, query func(args ...any) *sql.Row) (model.Mes
 
 const saveMessageSQL = `
 INSERT INTO telegram_messages
-  (account_id, channel_id, telegram_message_id, sender_id, text, raw_json, date, edit_date, deleted, created_at, updated_at)
+  (account_id, channel_id, telegram_message_id, sender_id, message_type, media_summary, date, edit_date, deleted, created_at, updated_at)
 VALUES
   (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(channel_id, telegram_message_id) DO UPDATE SET
   account_id = excluded.account_id,
   sender_id = excluded.sender_id,
-  text = excluded.text,
-  raw_json = excluded.raw_json,
+  message_type = excluded.message_type,
+  media_summary = excluded.media_summary,
   date = excluded.date,
   edit_date = excluded.edit_date,
   deleted = excluded.deleted,
   updated_at = excluded.updated_at
 RETURNING id, created_at, updated_at`
+
+const saveMessageContentSQL = `
+INSERT INTO telegram_message_contents
+  (message_id, text, raw_json, created_at, updated_at)
+VALUES
+  (?, ?, ?, ?, ?)
+ON CONFLICT(message_id) DO UPDATE SET
+  text = excluded.text,
+  raw_json = excluded.raw_json,
+  updated_at = excluded.updated_at`
 
 func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]model.SearchResult, error) {
 	limit := clampLimit(params.Limit, 50)
@@ -131,11 +156,12 @@ func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]
 	}
 	args = append(args, limit, params.Offset)
 	query := `
-SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.text, m.raw_json, m.date, m.edit_date,
-       m.deleted, m.created_at, m.updated_at,
+SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
+       mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
        a.phone, a.username, a.first_name, c.title, c.username
 FROM telegram_messages_fts
 JOIN telegram_messages m ON m.id = telegram_messages_fts.rowid
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_accounts a ON a.id = m.account_id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE ` + strings.Join(where, " AND ") + `
@@ -182,10 +208,11 @@ func (r *MessageRepository) Latest(ctx context.Context, params LatestParams) ([]
 	}
 	args = append(args, limit)
 	query := `
-SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.text, m.raw_json, m.date, m.edit_date,
-       m.deleted, m.created_at, m.updated_at,
+SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
+       mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
        a.phone, a.username, a.first_name, c.title, c.username
 FROM telegram_messages m
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_accounts a ON a.id = m.account_id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE ` + strings.Join(where, " AND ") + `
@@ -242,7 +269,7 @@ func scanSearchResult(row interface {
 	var item model.SearchResult
 	var editDate sql.NullTime
 	var deleted int
-	err := row.Scan(&item.ID, &item.AccountID, &item.ChannelID, &item.TelegramMessageID, &item.SenderID, &item.Text, &item.RawJSON, &item.Date, &editDate,
+	err := row.Scan(&item.ID, &item.AccountID, &item.ChannelID, &item.TelegramMessageID, &item.SenderID, &item.MessageType, &item.MediaSummary, &item.Text, &item.RawJSON, &item.Date, &editDate,
 		&deleted, &item.CreatedAt, &item.UpdatedAt, &item.AccountPhone, &item.AccountUsername, &item.AccountFirstName, &item.ChannelTitle, &item.ChannelUsername)
 	if err != nil {
 		return model.SearchResult{}, err

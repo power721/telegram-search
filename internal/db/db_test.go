@@ -26,6 +26,8 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertTableExists(t, conn, "telegram_accounts")
 	assertTableExists(t, conn, "telegram_channels")
 	assertTableExists(t, conn, "telegram_messages")
+	assertTableExists(t, conn, "telegram_message_contents")
+	assertTableExists(t, conn, "telegram_sync_cursors")
 	assertTableExists(t, conn, "telegram_links")
 	assertTableExists(t, conn, "telegram_messages_fts")
 	assertColumnExists(t, conn, "telegram_channels", "web_access")
@@ -47,6 +49,8 @@ func TestMigrateCreatesFreshFoundationSchema(t *testing.T) {
 		"telegram_accounts",
 		"telegram_channels",
 		"telegram_messages",
+		"telegram_message_contents",
+		"telegram_sync_cursors",
 		"telegram_links",
 		"telegram_watch_rules",
 		"users",
@@ -88,13 +92,20 @@ VALUES
 	}
 	res, err := conn.ExecContext(ctx, `
 INSERT INTO telegram_messages
-  (account_id, channel_id, telegram_message_id, sender_id, text, raw_json, date, deleted, created_at, updated_at)
+  (account_id, channel_id, telegram_message_id, sender_id, message_type, media_summary, date, deleted, created_at, updated_at)
 VALUES
-  (1, 1, 10, 20, '庆余年 阿里云盘 link', '{}', ?, 0, ?, ?)`, now, now, now)
+  (1, 1, 10, 20, 'text', '', ?, 0, ?, ?)`, now, now, now)
 	if err != nil {
 		t.Fatalf("insert message: %v", err)
 	}
 	rowID, _ := res.LastInsertId()
+	if _, err := conn.ExecContext(ctx, `
+INSERT INTO telegram_message_contents
+  (message_id, text, raw_json, created_at, updated_at)
+VALUES
+  (?, '庆余年 阿里云盘 link', '{}', ?, ?)`, rowID, now, now); err != nil {
+		t.Fatalf("insert message content: %v", err)
+	}
 
 	var count int
 	if err := conn.QueryRowContext(ctx, `SELECT count(*) FROM telegram_messages_fts WHERE telegram_messages_fts MATCH '庆余年'`).Scan(&count); err != nil {

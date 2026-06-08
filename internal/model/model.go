@@ -163,6 +163,8 @@ type Message struct {
 	ChannelID         int64      `json:"channel_id"`
 	TelegramMessageID int64      `json:"telegram_message_id"`
 	SenderID          int64      `json:"sender_id"`
+	MessageType       string     `json:"message_type"`
+	MediaSummary      string     `json:"media_summary"`
 	Text              string     `json:"text"`
 	RawJSON           string     `json:"raw_json"`
 	Date              time.Time  `json:"date"`
@@ -172,6 +174,19 @@ type Message struct {
 	UpdatedAt         time.Time  `json:"updated_at"`
 
 	OriginalLinkInputs []Link `json:"-"`
+}
+
+type SyncCursor struct {
+	ID            int64     `json:"id"`
+	AccountID     int64     `json:"account_id"`
+	ChannelID     int64     `json:"channel_id"`
+	CursorType    string    `json:"cursor_type"`
+	LastMessageID int64     `json:"last_message_id"`
+	PTS           int64     `json:"pts"`
+	QTS           int64     `json:"qts"`
+	Date          time.Time `json:"date"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 type Link struct {

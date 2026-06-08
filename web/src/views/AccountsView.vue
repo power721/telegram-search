@@ -1,13 +1,26 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useDialog } from 'naive-ui'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useDialog, useMessage } from 'naive-ui'
 import type { TelegramAccount } from '@/api/types'
 import { useTelegramStore } from '@/stores/telegram'
 
 const telegram = useTelegramStore()
 const dialog = useDialog()
-const router = useRouter()
+const message = useMessage()
+
+const loginDialogVisible = ref(false)
+const loginPhone = ref('')
+const loginCode = ref('')
+const loginPassword = ref('')
+const loginCodeSent = ref(false)
+
+const metadataText = computed(() => {
+  const sync = telegram.loginResult?.metadata_sync
+  if (!sync) return ''
+  if (sync.status === 'succeeded') return `元数据同步成功：${sync.channel_count} 个频道`
+  if (sync.status === 'failed') return `元数据同步失败：${sync.error ?? '未知错误'}`
+  return `元数据同步状态：${sync.status}`
+})
 
 onMounted(() => {
   void telegram.loadAccounts()
@@ -42,8 +55,52 @@ function needsLogin(account: TelegramAccount) {
   return account.status === 'LOGIN_REQUIRED'
 }
 
-async function openTelegramLogin() {
-  await router.push('/setup/telegram-login')
+function openTelegramLogin(account?: TelegramAccount) {
+  loginPhone.value = account?.phone ?? ''
+  loginCode.value = ''
+  loginPassword.value = ''
+  loginCodeSent.value = false
+  telegram.phone = loginPhone.value
+  telegram.passwordRequired = false
+  telegram.loginResult = null
+  loginDialogVisible.value = true
+}
+
+async function sendCode() {
+  try {
+    await telegram.sendCode(loginPhone.value)
+    loginCodeSent.value = true
+    message.success('验证码已发送')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法发送验证码')
+  }
+}
+
+async function signIn() {
+  try {
+    const response = await telegram.signIn(loginCode.value)
+    if (response.account) {
+      finishLogin()
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法登录')
+  }
+}
+
+async function submitPassword() {
+  try {
+    const response = await telegram.submitPassword(loginPassword.value)
+    if (response.account) {
+      finishLogin()
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法提交密码')
+  }
+}
+
+function finishLogin() {
+  loginDialogVisible.value = false
+  message.success('Telegram 账号已连接')
 }
 
 async function logoutAccount(account: TelegramAccount) {
@@ -71,7 +128,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
       </div>
       <div class="header-actions">
         <n-button :loading="telegram.loading" @click="telegram.loadAccounts">刷新</n-button>
-        <n-button type="primary" @click="openTelegramLogin">添加账号</n-button>
+        <n-button type="primary" @click="openTelegramLogin()">添加账号</n-button>
       </div>
     </div>
 
@@ -100,7 +157,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
             <td>{{ account.last_error || '-' }}</td>
             <td>
               <div class="action-buttons">
-                <n-button v-if="needsLogin(account)" size="small" type="primary" @click="openTelegramLogin">
+                <n-button v-if="needsLogin(account)" size="small" type="primary" @click="openTelegramLogin(account)">
                   登录
                 </n-button>
                 <n-button v-else size="small" :loading="telegram.loading" @click="logoutAccount(account)">
@@ -124,6 +181,43 @@ function confirmDeleteAccount(account: TelegramAccount) {
         </tbody>
       </table>
     </div>
+
+    <n-modal v-model:show="loginDialogVisible">
+      <section class="login-dialog">
+        <p class="page-kicker">Telegram</p>
+        <h2>Telegram 登录</h2>
+        <n-form @submit.prevent>
+          <n-form-item label="手机号">
+            <n-input v-model:value="loginPhone" autocomplete="tel" />
+          </n-form-item>
+          <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
+
+          <div class="form-block">
+            <n-form-item label="验证码">
+              <n-input
+                v-model:value="loginCode"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                :disabled="!loginCodeSent"
+              />
+            </n-form-item>
+            <n-button type="primary" block :disabled="!loginCodeSent" :loading="telegram.loading" @click="signIn">
+              登录
+            </n-button>
+          </div>
+
+          <div v-if="telegram.passwordRequired" class="form-block">
+            <n-form-item label="两步验证密码">
+              <n-input v-model:value="loginPassword" type="password" autocomplete="current-password" />
+            </n-form-item>
+            <n-button type="primary" block :loading="telegram.loading" @click="submitPassword">
+              提交密码
+            </n-button>
+          </div>
+        </n-form>
+        <p v-if="metadataText" class="sync-result">{{ metadataText }}</p>
+      </section>
+    </n-modal>
   </section>
 </template>
 
@@ -191,6 +285,31 @@ tbody tr:last-child td {
 .empty-cell {
   color: #667085;
   text-align: center;
+}
+
+.login-dialog {
+  background: #ffffff;
+  border: 1px solid #d9dee7;
+  border-radius: 8px;
+  max-width: 420px;
+  padding: 24px;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.login-dialog h2 {
+  font-size: 22px;
+  margin: 0 0 22px;
+}
+
+.form-block {
+  border-top: 1px solid #edf0f5;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.sync-result {
+  color: #475467;
+  margin: 16px 0 0;
 }
 
 @media (max-width: 840px) {

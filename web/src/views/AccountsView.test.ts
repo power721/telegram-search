@@ -8,6 +8,8 @@ const push = vi.fn()
 const dialogWarning = vi.fn((options: { onPositiveClick?: () => void }) => {
   options.onPositiveClick?.()
 })
+const messageSuccess = vi.fn()
+const messageError = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push })
@@ -17,7 +19,8 @@ vi.mock('naive-ui', async () => {
   const actual = await vi.importActual<typeof import('naive-ui')>('naive-ui')
   return {
     ...actual,
-    useDialog: () => ({ warning: dialogWarning })
+    useDialog: () => ({ warning: dialogWarning }),
+    useMessage: () => ({ success: messageSuccess, error: messageError })
   }
 })
 
@@ -48,11 +51,20 @@ vi.mock('@/api/client', () => ({
       }
     ]
   }),
-  apiPost: vi.fn().mockResolvedValue({
-    id: 1,
-    phone: '+10000000000',
-    status: 'LOGIN_REQUIRED',
-    last_error: ''
+  apiPost: vi.fn((path: string) => {
+    if (path === '/api/telegram/login/sign-in') {
+      return Promise.resolve({
+        status: 'ONLINE',
+        account: { id: 2, phone: '+10000000001', status: 'ONLINE', last_error: '' },
+        metadata_sync: { status: 'succeeded', channel_count: 3 }
+      })
+    }
+    return Promise.resolve({
+      id: 1,
+      phone: '+10000000000',
+      status: 'LOGIN_REQUIRED',
+      last_error: ''
+    })
   }),
   apiDelete: vi.fn().mockResolvedValue({ deleted: true })
 }))
@@ -78,7 +90,7 @@ describe('AccountsView', () => {
     expect(wrapper.text()).toContain('删除')
   })
 
-  it('opens telegram login when adding or reconnecting an account', async () => {
+  it('opens telegram login dialog when adding or reconnecting an account', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()
 
@@ -86,13 +98,40 @@ describe('AccountsView', () => {
     expect(addButton).toBeTruthy()
     await addButton!.trigger('click')
 
+    expect(wrapper.text()).toContain('Telegram 登录')
+    expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('')
+
     const loginButton = wrapper.findAll('button').find((button) => button.text() === '登录')
     expect(loginButton).toBeTruthy()
     await loginButton!.trigger('click')
 
-    expect(push).toHaveBeenCalledTimes(2)
-    expect(push).toHaveBeenNthCalledWith(1, '/setup/telegram-login')
-    expect(push).toHaveBeenNthCalledWith(2, '/setup/telegram-login')
+    expect(push).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Telegram 登录')
+    expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+10000000001')
+  })
+
+  it('logs in from the account dialog without navigating to setup', async () => {
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    const loginButton = wrapper.findAll('button').find((button) => button.text() === '登录')
+    expect(loginButton).toBeTruthy()
+    await loginButton!.trigger('click')
+
+    await wrapper.findAll('button').find((button) => button.text() === '发送验证码')!.trigger('click')
+    await flushPromises()
+    const dialogLoginButtons = wrapper.findAll('button').filter((button) => button.text() === '登录')
+    await dialogLoginButtons.at(-1)!.trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+10000000001' })
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/sign-in', {
+      phone: '+10000000001',
+      code: ''
+    })
+    expect(push).not.toHaveBeenCalled()
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
+    expect(messageSuccess).toHaveBeenCalledWith('Telegram 账号已连接')
   })
 
   it('logs out an account from the action column', async () => {
@@ -135,6 +174,23 @@ function mountAccountsView() {
         NButton: {
           emits: ['click'],
           template: '<button v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>'
+        },
+        NForm: {
+          template: '<form><slot /></form>'
+        },
+        NFormItem: {
+          props: ['label'],
+          template: '<label>{{ label }}<slot /></label>'
+        },
+        NInput: {
+          props: ['value', 'autocomplete'],
+          emits: ['update:value'],
+          template:
+            '<input :value="value" :autocomplete="autocomplete" @input="$emit(\'update:value\', $event.target.value)" />'
+        },
+        NModal: {
+          props: ['show'],
+          template: '<div v-if="show"><slot /></div>'
         },
         NTag: {
           template: '<span><slot /></span>'

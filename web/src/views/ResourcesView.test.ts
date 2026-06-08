@@ -35,7 +35,7 @@ describe('ResourcesView', () => {
     const wrapper = mount(ResourcesView)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    for (const label of ['网盘', '磁力', 'ED2K', 'HTTP', '文件']) {
+    for (const label of ['全部', '网盘', '磁力', 'ED2K', 'HTTP', '文件']) {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.text()).toContain('Course Pack')
@@ -56,6 +56,20 @@ describe('ResourcesView', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
     expect(wrapper.text()).toContain('第 2 页')
+  })
+
+  it('clears the resource type filter from the all button', async () => {
+    const wrapper = mount(ResourcesView)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.findAll('.resource-types button').find((button) => button.text().includes('网盘'))!.trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await wrapper.findAll('.resource-types button').find((button) => button.text().includes('全部'))!.trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?category=cloud_drive&limit=50')
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50')
+    expect(wrapper.findAll('.resource-types button').at(0)!.classes()).toContain('active')
   })
 
   it('reloads resources from page one when page size changes', async () => {

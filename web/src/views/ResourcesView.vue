@@ -14,6 +14,10 @@ const offset = ref(0)
 const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
 const canGoPrevious = computed(() => offset.value > 0)
 const canGoNext = computed(() => offset.value + pageSize.value < resources.total)
+const allCount = computed(() => {
+  const groupedTotal = Object.values(resources.grouped).reduce((total, count) => total + count, 0)
+  return groupedTotal || resources.total
+})
 
 const labels: Record<string, string> = {
   cloud_drive: '网盘',
@@ -22,6 +26,14 @@ const labels: Record<string, string> = {
   http: 'HTTP',
   files: '文件'
 }
+const resourceTypes = computed(() => [
+  { key: '', label: '全部', count: allCount.value },
+  ...Object.entries(labels).map(([key, label]) => ({
+    key,
+    label,
+    count: resources.grouped[key] ?? 0
+  }))
+])
 
 async function load() {
   await resources.load({
@@ -35,6 +47,11 @@ async function load() {
 async function resetAndLoad() {
   offset.value = 0
   await load()
+}
+
+async function selectCategory(value: string) {
+  category.value = value
+  await resetAndLoad()
 }
 
 async function previousPage() {
@@ -71,17 +88,14 @@ onMounted(() => {
 
     <div class="resource-types">
       <button
-        v-for="(label, key) in labels"
-        :key="key"
-        :class="{ active: category === key }"
+        v-for="type in resourceTypes"
+        :key="type.key || 'all'"
+        :class="{ active: category === type.key }"
         type="button"
-        @click="
-          category = key;
-          resetAndLoad()
-        "
+        @click="selectCategory(type.key)"
       >
-        <span>{{ label }}</span>
-        <strong>{{ resources.grouped[key] ?? 0 }}</strong>
+        <span>{{ type.label }}</span>
+        <strong>{{ type.count }}</strong>
       </button>
     </div>
 
@@ -141,7 +155,7 @@ onMounted(() => {
 .resource-types {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 14px;
 }
 

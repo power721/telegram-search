@@ -45,3 +45,34 @@ body {
   border-color: #1e40af !important;
   color: #ffffff !important;
 }
+
+.n-button.n-button--error-type:not(.n-button--ghost) {
+  --n-color: #dc2626 !important;
+  --n-color-hover: #b91c1c !important;
+  --n-color-pressed: #991b1b !important;
+  --n-color-focus: #b91c1c !important;
+  --n-text-color: #ffffff !important;
+  --n-text-color-hover: #ffffff !important;
+  --n-text-color-pressed: #ffffff !important;
+  --n-text-color-focus: #ffffff !important;
+  --n-border: 1px solid #dc2626 !important;
+  --n-border-hover: 1px solid #b91c1c !important;
+  --n-border-pressed: 1px solid #991b1b !important;
+  --n-border-focus: 1px solid #b91c1c !important;
+  background-color: #dc2626 !important;
+  border: 1px solid #dc2626 !important;
+  color: #ffffff !important;
+}
+
+.n-button.n-button--error-type:not(.n-button--ghost):hover,
+.n-button.n-button--error-type:not(.n-button--ghost):focus {
+  background-color: #b91c1c !important;
+  border-color: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+.n-button.n-button--error-type:not(.n-button--ghost):active {
+  background-color: #991b1b !important;
+  border-color: #991b1b !important;
+  color: #ffffff !important;
+}

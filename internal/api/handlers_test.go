@@ -425,8 +425,8 @@ func TestSetupAndAuthAPIs(t *testing.T) {
 		t.Fatalf("login code = %d body=%s", w.Code, w.Body.String())
 	}
 	cookies := w.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != adminSessionCookie || !cookies[0].HttpOnly {
-		t.Fatalf("cookies = %+v, want HttpOnly %s cookie", cookies, adminSessionCookie)
+	if len(cookies) != 1 || cookies[0].Name != adminSessionCookie || !cookies[0].HttpOnly || cookies[0].SameSite != http.SameSiteLaxMode {
+		t.Fatalf("cookies = %+v, want HttpOnly SameSite=Lax %s cookie", cookies, adminSessionCookie)
 	}
 
 	w = httptest.NewRecorder()
@@ -452,8 +452,8 @@ func TestSetupAndAuthAPIs(t *testing.T) {
 		t.Fatalf("logout code = %d body=%s", w.Code, w.Body.String())
 	}
 	cleared := w.Result().Cookies()
-	if len(cleared) != 1 || cleared[0].MaxAge >= 0 {
-		t.Fatalf("logout cookies = %+v, want cleared session", cleared)
+	if len(cleared) != 1 || cleared[0].MaxAge >= 0 || cleared[0].SameSite != http.SameSiteLaxMode {
+		t.Fatalf("logout cookies = %+v, want cleared SameSite=Lax session", cleared)
 	}
 }
 
@@ -504,7 +504,7 @@ func TestSetupAPIKeyAutoGeneratesAndSkipIsDisabled(t *testing.T) {
 	}
 }
 
-func TestBusinessAPIRequiresAPIKey(t *testing.T) {
+func TestBusinessAPIAcceptsAdminSessionOrAPIKey(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
@@ -521,8 +521,8 @@ func TestBusinessAPIRequiresAPIKey(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("status with admin session only code = %d body=%s, want 401", w.Code, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("status with admin session only code = %d body=%s", w.Code, w.Body.String())
 	}
 
 	w = httptest.NewRecorder()
@@ -547,6 +547,15 @@ func TestBusinessAPIRequiresAPIKey(t *testing.T) {
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("status invalid key code = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req.AddCookie(cookie)
+	req.Header.Set("X-API-Key", "invalid")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status admin session with invalid key code = %d body=%s", w.Code, w.Body.String())
 	}
 }
 

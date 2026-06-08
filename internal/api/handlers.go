@@ -405,6 +405,7 @@ func (h handlers) authLogin(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(adminSessionCookie, token, 86400, "/", "", false, true)
 	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
@@ -414,6 +415,7 @@ func (h handlers) authLogout(c *gin.Context) {
 	if cookie, err := c.Cookie(adminSessionCookie); err == nil {
 		h.deps.AdminAuth.DeleteSession(cookie)
 	}
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(adminSessionCookie, "", -1, "/", "", false, true)
 	c.JSON(http.StatusOK, gin.H{"logged_out": true})
 }
@@ -435,6 +437,10 @@ func (h handlers) authMe(c *gin.Context) {
 
 func (h handlers) requireAPIKey() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if h.hasAdminSession(c) {
+			c.Next()
+			return
+		}
 		key := apiKeyFromRequest(c.Request)
 		if key == "" {
 			errorText(c, http.StatusUnauthorized, "api key is required")

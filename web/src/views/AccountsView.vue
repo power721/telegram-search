@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useDialog } from 'naive-ui'
+import type { TelegramAccount } from '@/api/types'
 import { useTelegramStore } from '@/stores/telegram'
 
 const telegram = useTelegramStore()
+const dialog = useDialog()
 
 onMounted(() => {
   void telegram.loadAccounts()
@@ -20,6 +23,20 @@ function formatDate(value?: string) {
     dateStyle: 'medium',
     timeStyle: 'short'
   }).format(new Date(value))
+}
+
+async function logoutAccount(account: TelegramAccount) {
+  await telegram.logoutAccount(account.id)
+}
+
+function confirmDeleteAccount(account: TelegramAccount) {
+  dialog.warning({
+    title: 'Delete account',
+    content: `Delete ${account.phone}? This removes the account and its indexed data.`,
+    positiveText: 'Delete',
+    negativeText: 'Cancel',
+    onPositiveClick: () => telegram.deleteAccount(account.id)
+  })
 }
 </script>
 
@@ -42,6 +59,7 @@ function formatDate(value?: string) {
             <th>Status</th>
             <th>Last Online</th>
             <th>Last Error</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -55,9 +73,25 @@ function formatDate(value?: string) {
             </td>
             <td>{{ formatDate(account.last_online_at) }}</td>
             <td>{{ account.last_error || '-' }}</td>
+            <td>
+              <div class="action-buttons">
+                <n-button size="small" :loading="telegram.loading" @click="logoutAccount(account)">
+                  Logout
+                </n-button>
+                <n-button
+                  size="small"
+                  type="error"
+                  ghost
+                  :loading="telegram.loading"
+                  @click="confirmDeleteAccount(account)"
+                >
+                  Delete
+                </n-button>
+              </div>
+            </td>
           </tr>
           <tr v-if="telegram.accounts.length === 0">
-            <td colspan="5" class="empty-cell">No accounts</td>
+            <td colspan="6" class="empty-cell">No accounts</td>
           </tr>
         </tbody>
       </table>
@@ -113,6 +147,12 @@ th {
 
 tbody tr:last-child td {
   border-bottom: 0;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .empty-cell {

@@ -716,6 +716,39 @@ func (h handlers) accounts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h handlers) logoutAccount(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	if _, err := h.deps.Accounts.FindByID(c.Request.Context(), id); err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	if h.deps.AccountRuntime != nil {
+		if err := h.deps.AccountRuntime.StopAccount(c.Request.Context(), id); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if h.deps.Sessions != nil {
+		if err := h.deps.Sessions.RemoveForAccount(id); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	if err := h.deps.Accounts.UpdateStatus(c.Request.Context(), id, model.AccountStatusLoginRequired); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	account, err := h.deps.Accounts.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, account)
+}
+
 func (h handlers) deleteAccount(c *gin.Context) {
 	id, ok := pathID(c)
 	if !ok {

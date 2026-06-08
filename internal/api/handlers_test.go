@@ -945,6 +945,53 @@ func TestDeleteAccountStopsRuntimeAndRemovesSession(t *testing.T) {
 	}
 }
 
+func TestLogoutAccountStopsRuntimeRemovesSessionAndKeepsAccount(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	sessionPath := deps.Sessions.PathForAccount(accountID)
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	if err := os.WriteFile(sessionPath, []byte("session"), 0o600); err != nil {
+		t.Fatalf("write session: %v", err)
+	}
+	runtime := &recordingAccountRuntime{}
+	deps.AccountRuntime = runtime
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/logout", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
+	}
+	if got := runtime.stoppedIDs(); !sameInt64s(got, []int64{accountID}) {
+		t.Fatalf("stopped ids = %v, want [%d]", got, accountID)
+	}
+	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
+		t.Fatalf("session stat error = %v, want not exist", err)
+	}
+	var body model.Account
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.ID != accountID || body.Status != model.AccountStatusLoginRequired {
+		t.Fatalf("response account = %+v, want id %d LOGIN_REQUIRED", body, accountID)
+	}
+	account, err := deps.Accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account after logout: %v", err)
+	}
+	if account.Status != model.AccountStatusLoginRequired {
+		t.Fatalf("stored status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+}
+
 func TestStatusIncludesAccountStateSummary(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

@@ -46,6 +46,15 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return readResponse<T>(response)
 }
 
+export async function apiDelete<T>(path: string): Promise<T> {
+  const response = await fetch(path, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { Accept: 'application/json' }
+  })
+  return readResponse<T>(response)
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => undefined)
   if (!response.ok) {

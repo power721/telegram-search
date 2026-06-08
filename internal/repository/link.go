@@ -158,6 +158,30 @@ GROUP BY category`
 	return grouped, rows.Err()
 }
 
+func (r *LinkRepository) CountByType(ctx context.Context) (map[string]int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT COALESCE(NULLIF(type, ''), 'url') AS type, count(*)
+FROM telegram_links
+JOIN telegram_messages m ON m.id = telegram_links.message_id
+WHERE m.deleted = 0
+GROUP BY COALESCE(NULLIF(type, ''), 'url')`)
+	if err != nil {
+		return nil, fmt.Errorf("count links by type: %w", err)
+	}
+	defer rows.Close()
+
+	grouped := map[string]int{}
+	for rows.Next() {
+		var typ string
+		var count int
+		if err := rows.Scan(&typ, &count); err != nil {
+			return nil, err
+		}
+		grouped[typ] = count
+	}
+	return grouped, rows.Err()
+}
+
 func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 	where := []string{`m.deleted = 0`}
 	args := []any{}

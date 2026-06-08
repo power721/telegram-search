@@ -202,6 +202,54 @@ func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
 	}
 }
 
+func TestLinksGroupedReturnsCountsByLinkType(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+			Text: "cloud resources", RawJSON: "{}", Date: time.Now().UTC(),
+		},
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2,
+			Text: "magnet resources", RawJSON: "{}", Date: time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{
+		{Type: "aliyun", Category: "cloud_drive", URL: "https://www.alipan.com/s/a"},
+		{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/b"},
+	}); err != nil {
+		t.Fatalf("save cloud links: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{
+		{Type: "magnet", Category: "magnet", URL: "magnet:?xt=urn:btih:abc"},
+	}); err != nil {
+		t.Fatalf("save magnet links: %v", err)
+	}
+
+	router := NewRouter(deps)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/links/grouped", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Grouped map[string]int `json:"grouped"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Grouped["aliyun"] != 1 || body.Grouped["quark"] != 1 || body.Grouped["magnet"] != 1 {
+		t.Fatalf("grouped = %+v, want counts by original link type", body.Grouped)
+	}
+}
+
 func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

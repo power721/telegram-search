@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import { apiGet } from '@/api/client'
-import type { ResourceItem, ResourcesGroupedResponse, ResourcesResponse } from '@/api/types'
+import type {
+  LinksGroupedResponse,
+  ResourceItem,
+  ResourcesGroupedResponse,
+  ResourcesResponse
+} from '@/api/types'
 
 export interface ResourceFilters {
   keyword?: string
@@ -29,6 +34,7 @@ export const useResourcesStore = defineStore('resources', {
     items: [] as ResourceItem[],
     total: 0,
     grouped: {} as Record<string, number>,
+    linkTypesGrouped: {} as Record<string, number>,
     loading: false,
     error: ''
   }),
@@ -48,6 +54,13 @@ export const useResourcesStore = defineStore('resources', {
           buildResourcePath('/api/resources/grouped', filters, false)
         )
         this.grouped = response.grouped
+        return response.grouped
+      })
+    },
+    async loadLinkTypesGrouped() {
+      return this.withLoading(async () => {
+        const response = await apiGet<LinksGroupedResponse>('/api/links/grouped')
+        this.linkTypesGrouped = response.grouped
         return response.grouped
       })
     },

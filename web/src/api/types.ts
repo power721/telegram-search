@@ -40,3 +40,37 @@ export interface StorageUsage {
   db_over_quota: boolean
   media_over_quota: boolean
 }
+
+export interface TelegramAPISettingsResponse {
+  configured: boolean
+  app_id: number
+  app_hash_set: boolean
+}
+
+export interface TelegramAccount {
+  id: number
+  phone: string
+  telegram_user_id: number
+  first_name: string
+  last_name: string
+  username: string
+  status: string
+  session_path?: string
+  last_online_at?: string
+  last_error: string
+}
+
+export interface TelegramLoginResponse {
+  status: string
+  password_required?: boolean
+  account?: TelegramAccount
+  metadata_sync?: {
+    status: string
+    channel_count: number
+    error?: string
+  }
+}
+
+export interface TelegramAccountsResponse {
+  items: TelegramAccount[]
+}

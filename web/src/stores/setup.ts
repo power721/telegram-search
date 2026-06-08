@@ -21,6 +21,10 @@ export const useSetupStore = defineStore('setup', {
     async createAdmin(username: string, password: string) {
       await apiPost('/api/setup/admin', { username, password })
       await this.load()
+    },
+    async completeSetup() {
+      this.status = await apiPost<SetupStatus>('/api/setup/complete')
+      this.loaded = true
     }
   }
 })

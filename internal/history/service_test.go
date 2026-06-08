@@ -88,6 +88,9 @@ func TestSyncChannelUsesSyncProfile(t *testing.T) {
 			if channel.LastMessageID != 0 {
 				t.Fatalf("channel last message id = %d, want 0 because sync cursor table owns history state", channel.LastMessageID)
 			}
+			if channel.SyncState != "synced" {
+				t.Fatalf("channel sync state = %q, want synced", channel.SyncState)
+			}
 		})
 	}
 }
@@ -283,6 +286,9 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	}
 	if channel.LastMessageID != 0 {
 		t.Fatalf("channel last message id = %d, want 0 because sync cursor table owns history state", channel.LastMessageID)
+	}
+	if channel.SyncState != "synced" {
+		t.Fatalf("channel sync state = %q, want synced", channel.SyncState)
 	}
 }
 

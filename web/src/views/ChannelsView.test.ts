@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiPatch, apiPost } from '@/api/client'
+import { apiGet, apiPatch, apiPost } from '@/api/client'
 import ChannelsView from './ChannelsView.vue'
 
 vi.mock('@/api/client', () => ({
@@ -16,6 +16,8 @@ vi.mock('@/api/client', () => ({
         listen_state: 'disabled',
         sync_profile: 'Normal',
         indexed_message_count: 42,
+        member_count: 1200,
+        description: 'Public movie releases',
         web_access: true,
         history_sync_enabled: false,
         listen_enabled: false,
@@ -30,6 +32,8 @@ vi.mock('@/api/client', () => ({
         listen_state: 'enabled',
         sync_profile: 'Normal',
         indexed_message_count: 8,
+        member_count: 200,
+        description: 'Private anime discussion',
         web_access: false,
         history_sync_enabled: true,
         listen_enabled: true,
@@ -44,6 +48,8 @@ vi.mock('@/api/client', () => ({
         listen_state: 'error',
         sync_profile: 'Normal',
         indexed_message_count: 100,
+        member_count: 50,
+        description: 'Manuals and docs',
         history_sync_enabled: true,
         listen_enabled: true,
         remote_search_allowed: true
@@ -57,6 +63,8 @@ vi.mock('@/api/client', () => ({
         listen_state: 'disabled',
         sync_profile: 'Normal',
         indexed_message_count: 7,
+        member_count: 0,
+        description: '',
         history_sync_enabled: true,
         listen_enabled: false,
         remote_search_allowed: false
@@ -105,8 +113,9 @@ describe('ChannelsView', () => {
         stubs: {
           'n-button': {
             emits: ['click'],
-            props: ['disabled'],
-            template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>'
+            props: ['disabled', 'loading'],
+            template:
+              '<button :disabled="disabled" :data-loading="loading ? \'true\' : \'false\'" @click="$emit(\'click\', $event)"><slot /></button>'
           },
           'n-tag': { template: '<span><slot /></span>' },
           'n-modal': { props: ['show'], template: '<div v-if="show"><slot /></div>' },
@@ -144,7 +153,7 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('无')
     expect(wrapper.text()).toContain('未监听')
     expect(wrapper.text()).toContain('监听中')
-    for (const label of ['标题', '用户名', '类型', '同步状态', '监听状态', '已索引消息', '网页访问', '操作']) {
+    for (const label of ['标题', '用户名', '类型', '成员数', '描述', '同步状态', '监听状态', '已索引消息', '网页访问', '操作']) {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.find('.profile-legend').exists()).toBe(false)
@@ -152,6 +161,8 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).not.toContain('普通')
     expect(wrapper.find('.web-access-text').exists()).toBe(false)
     expect(wrapper.text()).toContain('42')
+    expect(wrapper.text()).toContain('1200')
+    expect(wrapper.text()).toContain('Public movie releases')
     const usernameCell = channelRow(wrapper, 'Movies').findAll('td').at(1)
     expect(usernameCell?.text()).toBe('@movies')
     const usernameLink = usernameCell?.find('a')
@@ -160,7 +171,7 @@ describe('ChannelsView', () => {
     const inaccessibleUsernameCell = channelRow(wrapper, 'Anime').findAll('td').at(1)
     expect(inaccessibleUsernameCell?.text()).toBe('@animehub')
     expect(inaccessibleUsernameCell?.find('a').exists()).toBe(false)
-    const webAccessCell = channelRow(wrapper, 'Movies').findAll('td').at(6)
+    const webAccessCell = channelRow(wrapper, 'Movies').findAll('td').at(8)
     expect(webAccessCell?.text()).toBe('可访问')
     const webAccessLink = webAccessCell?.find('a')
     expect(webAccessLink?.attributes('href')).toBe('https://t.me/s/movies')
@@ -185,6 +196,17 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).not.toContain('metadata_only')
     expect(wrapper.text()).not.toContain('disabled')
     expect(wrapper.find('.remote-input').exists()).toBe(false)
+  })
+
+  it('refreshes without passing the click event as account_id', async () => {
+    const wrapper = mountChannelsView()
+    await flushPromises()
+    vi.mocked(apiGet).mockClear()
+
+    await wrapper.find('.page-header button').trigger('click')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/channels')
   })
 
   it('searches filters and sorts channel rows from table headers', async () => {
@@ -240,10 +262,20 @@ describe('ChannelsView', () => {
     expect(savedCheckButton?.attributes('disabled')).toBeDefined()
 
     await wrapper.find('.batch-web-access-check').trigger('click')
-    expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1, 2, 3] })
+    expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1, 3] })
 
     await wrapper.find('.type-filter').setValue('saved_messages')
     expect(wrapper.find('.batch-web-access-check').attributes('disabled')).toBeDefined()
+  })
+
+  it('does not show row action loading while only the list is loading', async () => {
+    const wrapper = mountChannelsView()
+    await flushPromises()
+
+    const moviesButtons = channelRow(wrapper, 'Movies').findAll('button')
+    expect(moviesButtons.find((button) => button.text() === '同步')?.attributes('data-loading')).toBe('false')
+    expect(moviesButtons.find((button) => button.text() === '检测')?.attributes('data-loading')).toBe('false')
+    expect(moviesButtons.find((button) => button.text() === '监听')?.attributes('data-loading')).toBe('false')
   })
 
   it('syncs history and enables listening from row actions', async () => {

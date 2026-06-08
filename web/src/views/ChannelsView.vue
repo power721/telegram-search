@@ -15,6 +15,10 @@ const listenStateFilter = ref('')
 const webAccessFilter = ref('')
 const sortKey = ref<'title' | 'username' | 'indexed'>('title')
 const sortDirection = ref<'asc' | 'desc'>('asc')
+const syncingChannelIds = ref(new Set<number>())
+const checkingWebAccessChannelIds = ref(new Set<number>())
+const listeningChannelIds = ref(new Set<number>())
+const batchCheckingWebAccess = ref(false)
 const canConfirmSync = computed(() => Number.isInteger(syncMaxMessages.value) && Number(syncMaxMessages.value) > 0)
 
 const typeOptions = [
@@ -69,6 +73,7 @@ const filteredChannels = computed(() => {
 const visibleWebCheckChannelIds = computed(() =>
   filteredChannels.value
     .filter((channel) => canCheckWebAccess(channel))
+    .filter((channel) => channel.web_access !== false)
     .map((channel) => channel.id)
     .sort((left, right) => left - right)
 )
@@ -180,29 +185,64 @@ function closeSyncModal() {
   syncTarget.value = null
 }
 
+function setLoadingChannel(target: typeof syncingChannelIds, channelId: number, loading: boolean) {
+  const next = new Set(target.value)
+  if (loading) {
+    next.add(channelId)
+  } else {
+    next.delete(channelId)
+  }
+  target.value = next
+}
+
+function refreshChannels() {
+  return channels.loadChannels()
+}
+
 async function confirmSyncHistory() {
   if (!syncTarget.value || !canConfirmSync.value || syncMaxMessages.value === null) return
-  await channels.syncChannels([syncTarget.value.id], syncMaxMessages.value)
-  closeSyncModal()
+  const channelId = syncTarget.value.id
+  setLoadingChannel(syncingChannelIds, channelId, true)
+  try {
+    await channels.syncChannels([channelId], syncMaxMessages.value)
+    closeSyncModal()
+  } finally {
+    setLoadingChannel(syncingChannelIds, channelId, false)
+  }
 }
 
 async function checkWebAccess(channel: TelegramChannel) {
   if (!canCheckWebAccess(channel)) return
-  await channels.checkWebAccess([channel.id])
+  setLoadingChannel(checkingWebAccessChannelIds, channel.id, true)
+  try {
+    await channels.checkWebAccess([channel.id])
+  } finally {
+    setLoadingChannel(checkingWebAccessChannelIds, channel.id, false)
+  }
 }
 
 async function batchCheckWebAccess() {
   if (visibleWebCheckChannelIds.value.length === 0) return
-  await channels.checkWebAccess(visibleWebCheckChannelIds.value)
+  batchCheckingWebAccess.value = true
+  try {
+    await channels.checkWebAccess(visibleWebCheckChannelIds.value)
+  } finally {
+    batchCheckingWebAccess.value = false
+  }
 }
 
 async function enableListening(channel: TelegramChannel) {
-  await channels.updateControl(channel.id, {
-    history_sync_enabled: channel.history_sync_enabled,
-    sync_profile: channel.sync_profile,
-    listen_enabled: true,
-    remote_search_allowed: channel.remote_search_allowed
-  })
+  setLoadingChannel(listeningChannelIds, channel.id, true)
+  try {
+    await channels.updateControl(channel.id, {
+      history_sync_enabled: channel.history_sync_enabled,
+      sync_profile: channel.sync_profile,
+      listen_enabled: true,
+      remote_search_allowed: channel.remote_search_allowed
+    })
+  } finally {
+    setLoadingChannel(listeningChannelIds, channel.id, false)
+  }
 }
 </script>
 
@@ -213,7 +253,7 @@ async function enableListening(channel: TelegramChannel) {
         <p class="page-kicker">Telegram</p>
         <h1 class="page-title">频道</h1>
       </div>
-      <n-button :loading="channels.loading" @click="channels.loadChannels">刷新</n-button>
+      <n-button :loading="channels.loading" @click="refreshChannels">刷新</n-button>
     </div>
 
     <div class="channel-toolbar">
@@ -225,7 +265,7 @@ async function enableListening(channel: TelegramChannel) {
       <n-button
         class="batch-web-access-check"
         :disabled="visibleWebCheckChannelIds.length === 0"
-        :loading="channels.loading"
+        :loading="batchCheckingWebAccess"
         @click="batchCheckWebAccess"
       >
         批量检测
@@ -247,6 +287,8 @@ async function enableListening(channel: TelegramChannel) {
               </button>
             </th>
             <th>类型</th>
+            <th>成员数</th>
+            <th>描述</th>
             <th>同步状态</th>
             <th>监听状态</th>
             <th>
@@ -274,6 +316,8 @@ async function enableListening(channel: TelegramChannel) {
               <span v-else>{{ username(channel) }}</span>
             </td>
             <td>{{ channelTypeLabel(channel.type) }}</td>
+            <td>{{ channel.member_count }}</td>
+            <td class="description-cell">{{ channel.description || '-' }}</td>
             <td>{{ syncStateLabel(channel.sync_state) }}</td>
             <td>{{ listenStateLabel(channel.listen_state) }}</td>
             <td>{{ channel.indexed_message_count }}</td>
@@ -290,20 +334,20 @@ async function enableListening(channel: TelegramChannel) {
               <WebAccessBadge v-else :value="channel.web_access" :error="channel.web_access_error" />
             </td>
             <td class="actions">
-              <n-button size="small" :loading="channels.loading" @click="syncHistory(channel)">同步</n-button>
+              <n-button size="small" :loading="syncingChannelIds.has(channel.id)" @click="syncHistory(channel)">同步</n-button>
               <n-button
                 size="small"
                 :disabled="!canCheckWebAccess(channel)"
-                :loading="channels.loading"
+                :loading="checkingWebAccessChannelIds.has(channel.id)"
                 @click="checkWebAccess(channel)"
               >
                 检测
               </n-button>
-              <n-button size="small" :loading="channels.loading" @click="enableListening(channel)">监听</n-button>
+              <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="enableListening(channel)">监听</n-button>
             </td>
           </tr>
           <tr v-if="filteredChannels.length === 0">
-            <td colspan="8" class="empty-cell">暂无频道</td>
+            <td colspan="10" class="empty-cell">暂无频道</td>
           </tr>
         </tbody>
       </table>
@@ -315,7 +359,12 @@ async function enableListening(channel: TelegramChannel) {
         <n-input-number v-model:value="syncMaxMessages" :min="1" :precision="0" />
         <div class="sync-modal-actions">
           <n-button @click="closeSyncModal">取消</n-button>
-          <n-button type="primary" :disabled="!canConfirmSync" :loading="channels.loading" @click="confirmSyncHistory">
+          <n-button
+            type="primary"
+            :disabled="!canConfirmSync"
+            :loading="syncTarget ? syncingChannelIds.has(syncTarget.id) : false"
+            @click="confirmSyncHistory"
+          >
             开始同步
           </n-button>
         </div>
@@ -359,7 +408,7 @@ async function enableListening(channel: TelegramChannel) {
 
 table {
   border-collapse: collapse;
-  min-width: 940px;
+  min-width: 1120px;
   width: 100%;
 }
 
@@ -398,6 +447,11 @@ th {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 120px;
+}
+
+.description-cell {
+  max-width: 260px;
+  white-space: normal;
 }
 
 .channel-username-link {

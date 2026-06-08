@@ -577,4 +577,41 @@ func TestChannelControlFields(t *testing.T) {
 	if got.SyncState != "pending" || got.ListenState != "disabled" {
 		t.Fatalf("history-enabled states = sync:%q listen:%q, want pending/disabled", got.SyncState, got.ListenState)
 	}
+
+	syncTime := time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC)
+	if err := channels.UpdateCursor(ctx, channelID, 9001, syncTime); err != nil {
+		t.Fatalf("UpdateCursor returned error: %v", err)
+	}
+	got, err = channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find synced channel: %v", err)
+	}
+	if got.SyncState != "synced" {
+		t.Fatalf("synced channel state = %q, want synced", got.SyncState)
+	}
+
+	_, err = channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 201,
+		Title:             "Control Channel Renamed",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       50,
+		Description:       "fresh metadata",
+		SyncState:         "metadata_only",
+		ListenState:       "disabled",
+	})
+	if err != nil {
+		t.Fatalf("metadata upsert returned error: %v", err)
+	}
+	got, err = channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find metadata-upserted channel: %v", err)
+	}
+	if got.Title != "Control Channel Renamed" || got.MemberCount != 50 || got.Description != "fresh metadata" {
+		t.Fatalf("metadata fields after upsert = %+v", got)
+	}
+	if got.SyncState != "synced" || got.ListenState != "disabled" ||
+		!got.HistorySyncEnabled || got.SyncProfile != "Normal" || got.ListenEnabled || !got.RemoteSearchAllowed {
+		t.Fatalf("control fields changed by metadata upsert: %+v", got)
+	}
 }

@@ -47,12 +47,6 @@ ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   member_count = excluded.member_count,
   description = excluded.description,
   avatar_state = excluded.avatar_state,
-  sync_state = excluded.sync_state,
-  listen_state = excluded.listen_state,
-  history_sync_enabled = excluded.history_sync_enabled,
-  sync_profile = excluded.sync_profile,
-  listen_enabled = excluded.listen_enabled,
-  remote_search_allowed = excluded.remote_search_allowed,
   updated_at = excluded.updated_at
 RETURNING id`,
 		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.HistorySyncEnabled, channel.SyncProfile, channel.ListenEnabled, channel.RemoteSearchAllowed, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
@@ -94,13 +88,32 @@ func (r *ChannelRepository) UpdateCursorTx(ctx context.Context, tx *sql.Tx, chan
 	return r.updateCursor(ctx, tx, channelID, lastMessageID, syncTime)
 }
 
+func (r *ChannelRepository) MarkSynced(ctx context.Context, channelID int64, syncTime time.Time) error {
+	return r.markSynced(ctx, r.db, channelID, syncTime)
+}
+
+func (r *ChannelRepository) MarkSyncedTx(ctx context.Context, tx *sql.Tx, channelID int64, syncTime time.Time) error {
+	return r.markSynced(ctx, tx, channelID, syncTime)
+}
+
 func (r *ChannelRepository) updateCursor(ctx context.Context, exec executor, channelID int64, lastMessageID int64, syncTime time.Time) error {
 	res, err := exec.ExecContext(ctx, `
 UPDATE telegram_channels
-SET last_message_id = ?, last_sync_time = ?, updated_at = ?
-WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
+SET last_message_id = ?, last_sync_time = ?, sync_state = ?, updated_at = ?
+WHERE id = ?`, lastMessageID, syncTime, "synced", time.Now().UTC(), channelID)
 	if err != nil {
 		return fmt.Errorf("update channel cursor: %w", err)
+	}
+	return requireRows(res, "channel not found")
+}
+
+func (r *ChannelRepository) markSynced(ctx context.Context, exec executor, channelID int64, syncTime time.Time) error {
+	res, err := exec.ExecContext(ctx, `
+UPDATE telegram_channels
+SET sync_state = ?, last_sync_time = ?, updated_at = ?
+WHERE id = ?`, "synced", syncTime, time.Now().UTC(), channelID)
+	if err != nil {
+		return fmt.Errorf("mark channel synced: %w", err)
 	}
 	return requireRows(res, "channel not found")
 }

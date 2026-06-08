@@ -272,6 +272,10 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 			return result, err
 		}
 	}
+	if err := s.channels.MarkSynced(ctx, channelID, time.Now().UTC()); err != nil {
+		s.logger.Error("history sync mark channel synced failed", zap.Int64("channel_id", channelID), zap.Error(err))
+		return result, err
+	}
 	s.logger.Info("history sync channel completed",
 		zap.Int64("channel_id", channelID),
 		zap.Int("messages", result.Messages),

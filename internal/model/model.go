@@ -190,13 +190,27 @@ type SyncCursor struct {
 }
 
 type Link struct {
+	ID            int64     `json:"id"`
+	MessageID     int64     `json:"message_id"`
+	Type          string    `json:"type"`
+	URL           string    `json:"url"`
+	Password      string    `json:"password,omitempty"`
+	Note          string    `json:"note,omitempty"`
+	SourceSnippet string    `json:"source_snippet,omitempty"`
+	Category      string    `json:"category,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+type File struct {
 	ID        int64     `json:"id"`
 	MessageID int64     `json:"message_id"`
-	Type      string    `json:"type"`
-	URL       string    `json:"url"`
-	Password  string    `json:"password,omitempty"`
-	Note      string    `json:"note,omitempty"`
+	FileName  string    `json:"file_name"`
+	Extension string    `json:"extension"`
+	MimeType  string    `json:"mime_type"`
+	SizeBytes int64     `json:"size_bytes"`
+	Category  string    `json:"category"`
 	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type SearchResult struct {

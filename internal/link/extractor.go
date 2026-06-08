@@ -149,10 +149,12 @@ func (e *Extractor) Extract(text string) []model.Link {
 			providerSpans = append(providerSpans, matchSpan{start: candidate.MatchStart, end: candidate.MatchEnd})
 		}
 		out = append(out, model.Link{
-			Type:     candidate.Type,
-			URL:      url,
-			Password: password,
-			Note:     note,
+			Type:          candidate.Type,
+			URL:           url,
+			Password:      password,
+			Note:          note,
+			SourceSnippet: sourceSnippet(text, candidate.MatchStart, candidate.MatchEnd),
+			Category:      resourceCategory(candidate.Type),
 		})
 	}
 	return out
@@ -179,6 +181,41 @@ func overlapsProvider(url string, providers []string) bool {
 		}
 	}
 	return false
+}
+
+func resourceCategory(typ string) string {
+	switch typ {
+	case "magnet":
+		return "magnet"
+	case "ed2k":
+		return "ed2k"
+	case "url":
+		return "http"
+	default:
+		return "cloud_drive"
+	}
+}
+
+func sourceSnippet(text string, start int, end int) string {
+	if start < 0 || start > len(text) {
+		return ""
+	}
+	if end < start {
+		end = start
+	}
+	lineStart := strings.LastIndex(text[:start], "\n") + 1
+	lineEndRel := strings.Index(text[end:], "\n")
+	lineEnd := len(text)
+	if lineEndRel >= 0 {
+		lineEnd = end + lineEndRel
+	}
+	snippet := strings.TrimSpace(text[lineStart:lineEnd])
+	const maxSnippet = 240
+	if utf8.RuneCountInString(snippet) <= maxSnippet {
+		return snippet
+	}
+	runes := []rune(snippet)
+	return string(runes[:maxSnippet])
 }
 
 func trimTrailingPunctuation(raw string) string {

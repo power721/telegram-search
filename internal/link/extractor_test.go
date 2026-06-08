@@ -182,6 +182,44 @@ func TestExtractDoesNotClassifyUnknown123Domain(t *testing.T) {
 	}
 }
 
+func TestExtractResourceFields(t *testing.T) {
+	text := `资源合集
+夸克：https://pan.quark.cn/s/abc123
+磁力：magnet:?xt=urn:btih:abcdef
+电驴：ed2k://|file|movie.mkv|123|HASH|/
+官网：https://example.com/post`
+
+	links := NewExtractor().Extract(text)
+	byURL := map[string]struct {
+		category string
+		snippet  string
+	}{}
+	for _, item := range links {
+		byURL[item.URL] = struct {
+			category string
+			snippet  string
+		}{category: item.Category, snippet: item.SourceSnippet}
+	}
+	want := map[string]string{
+		"https://pan.quark.cn/s/abc123":     "cloud_drive",
+		"magnet:?xt=urn:btih:abcdef":        "magnet",
+		"ed2k://|file|movie.mkv|123|HASH|/": "ed2k",
+		"https://example.com/post":          "http",
+	}
+	for url, category := range want {
+		got, ok := byURL[url]
+		if !ok {
+			t.Fatalf("missing url %s in %+v", url, links)
+		}
+		if got.category != category {
+			t.Fatalf("category for %s = %q, want %q", url, got.category, category)
+		}
+		if got.snippet == "" {
+			t.Fatalf("source snippet for %s is empty", url)
+		}
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

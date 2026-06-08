@@ -42,14 +42,19 @@ func (r *LinkRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, messageID 
 		if link.Type == "" {
 			link.Type = "url"
 		}
+		if link.Category == "" {
+			link.Category = linkCategory(link)
+		}
 		err := tx.QueryRowContext(ctx, `
-INSERT INTO telegram_links (message_id, type, url, password, note, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO telegram_links (message_id, type, url, password, note, source_snippet, category, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(message_id, type, url) DO UPDATE SET
   password = excluded.password,
-  note = excluded.note
+  note = excluded.note,
+  source_snippet = excluded.source_snippet,
+  category = excluded.category
 RETURNING id, created_at`,
-			messageID, link.Type, link.URL, link.Password, link.Note, now,
+			messageID, link.Type, link.URL, link.Password, link.Note, link.SourceSnippet, link.Category, now,
 		).Scan(&link.ID, &link.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("save link %s: %w", link.URL, err)
@@ -97,7 +102,8 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 	}
 	args = append(args, limit, params.Offset)
 	query := `
-SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''), l.created_at,
+SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
+       COALESCE(l.source_snippet, ''), COALESCE(l.category, ''), l.created_at,
        mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
@@ -114,7 +120,7 @@ LIMIT ? OFFSET ?`
 	var out []model.LinkResult
 	for rows.Next() {
 		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -234,6 +240,19 @@ func sourceFromChannel(title string, username string) string {
 	return "tg"
 }
 
+func linkCategory(link model.Link) string {
+	switch link.Type {
+	case "magnet":
+		return "magnet"
+	case "ed2k":
+		return "ed2k"
+	case "url":
+		return "http"
+	default:
+		return "cloud_drive"
+	}
+}
+
 func titleMarkerScore(note string) int {
 	lower := strings.ToLower(note)
 	markers := []string{"合集", "系列", "全", "完", "最新", "complete"}
@@ -247,7 +266,8 @@ func titleMarkerScore(note string) int {
 
 func loadLinks(ctx context.Context, db *sql.DB, messageID int64) ([]model.Link, error) {
 	rows, err := db.QueryContext(ctx, `
-SELECT id, message_id, type, url, COALESCE(password, ''), COALESCE(note, ''), created_at
+SELECT id, message_id, type, url, COALESCE(password, ''), COALESCE(note, ''),
+       COALESCE(source_snippet, ''), COALESCE(category, ''), created_at
 FROM telegram_links
 WHERE message_id = ?
 ORDER BY id`, messageID)
@@ -258,7 +278,7 @@ ORDER BY id`, messageID)
 	var out []model.Link
 	for rows.Next() {
 		var link model.Link
-		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.Note, &link.CreatedAt); err != nil {
+		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.Note, &link.SourceSnippet, &link.Category, &link.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, link)

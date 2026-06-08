@@ -29,6 +29,7 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertTableExists(t, conn, "telegram_message_contents")
 	assertTableExists(t, conn, "telegram_sync_cursors")
 	assertTableExists(t, conn, "telegram_links")
+	assertTableExists(t, conn, "telegram_files")
 	assertTableExists(t, conn, "telegram_messages_fts")
 	assertColumnExists(t, conn, "telegram_channels", "web_access")
 	assertColumnExists(t, conn, "telegram_channels", "web_access_checked_at")
@@ -52,6 +53,7 @@ func TestMigrateCreatesFreshFoundationSchema(t *testing.T) {
 		"telegram_message_contents",
 		"telegram_sync_cursors",
 		"telegram_links",
+		"telegram_files",
 		"telegram_watch_rules",
 		"users",
 		"api_keys",

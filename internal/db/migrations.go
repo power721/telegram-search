@@ -110,8 +110,24 @@ CREATE TABLE IF NOT EXISTS telegram_links (
   url TEXT NOT NULL,
   password TEXT,
   note TEXT,
+  source_snippet TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL,
   UNIQUE(message_id, type, url),
+  FOREIGN KEY(message_id) REFERENCES telegram_messages(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS telegram_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  file_name TEXT NOT NULL,
+  extension TEXT NOT NULL DEFAULT '',
+  mime_type TEXT NOT NULL DEFAULT '',
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  category TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE(message_id, file_name, size_bytes),
   FOREIGN KEY(message_id) REFERENCES telegram_messages(id) ON DELETE CASCADE
 );
 
@@ -174,6 +190,9 @@ CREATE INDEX IF NOT EXISTS idx_telegram_messages_telegram_message_id ON telegram
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_id ON telegram_messages(account_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_type ON telegram_links(type);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_message_id ON telegram_links(message_id);
+CREATE INDEX IF NOT EXISTS idx_telegram_links_category_message_id ON telegram_links(category, message_id);
+CREATE INDEX IF NOT EXISTS idx_telegram_files_message_id ON telegram_files(message_id);
+CREATE INDEX IF NOT EXISTS idx_telegram_files_category_message_id ON telegram_files(category, message_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_channels_account_id ON telegram_channels(account_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_date_id ON telegram_messages(account_id, date DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_messages(channel_id, date DESC, id DESC);

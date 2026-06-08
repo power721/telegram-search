@@ -69,7 +69,15 @@ func (r *ChannelRepository) UpdateControl(ctx context.Context, id int64, control
 	if control.ListenEnabled {
 		listenState = "enabled"
 	}
-	res, err := r.db.ExecContext(ctx, `
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin update channel control: %w", err)
+	}
+	defer tx.Rollback()
+	if err := r.disableDuplicateOwnersTx(ctx, tx, id, control); err != nil {
+		return err
+	}
+	res, err := tx.ExecContext(ctx, `
 UPDATE telegram_channels
 SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, sync_state = ?, listen_state = ?, updated_at = ?
 WHERE id = ?`,
@@ -77,7 +85,13 @@ WHERE id = ?`,
 	if err != nil {
 		return fmt.Errorf("update channel control: %w", err)
 	}
-	return requireRows(res, "channel not found")
+	if err := requireRows(res, "channel not found"); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit update channel control: %w", err)
+	}
+	return nil
 }
 
 func (r *ChannelRepository) UpdateControls(ctx context.Context, ids []int64, control model.ChannelControl) error {
@@ -110,6 +124,9 @@ func (r *ChannelRepository) UpdateControls(ctx context.Context, ids []int64, con
 	}
 	defer tx.Rollback()
 	for _, id := range unique {
+		if err := r.disableDuplicateOwnersTx(ctx, tx, id, control); err != nil {
+			return err
+		}
 		res, err := tx.ExecContext(ctx, `
 UPDATE telegram_channels
 SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, sync_state = ?, listen_state = ?, updated_at = ?
@@ -124,6 +141,38 @@ WHERE id = ?`,
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit update channel controls: %w", err)
+	}
+	return nil
+}
+
+func (r *ChannelRepository) disableDuplicateOwnersTx(ctx context.Context, tx *sql.Tx, id int64, control model.ChannelControl) error {
+	if !control.HistorySyncEnabled && !control.ListenEnabled {
+		return nil
+	}
+	var telegramChannelID int64
+	var channelType string
+	if err := tx.QueryRowContext(ctx, `
+SELECT telegram_channel_id, type
+FROM telegram_channels
+WHERE id = ?`, id).Scan(&telegramChannelID, &channelType); err != nil {
+		if isNotFound(err) {
+			return fmt.Errorf("%w: channel not found", sql.ErrNoRows)
+		}
+		return fmt.Errorf("load channel identity: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE telegram_channels
+SET history_sync_enabled = 0,
+    listen_enabled = 0,
+    sync_state = 'metadata_only',
+    listen_state = 'disabled',
+    updated_at = ?
+WHERE id <> ?
+  AND telegram_channel_id = ?
+  AND type = ?
+  AND (history_sync_enabled <> 0 OR listen_enabled <> 0 OR sync_state <> 'metadata_only' OR listen_state <> 'disabled')`,
+		time.Now().UTC(), id, telegramChannelID, channelType); err != nil {
+		return fmt.Errorf("disable duplicate channel owners: %w", err)
 	}
 	return nil
 }

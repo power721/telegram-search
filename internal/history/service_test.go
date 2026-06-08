@@ -41,12 +41,13 @@ func TestSyncChannelUsesSyncProfile(t *testing.T) {
 				t.Fatalf("save account: %v", err)
 			}
 			channelID, err := channels.Save(ctx, model.Channel{
-				AccountID:         accountID,
-				TelegramChannelID: 200,
-				AccessHash:        300,
-				Title:             "VIP",
-				Type:              model.ChannelTypeChannel,
-				SyncProfile:       tt.name,
+				AccountID:          accountID,
+				TelegramChannelID:  200,
+				AccessHash:         300,
+				Title:              "VIP",
+				Type:               model.ChannelTypeChannel,
+				HistorySyncEnabled: true,
+				SyncProfile:        tt.name,
 			})
 			if err != nil {
 				t.Fatalf("save channel: %v", err)
@@ -103,12 +104,13 @@ func TestSyncChannelWithMaxMessagesOverridesProfile(t *testing.T) {
 		t.Fatalf("save account: %v", err)
 	}
 	channelID, err := channels.Save(ctx, model.Channel{
-		AccountID:         accountID,
-		TelegramChannelID: 200,
-		AccessHash:        300,
-		Title:             "VIP",
-		Type:              model.ChannelTypeChannel,
-		SyncProfile:       "Full",
+		AccountID:          accountID,
+		TelegramChannelID:  200,
+		AccessHash:         300,
+		Title:              "VIP",
+		Type:               model.ChannelTypeChannel,
+		HistorySyncEnabled: true,
+		SyncProfile:        "Full",
 	})
 	if err != nil {
 		t.Fatalf("save channel: %v", err)
@@ -141,12 +143,13 @@ func TestSyncChannelFullProfileFetchesUntilEmptyBatch(t *testing.T) {
 		t.Fatalf("save account: %v", err)
 	}
 	channelID, err := channels.Save(ctx, model.Channel{
-		AccountID:         accountID,
-		TelegramChannelID: 200,
-		AccessHash:        300,
-		Title:             "VIP",
-		Type:              model.ChannelTypeChannel,
-		SyncProfile:       "Full",
+		AccountID:          accountID,
+		TelegramChannelID:  200,
+		AccessHash:         300,
+		Title:              "VIP",
+		Type:               model.ChannelTypeChannel,
+		HistorySyncEnabled: true,
+		SyncProfile:        "Full",
 	})
 	if err != nil {
 		t.Fatalf("save channel: %v", err)
@@ -204,11 +207,12 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 		t.Fatalf("save account: %v", err)
 	}
 	channelID, err := channels.Save(ctx, model.Channel{
-		AccountID:         accountID,
-		TelegramChannelID: 200,
-		AccessHash:        300,
-		Title:             "VIP",
-		Type:              model.ChannelTypeChannel,
+		AccountID:          accountID,
+		TelegramChannelID:  200,
+		AccessHash:         300,
+		Title:              "VIP",
+		Type:               model.ChannelTypeChannel,
+		HistorySyncEnabled: true,
 	})
 	if err != nil {
 		t.Fatalf("save channel: %v", err)
@@ -289,6 +293,34 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	}
 	if channel.SyncState != "synced" {
 		t.Fatalf("channel sync state = %q, want synced", channel.SyncState)
+	}
+}
+
+func TestSyncChannelSkipsWhenHistorySyncDisabled(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{
+		HistorySyncEnabled:  false,
+		SyncProfile:         "Normal",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("disable history sync: %v", err)
+	}
+	fake := &profileLimitHistoryClient{available: 1, startID: 50000}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+	})
+
+	result, err := service.SyncChannel(ctx, channelID)
+	if err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	if result.Messages != 0 || fake.fetched != 0 {
+		t.Fatalf("result = %+v fetched=%d, want no history fetch", result, fake.fetched)
 	}
 }
 
@@ -508,7 +540,7 @@ func TestHistorySyncTaskProgressUsesProfileLimit(t *testing.T) {
 		t.Fatalf("save account: %v", err)
 	}
 	channelID, err := channels.Save(ctx, model.Channel{
-		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel,
+		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel, HistorySyncEnabled: true,
 		SyncProfile: "Quick",
 	})
 	if err != nil {
@@ -549,7 +581,7 @@ func TestHistorySyncTaskProgressFullProfileUsesUnknownTotal(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
-	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{SyncProfile: "Full"}); err != nil {
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{HistorySyncEnabled: true, SyncProfile: "Full", RemoteSearchAllowed: true}); err != nil {
 		t.Fatalf("update controls: %v", err)
 	}
 	now := time.Now().UTC()
@@ -691,7 +723,7 @@ func seedHistoryAccountAndChannel(t *testing.T, ctx context.Context, accounts *r
 		t.Fatalf("save account: %v", err)
 	}
 	channelID, err := channels.Save(ctx, model.Channel{
-		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel,
+		AccountID: accountID, TelegramChannelID: 200, AccessHash: 300, Title: "VIP", Type: model.ChannelTypeChannel, HistorySyncEnabled: true,
 	})
 	if err != nil {
 		t.Fatalf("save channel: %v", err)
@@ -734,11 +766,11 @@ func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	accountID, channel1 := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
-	channel2, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 201, AccessHash: 301, Title: "VIP 2", Type: model.ChannelTypeChannel})
+	channel2, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 201, AccessHash: 301, Title: "VIP 2", Type: model.ChannelTypeChannel, HistorySyncEnabled: true})
 	if err != nil {
 		t.Fatalf("save channel2: %v", err)
 	}
-	channel3, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 202, AccessHash: 302, Title: "VIP 3", Type: model.ChannelTypeChannel})
+	channel3, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 202, AccessHash: 302, Title: "VIP 3", Type: model.ChannelTypeChannel, HistorySyncEnabled: true})
 	if err != nil {
 		t.Fatalf("save channel3: %v", err)
 	}
@@ -762,6 +794,34 @@ func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {
 	}
 	if fake.maxActive > 2 {
 		t.Fatalf("max active = %d, want <= 2", fake.maxActive)
+	}
+}
+
+func TestSyncManySkipsHistoryDisabledChannels(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	if err := channels.UpdateControl(ctx, channelID, model.ChannelControl{
+		HistorySyncEnabled:  false,
+		SyncProfile:         "Normal",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("disable history sync: %v", err)
+	}
+	fake := &profileLimitHistoryClient{available: 1, startID: 50000}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10, Workers: 1,
+	})
+
+	result := service.SyncMany(ctx, []int64{channelID})
+	if result.Queued != 0 || result.Skipped != 1 || fake.fetched != 0 {
+		t.Fatalf("result = %+v fetched=%d, want queued=0 skipped=1 and no fetch", result, fake.fetched)
+	}
+	if len(result.Failures) != 0 || len(result.Results) != 0 {
+		t.Fatalf("result = %+v, want no failures or stored results for skipped channel", result)
 	}
 }
 

@@ -615,3 +615,83 @@ func TestChannelControlFields(t *testing.T) {
 		t.Fatalf("control fields changed by metadata upsert: %+v", got)
 	}
 }
+
+func TestChannelControlDisablesDuplicateChannelOwners(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+
+	firstAccountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save first account: %v", err)
+	}
+	secondAccountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save second account: %v", err)
+	}
+	firstChannelID, err := channels.Save(ctx, model.Channel{
+		AccountID:           firstAccountID,
+		TelegramChannelID:   201,
+		Title:               "Duplicate Channel",
+		Type:                model.ChannelTypeChannel,
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Deep",
+		ListenEnabled:       true,
+		RemoteSearchAllowed: true,
+	})
+	if err != nil {
+		t.Fatalf("save first channel: %v", err)
+	}
+	secondChannelID, err := channels.Save(ctx, model.Channel{
+		AccountID:           secondAccountID,
+		TelegramChannelID:   201,
+		Title:               "Duplicate Channel",
+		Type:                model.ChannelTypeChannel,
+		HistorySyncEnabled:  false,
+		SyncProfile:         "Normal",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	})
+	if err != nil {
+		t.Fatalf("save second channel: %v", err)
+	}
+
+	if err := channels.UpdateControl(ctx, secondChannelID, model.ChannelControl{
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Normal",
+		ListenEnabled:       true,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("UpdateControl returned error: %v", err)
+	}
+
+	first, err := channels.FindByID(ctx, firstChannelID)
+	if err != nil {
+		t.Fatalf("find first channel: %v", err)
+	}
+	if first.HistorySyncEnabled || first.ListenEnabled {
+		t.Fatalf("first duplicate control = history:%v listen:%v, want both disabled", first.HistorySyncEnabled, first.ListenEnabled)
+	}
+	if first.SyncState != "metadata_only" || first.ListenState != "disabled" {
+		t.Fatalf("first duplicate states = sync:%q listen:%q, want metadata_only/disabled", first.SyncState, first.ListenState)
+	}
+
+	second, err := channels.FindByID(ctx, secondChannelID)
+	if err != nil {
+		t.Fatalf("find second channel: %v", err)
+	}
+	if !second.HistorySyncEnabled || !second.ListenEnabled {
+		t.Fatalf("second duplicate control = history:%v listen:%v, want both enabled", second.HistorySyncEnabled, second.ListenEnabled)
+	}
+	if second.SyncState != "pending" || second.ListenState != "enabled" {
+		t.Fatalf("second duplicate states = sync:%q listen:%q, want pending/enabled", second.SyncState, second.ListenState)
+	}
+}

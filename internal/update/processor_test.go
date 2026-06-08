@@ -188,6 +188,46 @@ func TestProcessorSkipsRealtimeMessagesWithoutEnabledWatchRule(t *testing.T) {
 	}
 }
 
+func TestProcessorSkipsRealtimeMessagesWhenChannelListenDisabled(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	if err := fixture.channels.UpdateControl(ctx, fixture.channelID, model.ChannelControl{
+		HistorySyncEnabled:  false,
+		SyncProfile:         "Normal",
+		ListenEnabled:       false,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("disable channel listener: %v", err)
+	}
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+	})
+
+	err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         21,
+		Text:              "庆余年 https://pan.quark.cn/s/abc",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Process returned error: %v", err)
+	}
+	latest, err := fixture.messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest: %v", err)
+	}
+	if len(latest) != 0 {
+		t.Fatalf("latest = %+v, want no stored realtime messages when listener is disabled", latest)
+	}
+}
+
 func TestProcessorDeletesStoredMessageWhenRealtimeEditStopsMatching(t *testing.T) {
 	ctx := context.Background()
 	fixture := newProcessorFixture(t)
@@ -337,6 +377,8 @@ func newProcessorFixture(t *testing.T) processorFixture {
 		AccessHash:        300,
 		Title:             "VIP",
 		Type:              model.ChannelTypeChannel,
+		ListenEnabled:     true,
+		ListenState:       "enabled",
 	})
 	if err != nil {
 		t.Fatalf("save channel: %v", err)

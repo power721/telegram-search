@@ -75,6 +75,7 @@ type SyncManyResult struct {
 
 var ErrChannelSyncInProgress = errors.New("channel sync already in progress")
 var ErrTaskPaused = errors.New("task is paused")
+var errHistorySyncDisabled = errors.New("channel history sync disabled")
 
 func NewService(opts Options) *Service {
 	if opts.Telegram == nil {
@@ -139,7 +140,11 @@ func (s *Service) syncChannel(ctx context.Context, channelID int64, profile stri
 		return SyncResult{}, ErrChannelSyncInProgress
 	}
 	defer s.releaseChannel(channelID)
-	return s.syncChannelWithRetry(ctx, channelID, profile, maxMessages, progress)
+	result, err := s.syncChannelWithRetry(ctx, channelID, profile, maxMessages, progress)
+	if errors.Is(err, errHistorySyncDisabled) {
+		return result, nil
+	}
+	return result, err
 }
 
 func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
@@ -198,6 +203,12 @@ func (s *Service) SyncManyWithMaxMessages(ctx context.Context, channelIDs []int6
 				s.releaseChannel(channelID)
 				mu.Lock()
 				if err != nil {
+					if errors.Is(err, errHistorySyncDisabled) {
+						s.logger.Info("history sync channel skipped because history sync is disabled", zap.Int64("channel_id", channelID))
+						result.Skipped++
+						mu.Unlock()
+						continue
+					}
 					s.logger.Warn("history sync channel failed", zap.Int64("channel_id", channelID), zap.Error(err))
 					result.Failures[channelID] = err.Error()
 				} else {
@@ -235,7 +246,15 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 	started := time.Now()
 	s.logger.Info("history sync channel started", zap.Int64("channel_id", channelID), zap.String("profile", profile))
 	var result SyncResult
-	err := s.retryPolicy.Run(ctx, func() error {
+	channel, err := s.channels.FindByID(ctx, channelID)
+	if err != nil {
+		return result, fmt.Errorf("load channel: %w", err)
+	}
+	if !channel.HistorySyncEnabled {
+		s.logger.Info("history sync channel skipped because history sync is disabled", zap.Int64("channel_id", channelID))
+		return result, errHistorySyncDisabled
+	}
+	err = s.retryPolicy.Run(ctx, func() error {
 		next, err := s.syncChannelOnce(ctx, channelID, profile, maxMessages, progress)
 		result = next
 		return err

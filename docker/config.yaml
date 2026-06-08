@@ -1,0 +1,13 @@
+telegram:
+  api_id: 26375241
+  api_hash: 70f574f48a016d683c64f2f7a217d04f
+server:
+  host: 0.0.0.0
+  port: 6000
+sync:
+  workers: 5
+  history_batch_size: 100
+storage:
+  path: /data/tg-search
+  max_db_size: 10GB
+  max_media_cache: 20GB

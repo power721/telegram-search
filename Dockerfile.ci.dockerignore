@@ -1,5 +1,7 @@
 **
 !Dockerfile.ci
+!docker/
+!docker/config.yaml
 !dist/
 !dist/linux/
 !dist/linux/amd64/

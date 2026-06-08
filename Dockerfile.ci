@@ -6,6 +6,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --chmod=755 dist/linux/${TARGETARCH}/tg-search /usr/local/bin/tg-search
+COPY docker/config.yaml /app/config.yaml
 
 EXPOSE 6000
 VOLUME ["/data/tg-search"]

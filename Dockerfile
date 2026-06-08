@@ -19,6 +19,7 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-build /out/tg-search /usr/local/bin/tg-search
+COPY docker/config.yaml /app/config.yaml
 EXPOSE 6000
 VOLUME ["/data/tg-search"]
 ENTRYPOINT ["tg-search"]

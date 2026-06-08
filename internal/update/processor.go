@@ -62,6 +62,9 @@ func (p *Processor) Process(ctx context.Context, event Event) error {
 	if err != nil {
 		return fmt.Errorf("find update channel: %w", err)
 	}
+	if !channel.ListenEnabled {
+		return nil
+	}
 
 	switch event.Type {
 	case EventNewMessage, EventEditMessage:

@@ -192,7 +192,7 @@ npm run web:build
 
 ## Release
 
-Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and pushes Docker images for `linux/amd64`, `linux/arm64`, and `linux/arm/v7` to Docker Hub as `<DOCKERHUB_USERNAME>/tg-search:latest` and `<DOCKERHUB_USERNAME>/tg-search:<version>` with the leading `v` removed from the Git tag. Docker Hub publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub secrets.
+Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and pushes Docker images for `linux/amd64` and `linux/arm64` to Docker Hub as `<DOCKERHUB_USERNAME>/tg-search:latest` and `<DOCKERHUB_USERNAME>/tg-search:<version>` with the leading `v` removed from the Git tag. Docker Hub publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub secrets.
 
 Operational docs:
 

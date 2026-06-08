@@ -2,7 +2,7 @@
 
 Self-hosted personal Telegram search foundation.
 
-`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, and account navigation. Later phases add channel control, Global Search, and the Telegram Resource Library.
+`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, channel control, Global Search, and the Telegram Resource Library.
 
 ## Quickstart
 
@@ -57,6 +57,18 @@ Telegram Login starts a metadata-only channel sync after the account is online. 
 
 Channel Control adds Sync Profiles (`Quick`, `Normal`, `Deep`, `Full`), per-channel history/listen/remote-search toggles, Telegram Web Access Detection for `https://t.me/s/{username}`, listen rule filters, and display-only remote search task records. Web Access Detection is not a search-engine indexing signal.
 
+## Local Index
+
+Message metadata and content are stored separately:
+
+```text
+telegram_messages          -> account/channel/message ids, sender, dates, type, delete state
+telegram_message_contents  -> text and raw_json
+telegram_sync_cursors      -> per-account/channel sync state
+```
+
+FTS5 indexes persisted local message content only. Remote Telegram search results are display-only, marked `source="remote"`, and are not written into local message, content, link, file, or FTS tables.
+
 ## Foundation APIs
 
 ```text
@@ -85,11 +97,20 @@ POST   /api/watch-rules
 PUT    /api/watch-rules/:id
 DELETE /api/watch-rules/:id
 POST   /api/search/remote
+GET    /api/search/remote/:task_id
+GET    /api/search/global
+GET    /api/search/messages
+GET    /api/search/links
+GET    /api/search/files
+GET    /api/search/channels
+GET    /api/resources
+GET    /api/resources/grouped
+GET    /api/resources/:id
 GET    /api/storage/usage
 GET    /api/status
 ```
 
-Search, maintenance, and backup APIs from the existing backend remain available while the product is redesigned in later phases.
+Global Search returns grouped Messages, Links, Files, and Channels. Resources returns the Telegram Resource Library with `cloud_drive`, `magnet`, `ed2k`, `http`, and `files` groups.
 
 ## Storage Usage Response
 

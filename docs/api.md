@@ -1,6 +1,18 @@
 # tg-search API Documentation
 
-This document describes the active REST API surface for the Phase 1C Telegram onboarding baseline. All responses are JSON.
+This document describes the active REST API surface for the Phase 1E local index, search, and resource library baseline. All responses are JSON.
+
+## Local Index Model
+
+Message storage is split:
+
+```text
+telegram_messages          -> metadata
+telegram_message_contents  -> text and raw_json
+telegram_sync_cursors      -> per account/channel cursor state
+```
+
+`telegram_messages_fts` indexes only persisted local content from `telegram_message_contents.text`. Remote Telegram search results are display-only and are not inserted into `telegram_messages`, `telegram_message_contents`, `telegram_links`, `telegram_files`, or FTS.
 
 ## Error Response
 
@@ -323,18 +335,51 @@ Creates a listen rule.
 
 `PUT /api/watch-rules/:id` uses the same payload. `GET /api/watch-rules` and `GET /api/watch-rules/:id` return these fields.
 
-## Remote Search Entry
+## Search
+
+### `GET /api/search/global?q=ubuntu`
+
+Returns grouped local search results.
+
+```json
+{
+  "messages": { "items": [], "total": 0 },
+  "links": { "items": [], "total": 0 },
+  "files": { "items": [], "total": 0 },
+  "channels": { "items": [], "total": 0 }
+}
+```
+
+Scoped endpoints use the same filters (`q`, `account_id`, `channel_id`, `limit`, `offset`, date range where applicable):
+
+```text
+GET /api/search/messages
+GET /api/search/links
+GET /api/search/files
+GET /api/search/channels
+```
+
+Legacy endpoints remain available:
+
+```text
+GET /api/search
+GET /api/messages/latest
+GET /api/links
+GET /api/links/merged
+```
+
+## Remote Search
 
 ### `POST /api/search/remote`
 
-Creates display-only remote search task metadata for Phase 1E execution.
+Executes a display-only Telegram remote search for an unsynced channel.
 
 Constraints:
 
 - `query` must be non-empty.
 - `channel_id` must reference an unsynced channel.
 - `remote_search_allowed` must be `true`.
-- This endpoint does not write local index rows.
+- Results are stored only in short-lived memory and do not write local index rows.
 
 Request:
 
@@ -355,6 +400,78 @@ Response `202`:
   "expires_at": "2026-06-08T10:30:00Z"
 }
 ```
+
+### `GET /api/search/remote/:task_id`
+
+Returns temporary remote results:
+
+```json
+{
+  "task": {},
+  "items": [
+    {
+      "source": "remote",
+      "channel_id": 1,
+      "telegram_message_id": 99,
+      "text": "ubuntu iso"
+    }
+  ]
+}
+```
+
+## Resources
+
+### `GET /api/resources`
+
+Returns the Telegram Resource Library from local indexed links and files. Duplicate links are collapsed by URL, keeping the newest source message.
+
+Filters:
+
+```text
+q
+type
+category
+channel_id
+account_id
+extension
+sort
+limit
+offset
+```
+
+Resource groups:
+
+```text
+cloud_drive
+magnet
+ed2k
+http
+files
+```
+
+Response:
+
+```json
+{
+  "items": [],
+  "total": 0,
+  "grouped": {
+    "cloud_drive": 0,
+    "magnet": 0,
+    "ed2k": 0,
+    "http": 0,
+    "files": 0
+  }
+}
+```
+
+### `GET /api/resources/grouped`
+
+Returns grouped resource counts.
+
+### `GET /api/resources/:id`
+
+Returns one resource item from the current local resource library.
 
 ## Auth
 

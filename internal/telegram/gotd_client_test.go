@@ -137,3 +137,33 @@ func TestConvertMessageIncludesHiddenAndButtonURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestConvertMessageExtractsDocumentFileMetadata(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	media := &tg.MessageMediaDocument{}
+	media.SetDocument(&tg.Document{
+		ID:       42,
+		MimeType: "application/pdf",
+		Size:     12345,
+		Attributes: []tg.DocumentAttributeClass{
+			&tg.DocumentAttributeFilename{FileName: "guide.pdf"},
+		},
+	})
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "document",
+	}
+	message.SetMedia(media)
+
+	converted := convertMessage(message)
+
+	if len(converted.Files) != 1 {
+		t.Fatalf("files = %+v, want one file", converted.Files)
+	}
+	file := converted.Files[0]
+	if file.FileName != "guide.pdf" || file.Extension != ".pdf" || file.MimeType != "application/pdf" || file.SizeBytes != 12345 {
+		t.Fatalf("file = %+v, want guide.pdf metadata", file)
+	}
+}

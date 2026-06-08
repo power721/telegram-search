@@ -309,12 +309,13 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 	ctx := context.Background()
 	fixture := newProcessorFixture(t)
 	stats := repository.NewResourceStatsRepository(fixture.conn)
-	resources := resource.NewService(fixture.links, nil, stats)
+	resources := resource.NewService(fixture.links, fixture.files, stats)
 	processor := NewProcessor(ProcessorOptions{
 		DB:        fixture.conn,
 		Channels:  fixture.channels,
 		Messages:  fixture.messages,
 		Links:     fixture.links,
+		Files:     fixture.files,
 		Resources: resources,
 		Extractor: link.NewExtractor(),
 	})
@@ -327,6 +328,12 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 		Text:              "资源 https://pan.quark.cn/s/abc",
 		RawJSON:           "{}",
 		Date:              time.Now().UTC(),
+		Files: []model.File{{
+			FileName:  "ubuntu.iso",
+			Extension: ".iso",
+			MimeType:  "application/x-iso9660-image",
+			SizeBytes: 5000,
+		}},
 	}); err != nil {
 		t.Fatalf("process new event: %v", err)
 	}
@@ -335,8 +342,15 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get grouped stats: %v", err)
 	}
-	if !found || grouped["cloud_drive"] != 1 {
-		t.Fatalf("grouped stats = %+v found=%v, want cloud_drive=1", grouped, found)
+	if !found || grouped["cloud_drive"] != 1 || grouped["files"] != 1 {
+		t.Fatalf("grouped stats = %+v found=%v, want cloud_drive=1 files=1", grouped, found)
+	}
+	stored, err := fixture.files.FindByMessageID(ctx, 1)
+	if err != nil {
+		t.Fatalf("find files: %v", err)
+	}
+	if len(stored) != 1 || stored[0].FileName != "ubuntu.iso" {
+		t.Fatalf("stored files = %+v, want ubuntu.iso", stored)
 	}
 }
 
@@ -346,6 +360,7 @@ type processorFixture struct {
 	channels          *repository.ChannelRepository
 	messages          *repository.MessageRepository
 	links             *repository.LinkRepository
+	files             *repository.FileRepository
 	accountID         int64
 	channelID         int64
 	telegramChannelID int64
@@ -366,6 +381,7 @@ func newProcessorFixture(t *testing.T) processorFixture {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
 	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
 	if err != nil {
 		t.Fatalf("save account: %v", err)
@@ -389,6 +405,7 @@ func newProcessorFixture(t *testing.T) processorFixture {
 		channels:          channels,
 		messages:          messages,
 		links:             links,
+		files:             files,
 		accountID:         accountID,
 		channelID:         channelID,
 		telegramChannelID: telegramChannelID,

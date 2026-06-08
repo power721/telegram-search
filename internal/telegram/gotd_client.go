@@ -315,6 +315,7 @@ func convertMessage(message *tg.Message) Message {
 		RawJSON:           string(rawJSON),
 		Date:              time.Unix(int64(message.Date), 0).UTC(),
 		EditDate:          editDate,
+		Files:             FilesFromMessage(message),
 	}
 }
 

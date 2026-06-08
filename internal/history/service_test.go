@@ -198,8 +198,9 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
 	resourceStats := repository.NewResourceStatsRepository(conn)
-	resources := resource.NewService(links, nil, resourceStats)
+	resources := resource.NewService(links, files, resourceStats)
 	status := repository.NewStatusRepository(conn)
 
 	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
@@ -221,7 +222,12 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	now := time.Now().UTC()
 	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
 		0: {
-			{TelegramMessageID: 11, SenderID: 1, Text: "最新消息", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 11, SenderID: 1, Text: "最新消息", RawJSON: "{}", Date: now, Files: []model.File{{
+				FileName:  "ubuntu.iso",
+				Extension: ".iso",
+				MimeType:  "application/x-iso9660-image",
+				SizeBytes: 5000,
+			}}},
 			{TelegramMessageID: 10, SenderID: 1, Text: "庆余年 https://www.alipan.com/s/abc123 提取码: abcd", RawJSON: "{}", Date: now.Add(-time.Minute)},
 		},
 		10: {
@@ -236,6 +242,7 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 		Channels:         channels,
 		Messages:         messages,
 		Links:            links,
+		Files:            files,
 		Resources:        resources,
 		Telegram:         fake,
 		Sessions:         session.NewManager(filepath.Join(t.TempDir(), "sessions")),
@@ -261,12 +268,19 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	if counts.Links != 2 {
 		t.Fatalf("stored link count = %d, want 2", counts.Links)
 	}
+	storedFiles, err := files.Search(ctx, repository.FileSearchParams{Query: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("search files: %v", err)
+	}
+	if len(storedFiles) != 1 || storedFiles[0].FileName != "ubuntu.iso" {
+		t.Fatalf("stored files = %+v, want ubuntu.iso", storedFiles)
+	}
 	grouped, found, err := resourceStats.GetGrouped(ctx)
 	if err != nil {
 		t.Fatalf("get resource stats: %v", err)
 	}
-	if !found || grouped["cloud_drive"] != 1 || grouped["magnet"] != 1 {
-		t.Fatalf("resource stats = %+v found=%v, want cloud_drive=1 magnet=1", grouped, found)
+	if !found || grouped["cloud_drive"] != 1 || grouped["magnet"] != 1 || grouped["files"] != 1 {
+		t.Fatalf("resource stats = %+v found=%v, want cloud_drive=1 magnet=1 files=1", grouped, found)
 	}
 
 	linkResults, err := links.Search(ctx, repository.LinkSearchParams{Type: "aliyun", Limit: 10})

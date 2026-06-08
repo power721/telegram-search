@@ -72,7 +72,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	telegramAPI.POST("/login/password", h.password)
 	api.GET("/accounts", h.accounts)
 	api.DELETE("/accounts/:id", h.deleteAccount)
-	api.POST("/accounts/:id/channels/sync", h.syncAccountChannels)
+	api.POST("/accounts/:id/channels/sync-metadata", h.syncAccountChannels)
 	api.GET("/channels", h.channels)
 	api.POST("/channels/sync", h.syncChannels)
 	api.POST("/channels/web-access/check", h.checkChannelWebAccess)

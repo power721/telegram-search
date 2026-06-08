@@ -1127,7 +1127,7 @@ func TestAccountChannelSyncAPIReturnsAsyncJob(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/channels/sync", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/channels/sync-metadata", nil)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())

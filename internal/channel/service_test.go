@@ -6,11 +6,11 @@ import (
 	"sync"
 	"testing"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/session"
-	"tg-provider/internal/telegram"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	"tg-search/internal/session"
+	"tg-search/internal/telegram"
 )
 
 func TestServiceSyncAccountKeepsChannelsIsolated(t *testing.T) {

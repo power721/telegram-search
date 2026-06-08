@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 func TestFilterAppliesLinksIncludesAndExcludes(t *testing.T) {

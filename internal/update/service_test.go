@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/retry"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	"tg-search/internal/retry"
 )
 
 func TestServiceProcessesQueuedEventsSequentiallyAndFlushesOnStop(t *testing.T) {

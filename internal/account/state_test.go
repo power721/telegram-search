@@ -3,7 +3,7 @@ package account
 import (
 	"testing"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 func TestKnownStatus(t *testing.T) {

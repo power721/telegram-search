@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
 )
 
 func TestWatchRuleRepositoryCRUDAndChannelLookup(t *testing.T) {

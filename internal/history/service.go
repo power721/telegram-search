@@ -8,14 +8,14 @@ import (
 	"sync"
 	"time"
 
-	dbpkg "tg-provider/internal/db"
-	"tg-provider/internal/link"
-	"tg-provider/internal/messagefilter"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/retry"
-	"tg-provider/internal/session"
-	"tg-provider/internal/telegram"
+	dbpkg "tg-search/internal/db"
+	"tg-search/internal/link"
+	"tg-search/internal/messagefilter"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	"tg-search/internal/retry"
+	"tg-search/internal/session"
+	"tg-search/internal/telegram"
 )
 
 type Options struct {

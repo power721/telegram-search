@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"time"
 
-	dbpkg "tg-provider/internal/db"
-	"tg-provider/internal/link"
-	"tg-provider/internal/messagefilter"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
+	dbpkg "tg-search/internal/db"
+	"tg-search/internal/link"
+	"tg-search/internal/messagefilter"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
 )
 
 type ProcessorOptions struct {

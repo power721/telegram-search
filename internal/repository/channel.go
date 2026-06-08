@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 type ChannelRepository struct {

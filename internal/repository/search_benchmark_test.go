@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
 )
 
 func TestSearchBenchmarkSeedReturnsBoundedResults(t *testing.T) {

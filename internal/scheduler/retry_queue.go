@@ -9,7 +9,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"tg-provider/internal/retry"
+	"tg-search/internal/retry"
 )
 
 const (

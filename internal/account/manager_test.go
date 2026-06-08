@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
 )
 
 func TestManagerStartsOnlineAndReconnectingAccountsOnly(t *testing.T) {

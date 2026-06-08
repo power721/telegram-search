@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"tg-provider/internal/db"
+	"tg-search/internal/db"
 )
 
 func TestMaintenanceRepositoryOptimizeSQLite(t *testing.T) {

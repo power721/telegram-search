@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 
-	"tg-provider/internal/link"
-	"tg-provider/internal/model"
+	"tg-search/internal/link"
+	"tg-search/internal/model"
 )
 
 type RuleStore interface {

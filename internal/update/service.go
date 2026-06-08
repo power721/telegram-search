@@ -8,9 +8,9 @@ import (
 
 	"go.uber.org/zap"
 
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/retry"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	"tg-search/internal/retry"
 )
 
 var ErrServiceStopped = errors.New("update service stopped")

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 var ErrNotFound = sql.ErrNoRows

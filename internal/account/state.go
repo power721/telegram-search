@@ -1,6 +1,6 @@
 package account
 
-import "tg-provider/internal/model"
+import "tg-search/internal/model"
 
 var knownStatuses = map[string]struct{}{
 	model.AccountStatusNew:           {},

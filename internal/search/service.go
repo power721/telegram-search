@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
 )
 
 var ErrEmptyQuery = errors.New("search query is required")

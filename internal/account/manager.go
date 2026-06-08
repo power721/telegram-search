@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
 )
 
 var ErrInvalidTransition = errors.New("invalid account status transition")

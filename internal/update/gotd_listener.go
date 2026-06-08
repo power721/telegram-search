@@ -11,9 +11,9 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
-	"tg-provider/internal/model"
-	localsession "tg-provider/internal/session"
-	"tg-provider/internal/telegram"
+	"tg-search/internal/model"
+	localsession "tg-search/internal/session"
+	"tg-search/internal/telegram"
 )
 
 type GotdListener struct {

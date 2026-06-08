@@ -12,22 +12,22 @@ import (
 
 	"go.uber.org/zap"
 
-	"tg-provider/internal/account"
-	"tg-provider/internal/api"
-	"tg-provider/internal/channel"
-	"tg-provider/internal/config"
-	"tg-provider/internal/db"
-	"tg-provider/internal/history"
-	"tg-provider/internal/link"
-	"tg-provider/internal/logger"
-	"tg-provider/internal/messagefilter"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/retry"
-	"tg-provider/internal/scheduler"
-	"tg-provider/internal/search"
-	"tg-provider/internal/session"
-	"tg-provider/internal/telegram"
-	updatepkg "tg-provider/internal/update"
+	"tg-search/internal/account"
+	"tg-search/internal/api"
+	"tg-search/internal/channel"
+	"tg-search/internal/config"
+	"tg-search/internal/db"
+	"tg-search/internal/history"
+	"tg-search/internal/link"
+	"tg-search/internal/logger"
+	"tg-search/internal/messagefilter"
+	"tg-search/internal/repository"
+	"tg-search/internal/retry"
+	"tg-search/internal/scheduler"
+	"tg-search/internal/search"
+	"tg-search/internal/session"
+	"tg-search/internal/telegram"
+	updatepkg "tg-search/internal/update"
 )
 
 func main() {
@@ -54,7 +54,7 @@ func run(configPath string) error {
 		return err
 	}
 	defer logs.Sync()
-	logs.App.Info("tg-provider starting", zap.String("address", config.Address(cfg)))
+	logs.App.Info("tg-search starting", zap.String("address", config.Address(cfg)))
 
 	conn, err := db.Open(filepath.Join(cfg.Storage.Path, "telegram.db"))
 	if err != nil {
@@ -167,6 +167,6 @@ func run(configPath string) error {
 	if err := accountManager.Stop(shutdownCtx); err != nil {
 		return err
 	}
-	logs.App.Info("tg-provider stopped")
+	logs.App.Info("tg-search stopped")
 	return nil
 }

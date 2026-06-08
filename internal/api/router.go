@@ -6,13 +6,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"tg-provider/internal/channel"
-	"tg-provider/internal/history"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/scheduler"
-	"tg-provider/internal/search"
-	"tg-provider/internal/session"
-	"tg-provider/internal/telegram"
+	"tg-search/internal/channel"
+	"tg-search/internal/history"
+	"tg-search/internal/repository"
+	"tg-search/internal/scheduler"
+	"tg-search/internal/search"
+	"tg-search/internal/session"
+	"tg-search/internal/telegram"
 )
 
 type AccountRuntime interface {

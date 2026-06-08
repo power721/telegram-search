@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 type StatusRepository struct {

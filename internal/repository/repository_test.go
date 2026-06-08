@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"tg-provider/internal/db"
-	"tg-provider/internal/model"
+	"tg-search/internal/db"
+	"tg-search/internal/model"
 )
 
 func TestRepositoriesPersistSearchAndCountData(t *testing.T) {

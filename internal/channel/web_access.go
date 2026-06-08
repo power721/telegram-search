@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/net/html"
 
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
 )
 
 const defaultWebAccessTimeout = 5 * time.Second
@@ -137,7 +137,7 @@ func (c *HTTPWebAccessChecker) Check(ctx context.Context, username string) (bool
 	q := req.URL.Query()
 	q.Set("q", "")
 	req.URL.RawQuery = q.Encode()
-	req.Header.Set("User-Agent", "tg-provider/1.0")
+	req.Header.Set("User-Agent", "tg-search/1.0")
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return false, err

@@ -8,7 +8,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 type Parser interface {

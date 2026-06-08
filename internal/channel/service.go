@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	"tg-provider/internal/session"
-	"tg-provider/internal/telegram"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	"tg-search/internal/session"
+	"tg-search/internal/telegram"
 )
 
 type Service struct {

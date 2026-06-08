@@ -12,11 +12,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"tg-provider/internal/backup"
-	"tg-provider/internal/model"
-	"tg-provider/internal/repository"
-	searchsvc "tg-provider/internal/search"
-	"tg-provider/internal/telegram"
+	"tg-search/internal/backup"
+	"tg-search/internal/model"
+	"tg-search/internal/repository"
+	searchsvc "tg-search/internal/search"
+	"tg-search/internal/telegram"
 )
 
 type handlers struct {

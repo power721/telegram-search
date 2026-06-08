@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"tg-provider/internal/model"
+	"tg-search/internal/model"
 )
 
 type MessageRepository struct {

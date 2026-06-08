@@ -1,4 +1,4 @@
-module tg-provider
+module tg-search
 
 go 1.25.0
 

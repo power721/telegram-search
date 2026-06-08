@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import { useDialog } from 'naive-ui'
+import { useRouter } from 'vue-router'
 import type { TelegramAccount } from '@/api/types'
 import { useTelegramStore } from '@/stores/telegram'
 
 const telegram = useTelegramStore()
 const dialog = useDialog()
+const router = useRouter()
 
 onMounted(() => {
   void telegram.loadAccounts()
@@ -36,6 +38,14 @@ function statusLabel(status: string) {
   return labels[status] ?? status
 }
 
+function needsLogin(account: TelegramAccount) {
+  return account.status === 'LOGIN_REQUIRED'
+}
+
+async function openTelegramLogin() {
+  await router.push('/setup/telegram-login')
+}
+
 async function logoutAccount(account: TelegramAccount) {
   await telegram.logoutAccount(account.id)
 }
@@ -44,7 +54,8 @@ function confirmDeleteAccount(account: TelegramAccount) {
   dialog.warning({
     title: '删除账号',
     content: `确定删除 ${account.phone}？这会删除该账号及其索引数据。`,
-    positiveText: '删除',
+    positiveText: '删除账号',
+    positiveButtonProps: { type: 'error' },
     negativeText: '取消',
     onPositiveClick: () => telegram.deleteAccount(account.id)
   })
@@ -58,7 +69,10 @@ function confirmDeleteAccount(account: TelegramAccount) {
         <p class="page-kicker">Telegram</p>
         <h1 class="page-title">账号</h1>
       </div>
-      <n-button :loading="telegram.loading" @click="telegram.loadAccounts">刷新</n-button>
+      <div class="header-actions">
+        <n-button :loading="telegram.loading" @click="telegram.loadAccounts">刷新</n-button>
+        <n-button type="primary" @click="openTelegramLogin">添加账号</n-button>
+      </div>
     </div>
 
     <div class="table-panel">
@@ -86,7 +100,10 @@ function confirmDeleteAccount(account: TelegramAccount) {
             <td>{{ account.last_error || '-' }}</td>
             <td>
               <div class="action-buttons">
-                <n-button size="small" :loading="telegram.loading" @click="logoutAccount(account)">
+                <n-button v-if="needsLogin(account)" size="small" type="primary" @click="openTelegramLogin">
+                  登录
+                </n-button>
+                <n-button v-else size="small" :loading="telegram.loading" @click="logoutAccount(account)">
                   登出
                 </n-button>
                 <n-button
@@ -127,6 +144,11 @@ function confirmDeleteAccount(account: TelegramAccount) {
 .page-title {
   font-size: 24px;
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .table-panel {
@@ -175,6 +197,10 @@ tbody tr:last-child td {
   .page-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .header-actions {
+    align-self: flex-start;
   }
 }
 </style>

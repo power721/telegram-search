@@ -61,26 +61,30 @@ func NewService(links *repository.LinkRepository, files *repository.FileReposito
 }
 
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
+	limit := normalizedLimit(query.Limit)
+	offset := normalizedOffset(query.Offset)
+	fetchLimit := offset + limit
+
 	items := []Item{}
 	if s.links != nil && includeLinks(query) {
-		links, err := s.links.Search(ctx, repository.LinkSearchParams{
+		links, err := s.links.SearchResources(ctx, repository.LinkSearchParams{
 			Type:      query.Type,
 			Category:  query.Category,
 			AccountID: query.AccountID,
 			ChannelID: query.ChannelID,
 			Keyword:   query.Keyword,
-			Limit:     200,
+			Sort:      query.Sort,
+			Limit:     fetchLimit,
 		})
 		if err != nil {
 			return ListResult{}, err
 		}
-		byURL := map[string]Item{}
 		for _, link := range links {
 			category := link.Category
 			if category == "" {
 				category = link.Type
 			}
-			item := Item{
+			items = append(items, Item{
 				ID:                "link:" + link.URL,
 				Kind:              "link",
 				Type:              link.Type,
@@ -93,24 +97,18 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				ChannelID:         link.ChannelID,
 				ChannelTitle:      link.ChannelTitle,
 				TelegramMessageID: link.TelegramMessageID,
-			}
-			existing, ok := byURL[link.URL]
-			if !ok || item.Datetime.After(existing.Datetime) {
-				byURL[link.URL] = item
-			}
-		}
-		for _, item := range byURL {
-			items = append(items, item)
+			})
 		}
 	}
 	if s.files != nil && includeFiles(query) {
-		files, err := s.files.Search(ctx, repository.FileSearchParams{
+		files, err := s.files.SearchResources(ctx, repository.FileSearchParams{
 			Query:     query.Keyword,
 			Category:  fileCategoryFilter(query),
 			Extension: query.Extension,
 			AccountID: query.AccountID,
 			ChannelID: query.ChannelID,
-			Limit:     200,
+			Sort:      query.Sort,
+			Limit:     fetchLimit,
 		})
 		if err != nil {
 			return ListResult{}, err
@@ -144,21 +142,16 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	if err != nil {
 		return ListResult{}, err
 	}
-	total := len(items)
-	offset := query.Offset
+	total := groupedTotal(grouped)
 	if offset > total {
 		offset = total
-	}
-	limit := query.Limit
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
 	}
 	end := offset + limit
 	if end > total {
 		end = total
+	}
+	if end > len(items) {
+		end = len(items)
 	}
 	return ListResult{Items: items[offset:end], Total: total, Grouped: grouped}, nil
 }
@@ -259,6 +252,31 @@ func normalizeGrouped(grouped map[string]int) map[string]int {
 
 func defaultGrouped() map[string]int {
 	return map[string]int{"cloud_drive": 0, "magnet": 0, "ed2k": 0, "http": 0, "files": 0}
+}
+
+func groupedTotal(grouped map[string]int) int {
+	total := 0
+	for _, count := range grouped {
+		total += count
+	}
+	return total
+}
+
+func normalizedLimit(limit int) int {
+	if limit <= 0 {
+		return 50
+	}
+	if limit > 200 {
+		return 200
+	}
+	return limit
+}
+
+func normalizedOffset(offset int) int {
+	if offset < 0 {
+		return 0
+	}
+	return offset
 }
 
 func includeLinks(query Query) bool {

@@ -103,6 +103,54 @@ LIMIT ? OFFSET ?`
 	return out, rows.Err()
 }
 
+func (r *LinkRepository) SearchResources(ctx context.Context, params LinkSearchParams) ([]model.LinkResult, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	where, args := linkSearchWhere(params)
+	args = append(args, limit, params.Offset)
+	query := `
+SELECT id, message_id, type, url, password, note, source_snippet, category, created_at,
+       message_text, message_date, account_id, channel_id, channel_title, telegram_message_id
+FROM (
+  SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, '') AS password,
+         COALESCE(l.note, '') AS note, COALESCE(l.source_snippet, '') AS source_snippet,
+         CASE
+           WHEN COALESCE(l.category, '') <> '' THEN l.category
+           WHEN l.type = 'magnet' THEN 'magnet'
+           WHEN l.type = 'ed2k' THEN 'ed2k'
+           WHEN l.type = 'url' THEN 'http'
+           ELSE 'cloud_drive'
+         END AS category,
+         l.created_at, mc.text AS message_text, m.date AS message_date, m.account_id,
+         m.channel_id, c.title AS channel_title, m.telegram_message_id,
+         row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
+  FROM telegram_links l
+  JOIN telegram_messages m ON m.id = l.message_id
+  JOIN telegram_message_contents mc ON mc.message_id = m.id
+  JOIN telegram_channels c ON c.id = m.channel_id
+  WHERE ` + strings.Join(where, " AND ") + `
+)
+WHERE rn = 1
+ORDER BY ` + dateOrderBy(params.Sort, "message_date", "id") + `
+LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search resource links: %w", err)
+	}
+	defer rows.Close()
+	var out []model.LinkResult
+	for rows.Next() {
+		var item model.LinkResult
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (r *LinkRepository) CountSearch(ctx context.Context, params LinkSearchParams) (int, error) {
 	where, args := linkSearchWhere(params)
 	query := `

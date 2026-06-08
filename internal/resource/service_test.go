@@ -3,6 +3,7 @@ package resource
 import (
 	"context"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -68,5 +69,60 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	}
 	if result.Grouped["http"] != 1 || result.Grouped["files"] != 1 {
 		t.Fatalf("grouped = %+v, want http=1 files=1", result.Grouped)
+	}
+}
+
+func TestResourceLibraryCountsAndPagesBeyondInitialLinkBatch(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+
+	input := make([]model.Message, 0, 250)
+	for i := 0; i < 250; i++ {
+		input = append(input, model.Message{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: int64(i + 1),
+			Text: "ubuntu resource", RawJSON: "{}", Date: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	stored, err := messages.SaveBatch(ctx, input)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for i, msg := range stored {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "url", Category: "http", URL: "https://example.com/" + strconv.Itoa(i),
+		}}); err != nil {
+			t.Fatalf("save link %d: %v", i, err)
+		}
+	}
+
+	service := NewService(links, nil)
+	result, err := service.List(ctx, Query{Keyword: "ubuntu", Limit: 50, Offset: 200})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 250 {
+		t.Fatalf("total = %d, want all matching deduped resources", result.Total)
+	}
+	if len(result.Items) != 50 {
+		t.Fatalf("items len = %d, want final page of 50 resources", len(result.Items))
+	}
+	if result.Grouped["http"] != 250 {
+		t.Fatalf("grouped = %+v, want http=250", result.Grouped)
 	}
 }

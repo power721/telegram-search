@@ -287,7 +287,7 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
 
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/resources?limit=50", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?limit=50&offset=100", nil)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -298,6 +298,9 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
 	}
 	if len(body.Items) != 50 {
 		t.Fatalf("items len = %d, want 50", len(body.Items))
+	}
+	if body.Total != 202 {
+		t.Fatalf("total = %d, want complete resource count", body.Total)
 	}
 	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
 		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
@@ -352,6 +355,9 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithKeyword(t *testing.T) {
 	}
 	if len(body.Items) != 50 {
 		t.Fatalf("items len = %d, want 50", len(body.Items))
+	}
+	if body.Total != 202 {
+		t.Fatalf("total = %d, want complete resource count", body.Total)
 	}
 	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
 		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)

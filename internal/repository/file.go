@@ -126,6 +126,41 @@ LIMIT ? OFFSET ?`
 	return out, rows.Err()
 }
 
+func (r *FileRepository) SearchResources(ctx context.Context, params FileSearchParams) ([]model.FileResult, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	where, args := fileSearchWhere(params)
+	args = append(args, limit, params.Offset)
+
+	query := `
+SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+FROM telegram_files f
+JOIN telegram_messages m ON m.id = f.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+JOIN telegram_channels c ON c.id = m.channel_id
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY ` + dateOrderBy(params.Sort, "m.date", "f.id") + `
+LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search resource files: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.FileResult
+	for rows.Next() {
+		var item model.FileResult
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (r *FileRepository) CountSearch(ctx context.Context, params FileSearchParams) (int, error) {
 	where, args := fileSearchWhere(params)
 	query := `

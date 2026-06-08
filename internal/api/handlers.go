@@ -21,6 +21,7 @@ import (
 	channelpkg "tg-search/internal/channel"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	searchsvc "tg-search/internal/search"
 	"tg-search/internal/telegram"
 )
@@ -1144,6 +1145,83 @@ func (h handlers) mergedLinks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) resources(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	query, ok := readResourceQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Resources.List(c.Request.Context(), query)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) resourcesGrouped(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	query, ok := readResourceQuery(c)
+	if !ok {
+		return
+	}
+	query.Limit = 200
+	result, err := h.deps.Resources.List(c.Request.Context(), query)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"grouped": result.Grouped})
+}
+
+func (h handlers) resource(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	id := c.Param("id")
+	result, err := h.deps.Resources.List(c.Request.Context(), resource.Query{Limit: 200})
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	for _, item := range result.Items {
+		if item.ID == id {
+			c.JSON(http.StatusOK, item)
+			return
+		}
+	}
+	errorText(c, http.StatusNotFound, "resource not found")
+}
+
+func readResourceQuery(c *gin.Context) (resource.Query, bool) {
+	accountID, channelID, limit, offset, ok := readFilters(c)
+	if !ok {
+		return resource.Query{}, false
+	}
+	keyword := c.Query("q")
+	if keyword == "" {
+		keyword = c.Query("keyword")
+	}
+	return resource.Query{
+		Keyword:   keyword,
+		Type:      c.Query("type"),
+		Category:  c.Query("category"),
+		AccountID: accountID,
+		ChannelID: channelID,
+		Extension: c.Query("extension"),
+		Sort:      c.Query("sort"),
+		Limit:     limit,
+		Offset:    offset,
+	}, true
 }
 
 func (h handlers) maintenanceSQLite(c *gin.Context) {

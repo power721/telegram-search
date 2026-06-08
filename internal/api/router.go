@@ -10,6 +10,7 @@ import (
 	"tg-search/internal/channel"
 	"tg-search/internal/history"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	"tg-search/internal/scheduler"
 	"tg-search/internal/search"
 	"tg-search/internal/session"
@@ -41,6 +42,7 @@ type Dependencies struct {
 	SyncQueue        *scheduler.RetryQueue
 	Search           *search.Service
 	History          *history.Service
+	Resources        *resource.Service
 	ChannelSync      *channel.Service
 	ChannelWebAccess *channel.WebAccessService
 	AccountRuntime   AccountRuntime
@@ -98,6 +100,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/messages/latest", h.latest)
 	api.GET("/links/merged", h.mergedLinks)
 	api.GET("/links", h.links)
+	api.GET("/resources/grouped", h.resourcesGrouped)
+	api.GET("/resources/:id", h.resource)
+	api.GET("/resources", h.resources)
 	api.POST("/maintenance/sqlite", h.maintenanceSQLite)
 	api.POST("/maintenance/backup", h.maintenanceBackup)
 

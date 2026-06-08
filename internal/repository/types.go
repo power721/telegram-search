@@ -35,6 +35,7 @@ type LatestParams struct {
 
 type LinkSearchParams struct {
 	Type      string
+	Category  string
 	AccountID int64
 	ChannelID int64
 	Keyword   string

@@ -26,6 +26,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	"tg-search/internal/retry"
 	"tg-search/internal/scheduler"
 	"tg-search/internal/search"
@@ -108,6 +109,42 @@ func TestGlobalSearchAPI(t *testing.T) {
 	}
 	if body.Messages.Total != 1 || body.Links.Total != 1 || body.Files.Total != 1 || body.Channels.Total != 1 {
 		t.Fatalf("global search body = %+v, want one item per group", body)
+	}
+}
+
+func TestResourcesAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu resources", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu", Note: "ubuntu"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", SizeBytes: 5000, Category: "software"}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Total != 2 || body.Grouped["http"] != 1 || body.Grouped["files"] != 1 {
+		t.Fatalf("resources body = %+v, want link and file", body)
 	}
 }
 
@@ -1591,6 +1628,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	client := telegram.NopClient{}
 	watchFilter := messagefilter.New(watchRules)
 	searchService := search.NewService(messages, links, files, channels)
+	resourceService := resource.NewService(links, files)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
 		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
@@ -1602,7 +1640,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		StorageUsage: storage.NewUsageService(config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}),
-		Search:       searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
+		Search:       searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn
 }

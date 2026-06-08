@@ -23,6 +23,7 @@ import (
 	"tg-search/internal/logger"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	"tg-search/internal/retry"
 	"tg-search/internal/scheduler"
 	"tg-search/internal/search"
@@ -105,6 +106,7 @@ func run(configPath string) error {
 		Logger:      logs.Telegram,
 	})
 	searchService := search.NewService(messages, links, files, channels)
+	resourceService := resource.NewService(links, files)
 	remoteSearchService := search.NewRemoteService(search.RemoteOptions{
 		Accounts: accounts,
 		Channels: channels,
@@ -144,7 +146,7 @@ func run(configPath string) error {
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, StorageUsage: storageUsage,
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
-		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
+		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{

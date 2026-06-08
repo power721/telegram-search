@@ -80,6 +80,10 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 		where = append(where, `l.type = ?`)
 		args = append(args, params.Type)
 	}
+	if params.Category != "" {
+		where = append(where, `l.category = ?`)
+		args = append(args, params.Category)
+	}
 	if params.AccountID > 0 {
 		where = append(where, `m.account_id = ?`)
 		args = append(args, params.AccountID)

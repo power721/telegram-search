@@ -303,6 +303,65 @@ func TestProcessorEnqueuesGapRecoveryTask(t *testing.T) {
 	if !strings.Contains(items[0].PayloadJSON, `"from_message_id":11`) || !strings.Contains(items[0].PayloadJSON, `"to_message_id":14`) {
 		t.Fatalf("payload = %s, want missing range 11..14", items[0].PayloadJSON)
 	}
+	cursor, err := cursors.Find(ctx, fixture.accountID, fixture.channelID, "history")
+	if err != nil {
+		t.Fatalf("find cursor: %v", err)
+	}
+	if cursor.LastMessageID != 10 {
+		t.Fatalf("cursor last message id = %d, want to stay 10 until gap is recovered", cursor.LastMessageID)
+	}
+}
+
+func TestProcessorAdvancesHistoryCursorAfterNewMessage(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	cursors := repository.NewSyncCursorRepository(fixture.conn)
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+		Cursors:   cursors,
+	})
+
+	if err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         15,
+		Text:              "cursor https://pan.quark.cn/s/abc",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Process returned error: %v", err)
+	}
+	cursor, err := cursors.Find(ctx, fixture.accountID, fixture.channelID, "history")
+	if err != nil {
+		t.Fatalf("find cursor: %v", err)
+	}
+	if cursor.LastMessageID != 15 {
+		t.Fatalf("cursor last message id = %d, want 15", cursor.LastMessageID)
+	}
+
+	if err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         12,
+		Text:              "older https://pan.quark.cn/s/older",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Process older returned error: %v", err)
+	}
+	cursor, err = cursors.Find(ctx, fixture.accountID, fixture.channelID, "history")
+	if err != nil {
+		t.Fatalf("find cursor after older event: %v", err)
+	}
+	if cursor.LastMessageID != 15 {
+		t.Fatalf("cursor last message id = %d, want to stay 15", cursor.LastMessageID)
+	}
 }
 
 func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {

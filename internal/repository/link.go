@@ -118,6 +118,43 @@ WHERE ` + strings.Join(where, " AND ")
 	return total, nil
 }
 
+func (r *LinkRepository) CountByResourceCategory(ctx context.Context) (map[string]int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT category, count(*)
+FROM (
+  SELECT
+    l.url,
+    CASE
+      WHEN COALESCE(l.category, '') <> '' THEN l.category
+      WHEN l.type = 'magnet' THEN 'magnet'
+      WHEN l.type = 'ed2k' THEN 'ed2k'
+      WHEN l.type = 'url' THEN 'http'
+      ELSE 'cloud_drive'
+    END AS category,
+    row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
+  FROM telegram_links l
+  JOIN telegram_messages m ON m.id = l.message_id
+  WHERE m.deleted = 0
+)
+WHERE rn = 1
+GROUP BY category`)
+	if err != nil {
+		return nil, fmt.Errorf("count resource links by category: %w", err)
+	}
+	defer rows.Close()
+
+	grouped := map[string]int{}
+	for rows.Next() {
+		var category string
+		var count int
+		if err := rows.Scan(&category, &count); err != nil {
+			return nil, err
+		}
+		grouped[category] = count
+	}
+	return grouped, rows.Err()
+}
+
 func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 	where := []string{`m.deleted = 0`}
 	args := []any{}

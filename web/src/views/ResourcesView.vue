@@ -22,7 +22,6 @@ async function load() {
 
 onMounted(() => {
   void load()
-  void resources.loadGrouped()
 })
 </script>
 

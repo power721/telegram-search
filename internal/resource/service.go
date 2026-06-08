@@ -49,10 +49,15 @@ type ListResult struct {
 type Service struct {
 	links *repository.LinkRepository
 	files *repository.FileRepository
+	stats *repository.ResourceStatsRepository
 }
 
-func NewService(links *repository.LinkRepository, files *repository.FileRepository) *Service {
-	return &Service{links: links, files: files}
+func NewService(links *repository.LinkRepository, files *repository.FileRepository, stats ...*repository.ResourceStatsRepository) *Service {
+	service := &Service{links: links, files: files}
+	if len(stats) > 0 {
+		service.stats = stats[0]
+	}
+	return service
 }
 
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
@@ -135,7 +140,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		return resourceKindRank(items[i].Kind) < resourceKindRank(items[j].Kind)
 	})
 
-	grouped := map[string]int{"cloud_drive": 0, "magnet": 0, "ed2k": 0, "http": 0, "files": 0}
+	grouped := defaultGrouped()
 	for _, item := range items {
 		group := item.Category
 		if item.Kind == "file" {
@@ -163,6 +168,71 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		end = total
 	}
 	return ListResult{Items: items[offset:end], Total: total, Grouped: grouped}, nil
+}
+
+func (s *Service) GlobalGrouped(ctx context.Context) (map[string]int, error) {
+	if s.stats == nil {
+		return s.computeGlobalGrouped(ctx)
+	}
+	grouped, found, err := s.stats.GetGrouped(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		return normalizeGrouped(grouped), nil
+	}
+	if err := s.RefreshGlobalGrouped(ctx); err != nil {
+		return nil, err
+	}
+	grouped, _, err = s.stats.GetGrouped(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeGrouped(grouped), nil
+}
+
+func (s *Service) RefreshGlobalGrouped(ctx context.Context) error {
+	if s.stats == nil {
+		return nil
+	}
+	grouped, err := s.computeGlobalGrouped(ctx)
+	if err != nil {
+		return err
+	}
+	return s.stats.SaveGrouped(ctx, grouped)
+}
+
+func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, error) {
+	grouped := defaultGrouped()
+	if s.links != nil {
+		linkCounts, err := s.links.CountByResourceCategory(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for category, count := range linkCounts {
+			grouped[category] += count
+		}
+	}
+	if s.files != nil {
+		fileCount, err := s.files.CountResources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		grouped["files"] = fileCount
+	}
+	return grouped, nil
+}
+
+func normalizeGrouped(grouped map[string]int) map[string]int {
+	out := defaultGrouped()
+	for category, count := range grouped {
+		out[category] = count
+	}
+	return out
+}
+
+func defaultGrouped() map[string]int {
+	return map[string]int{"cloud_drive": 0, "magnet": 0, "ed2k": 0, "http": 0, "files": 0}
 }
 
 func firstNonEmpty(values ...string) string {

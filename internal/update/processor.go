@@ -12,6 +12,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	taskpkg "tg-search/internal/task"
 )
 
@@ -20,6 +21,7 @@ type ProcessorOptions struct {
 	Channels  *repository.ChannelRepository
 	Messages  *repository.MessageRepository
 	Links     *repository.LinkRepository
+	Resources *resource.Service
 	Cursors   *repository.SyncCursorRepository
 	Tasks     *taskpkg.Service
 	Extractor *link.Extractor
@@ -31,6 +33,7 @@ type Processor struct {
 	channels  *repository.ChannelRepository
 	messages  *repository.MessageRepository
 	links     *repository.LinkRepository
+	resources *resource.Service
 	cursors   *repository.SyncCursorRepository
 	tasks     *taskpkg.Service
 	extractor *link.Extractor
@@ -46,6 +49,7 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		channels:  opts.Channels,
 		messages:  opts.Messages,
 		links:     opts.Links,
+		resources: opts.Resources,
 		cursors:   opts.Cursors,
 		tasks:     opts.Tasks,
 		extractor: opts.Extractor,
@@ -117,12 +121,13 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 				if err := p.messages.MarkDeleted(ctx, channel.ID, event.MessageID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 					return err
 				}
+				return p.refreshResourceStats(ctx)
 			}
 			return nil
 		}
 		extracted = result.Links
 	}
-	return dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
+	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		date := event.Date
 		if date.IsZero() {
 			date = event.EditDateOrNow()
@@ -142,13 +147,26 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		}
 		_, err = p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted)
 		return err
-	})
+	}); err != nil {
+		return err
+	}
+	return p.refreshResourceStats(ctx)
 }
 
 func (p *Processor) deleteMessage(ctx context.Context, channel model.Channel, event Event) error {
-	return dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
+	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		return p.messages.MarkDeletedTx(ctx, tx, channel.ID, event.MessageID)
-	})
+	}); err != nil {
+		return err
+	}
+	return p.refreshResourceStats(ctx)
+}
+
+func (p *Processor) refreshResourceStats(ctx context.Context) error {
+	if p.resources == nil {
+		return nil
+	}
+	return p.resources.RefreshGlobalGrouped(ctx)
 }
 
 func (e Event) EditDateOrNow() time.Time {

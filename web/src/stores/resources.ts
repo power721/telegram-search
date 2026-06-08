@@ -10,15 +10,16 @@ export interface ResourceFilters {
   limit?: number
 }
 
-function buildResourcePath(path: string, filters: ResourceFilters = {}) {
+function buildResourcePath(path: string, filters: ResourceFilters = {}, includeLimit = true) {
   const params = new URLSearchParams()
   const keyword = filters.keyword?.trim()
   if (keyword) params.set('q', keyword)
   if (filters.type) params.set('type', filters.type)
   if (filters.category) params.set('category', filters.category)
   if (filters.extension) params.set('extension', filters.extension)
-  params.set('limit', String(filters.limit ?? 50))
-  return `${path}?${params.toString()}`
+  if (includeLimit) params.set('limit', String(filters.limit ?? 50))
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
 }
 
 export const useResourcesStore = defineStore('resources', {
@@ -42,7 +43,7 @@ export const useResourcesStore = defineStore('resources', {
     async loadGrouped(filters: ResourceFilters = {}) {
       return this.withLoading(async () => {
         const response = await apiGet<ResourcesGroupedResponse>(
-          buildResourcePath('/api/resources/grouped', filters)
+          buildResourcePath('/api/resources/grouped', filters, false)
         )
         this.grouped = response.grouped
         return response.grouped

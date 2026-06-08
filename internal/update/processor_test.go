@@ -13,6 +13,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	"tg-search/internal/resource"
 	taskpkg "tg-search/internal/task"
 )
 
@@ -261,6 +262,41 @@ func TestProcessorEnqueuesGapRecoveryTask(t *testing.T) {
 	}
 	if !strings.Contains(items[0].PayloadJSON, `"from_message_id":11`) || !strings.Contains(items[0].PayloadJSON, `"to_message_id":14`) {
 		t.Fatalf("payload = %s, want missing range 11..14", items[0].PayloadJSON)
+	}
+}
+
+func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	stats := repository.NewResourceStatsRepository(fixture.conn)
+	resources := resource.NewService(fixture.links, nil, stats)
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Resources: resources,
+		Extractor: link.NewExtractor(),
+	})
+
+	if err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         30,
+		Text:              "资源 https://pan.quark.cn/s/abc",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("process new event: %v", err)
+	}
+
+	grouped, found, err := stats.GetGrouped(ctx)
+	if err != nil {
+		t.Fatalf("get grouped stats: %v", err)
+	}
+	if !found || grouped["cloud_drive"] != 1 {
+		t.Fatalf("grouped stats = %+v found=%v, want cloud_drive=1", grouped, found)
 	}
 }
 

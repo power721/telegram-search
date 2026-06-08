@@ -32,6 +32,7 @@ import (
 	"tg-search/internal/search"
 	"tg-search/internal/session"
 	"tg-search/internal/storage"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -312,6 +313,107 @@ func TestStorageUsageAPI(t *testing.T) {
 	}
 	if usage.DBBytes != 10 || usage.IndexBytes != 20 || usage.MediaCacheBytes != 30 || usage.TotalBytes != 60 {
 		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func TestTaskAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	failed, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 1})
+	if err != nil {
+		t.Fatalf("enqueue failed task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, failed.ID); err != nil {
+		t.Fatalf("start failed task: %v", err)
+	}
+	if err := deps.Tasks.Fail(ctx, failed.ID, "temporary", "temporary failure"); err != nil {
+		t.Fatalf("fail task: %v", err)
+	}
+
+	running, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 2})
+	if err != nil {
+		t.Fatalf("enqueue running task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, running.ID); err != nil {
+		t.Fatalf("start running task: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var listBody struct {
+		Items []model.Task `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listBody.Items) != 2 {
+		t.Fatalf("list items = %+v, want 2 tasks", listBody.Items)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/tasks/"+strconv.FormatInt(failed.ID, 10), nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var detail model.Task
+	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if detail.ID != failed.ID || detail.Status != model.TaskStatusFailed {
+		t.Fatalf("detail = %+v, want failed task", detail)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/tasks/"+strconv.FormatInt(failed.ID, 10)+"/retry", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("retry status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var retried model.Task
+	if err := json.Unmarshal(w.Body.Bytes(), &retried); err != nil {
+		t.Fatalf("decode retry: %v", err)
+	}
+	if retried.Status != model.TaskStatusQueued || retried.RetryCount != 1 {
+		t.Fatalf("retried = %+v, want queued retry_count=1", retried)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/tasks/"+strconv.FormatInt(running.ID, 10)+"/cancel", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var canceling model.Task
+	if err := json.Unmarshal(w.Body.Bytes(), &canceling); err != nil {
+		t.Fatalf("decode cancel: %v", err)
+	}
+	if canceling.Status != model.TaskStatusCanceling {
+		t.Fatalf("canceling = %+v, want canceling", canceling)
+	}
+}
+
+func TestEventsAPI(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("events status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
+		t.Fatalf("content-type = %q, want text/event-stream", got)
 	}
 }
 
@@ -1621,6 +1723,8 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
+	taskRepository := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepository)
 	users := repository.NewUserRepository(conn)
 	apiKeys := repository.NewAPIKeyRepository(conn)
 	settings := repository.NewSettingsRepository(conn)
@@ -1641,6 +1745,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		StorageUsage: storage.NewUsageService(config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}),
 		Search:       searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
+		Tasks: taskService, TaskRepository: taskRepository, Events: taskpkg.NewEventBroker(),
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn
 }

@@ -15,6 +15,7 @@ import (
 	"tg-search/internal/search"
 	"tg-search/internal/session"
 	"tg-search/internal/storage"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -45,6 +46,9 @@ type Dependencies struct {
 	Resources        *resource.Service
 	ChannelSync      *channel.Service
 	ChannelWebAccess *channel.WebAccessService
+	Tasks            *taskpkg.Service
+	TaskRepository   *taskpkg.Repository
+	Events           *taskpkg.EventBroker
 	AccountRuntime   AccountRuntime
 	Telegram         telegram.Client
 	Sessions         *session.Manager
@@ -70,6 +74,13 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.PUT("/settings/telegram-api", h.updateTelegramAPISettings)
 	api.GET("/storage/usage", h.storageUsage)
 	api.GET("/status", h.status)
+	api.GET("/tasks", h.tasks)
+	api.GET("/tasks/:id", h.task)
+	api.POST("/tasks/:id/retry", h.retryTask)
+	api.POST("/tasks/:id/cancel", h.cancelTask)
+	api.POST("/tasks/:id/pause", h.pauseTask)
+	api.POST("/tasks/:id/resume", h.resumeTask)
+	api.GET("/events", h.events)
 	telegramAPI := api.Group("/telegram")
 	telegramAPI.POST("/login/send-code", h.sendCode)
 	telegramAPI.POST("/login/sign-in", h.signIn)

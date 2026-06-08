@@ -23,6 +23,7 @@ import (
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	searchsvc "tg-search/internal/search"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 )
 
@@ -258,6 +259,145 @@ func (h handlers) status(c *gin.Context) {
 		"links":          counts.Links,
 		"account_states": counts.AccountStates,
 	})
+}
+
+func (h handlers) tasks(c *gin.Context) {
+	if h.deps.TaskRepository == nil {
+		errorText(c, http.StatusServiceUnavailable, "tasks are unavailable")
+		return
+	}
+	limit, ok := queryNonNegativeInt(c, "limit")
+	if !ok {
+		return
+	}
+	offset, ok := queryNonNegativeInt(c, "offset")
+	if !ok {
+		return
+	}
+	items, err := h.deps.TaskRepository.List(c.Request.Context(), taskpkg.ListFilter{
+		Status: c.Query("status"),
+		Type:   c.Query("type"),
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h handlers) task(c *gin.Context) {
+	if h.deps.TaskRepository == nil {
+		errorText(c, http.StatusServiceUnavailable, "tasks are unavailable")
+		return
+	}
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	item, err := h.deps.TaskRepository.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) retryTask(c *gin.Context) {
+	h.updateTask(c, func(ctx context.Context, id int64) error {
+		return h.deps.Tasks.Retry(ctx, id)
+	})
+}
+
+func (h handlers) cancelTask(c *gin.Context) {
+	h.updateTask(c, func(ctx context.Context, id int64) error {
+		return h.deps.Tasks.Cancel(ctx, id)
+	})
+}
+
+func (h handlers) pauseTask(c *gin.Context) {
+	h.updateTask(c, func(ctx context.Context, id int64) error {
+		return h.deps.Tasks.Pause(ctx, id)
+	})
+}
+
+func (h handlers) resumeTask(c *gin.Context) {
+	h.updateTask(c, func(ctx context.Context, id int64) error {
+		return h.deps.Tasks.Resume(ctx, id)
+	})
+}
+
+func (h handlers) updateTask(c *gin.Context, fn func(context.Context, int64) error) {
+	if h.deps.Tasks == nil || h.deps.TaskRepository == nil {
+		errorText(c, http.StatusServiceUnavailable, "tasks are unavailable")
+		return
+	}
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	if err := fn(c.Request.Context(), id); err != nil {
+		if errors.Is(err, taskpkg.ErrInvalidTransition) {
+			errorJSON(c, http.StatusConflict, err)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	item, err := h.deps.TaskRepository.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: item})
+	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) events(c *gin.Context) {
+	if h.deps.Events == nil {
+		errorText(c, http.StatusServiceUnavailable, "events are unavailable")
+		return
+	}
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Status(http.StatusOK)
+	_, _ = c.Writer.WriteString(": connected\n\n")
+	if flusher, ok := c.Writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+
+	events, unsubscribe := h.deps.Events.Subscribe(c.Request.Context())
+	defer unsubscribe()
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			_, _ = fmt.Fprintf(c.Writer, "event: %s\ndata: %s\n\n", event.Type, data)
+			if flusher, ok := c.Writer.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+	}
+}
+
+func (h handlers) publishEvent(event taskpkg.Event) {
+	if h.deps.Events != nil {
+		h.deps.Events.Publish(event)
+	}
 }
 
 func (h handlers) sendCode(c *gin.Context) {

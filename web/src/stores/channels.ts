@@ -35,6 +35,18 @@ export const useChannelsStore = defineStore('channels', {
         return updated
       })
     },
+    async updateControls(channelIds: number[], payload: ChannelControlPayload) {
+      return this.withLoading(async () => {
+        const response = await apiPatch<ChannelsResponse>('/api/channels/control', {
+          channel_ids: channelIds,
+          control: payload
+        })
+        for (const item of response.items) {
+          this.replaceChannel(item)
+        }
+        return response.items
+      })
+    },
     async checkWebAccess(channelIds: number[]) {
       return this.withLoading(async () => {
         const response = await apiPost<WebAccessCheckResponse>('/api/channels/web-access/check', {

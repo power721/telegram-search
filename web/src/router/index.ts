@@ -2,8 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
+import HomeView from '@/views/HomeView.vue'
 import LoginView from '@/views/LoginView.vue'
 import { placeholderView } from '@/views/placeholders'
+import SettingsView from '@/views/SettingsView.vue'
 import SetupAdminView from '@/views/SetupAdminView.vue'
 
 export const router = createRouter({
@@ -20,13 +22,13 @@ export const router = createRouter({
       path: '/',
       component: AppLayout,
       children: [
-        { path: '', name: 'home', component: placeholderView('Home') },
+        { path: '', name: 'home', component: HomeView },
         { path: 'search', name: 'search', component: placeholderView('Search') },
         { path: 'channels', name: 'channels', component: placeholderView('Channels') },
         { path: 'resources', name: 'resources', component: placeholderView('Resources') },
         { path: 'accounts', name: 'accounts', component: placeholderView('Accounts') },
         { path: 'tasks', name: 'tasks', component: placeholderView('Tasks') },
-        { path: 'settings', name: 'settings', component: placeholderView('Settings') }
+        { path: 'settings', name: 'settings', component: SettingsView }
       ]
     }
   ]

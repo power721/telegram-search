@@ -54,6 +54,7 @@ func NewExtractor() *Extractor {
 			providerParser("uc", `(?i)(https?://(?:drive|fast)\.uc\.cn/s/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?)`, 1, 0),
 			providerParser("aliyun", `(?i)(https?://(?:www\.)?(?:alipan|aliyundrive)\.com/s/[\w-]+(?:/folder/[\w-]+)?(?:\?password=([\w-]+))?)`, 1, 2),
 			providerParser("123", `(?i)(https?://(?:www\.)?123(?:684|865|685|912|pan|592)\.(?:com|cn)/s/[\w-]+(?:\.html)?)(?:(?:\?(?:%E6%8F%90%E5%8F%96%E7%A0%81|提取码)|提取码)[:：](\w+))?`, 1, 2),
+			providerParser("123", `(?i)(https?://[A-Za-z0-9-]+\.share\.123pan\.cn/123pan/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
 			providerParser("guangya", `(?i)(https?://(?:www\.)?guangyapan\.com/s/[A-Za-z0-9_-]+)`, 1, 0),
 			providerParser("magnet", `(?i)(magnet:\?[^\s"'<>，。；、]+)`, 1, 0),
 			providerParser("ed2k", `(?i)(ed2k://[^\s"'<>，。；、]+)`, 1, 0),

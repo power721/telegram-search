@@ -46,6 +46,7 @@ func TestExtractProviderCorpus(t *testing.T) {
 		{"123 html", "https://www.123pan.com/s/abc123.html?提取码:9a8b", "123", "https://www.123pan.com/s/abc123.html", "9a8b"},
 		{"123 numeric com", "https://123865.com/s/abc_123", "123", "https://123865.com/s/abc_123", ""},
 		{"123 pan cn", "https://www.123pan.cn/s/abc-123?提取码:9a8b", "123", "https://www.123pan.cn/s/abc-123", "9a8b"},
+		{"123 share pan cn", "https://1850896530.share.123pan.cn/123pan/tSkpvd-K1Ggh?pwd=Zlwl", "123", "https://1850896530.share.123pan.cn/123pan/tSkpvd-K1Ggh?pwd=Zlwl", "Zlwl"},
 		{"guangya", "https://www.guangyapan.com/s/ABC_123", "guangya", "https://www.guangyapan.com/s/ABC_123", ""},
 		{"magnet", "magnet:?xt=urn:btih:abcdef", "magnet", "magnet:?xt=urn:btih:abcdef", ""},
 		{"ed2k", "ed2k://|file|movie.mkv|123|HASH|/", "ed2k", "ed2k://|file|movie.mkv|123|HASH|/", ""},

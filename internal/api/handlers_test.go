@@ -672,12 +672,16 @@ func TestTaskAPI(t *testing.T) {
 	}
 	var listBody struct {
 		Items []model.Task `json:"items"`
+		Total int          `json:"total"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &listBody); err != nil {
 		t.Fatalf("decode list: %v", err)
 	}
 	if len(listBody.Items) != 2 {
 		t.Fatalf("list items = %+v, want 2 tasks", listBody.Items)
+	}
+	if listBody.Total != 2 {
+		t.Fatalf("list total = %d, want 2", listBody.Total)
 	}
 
 	w = httptest.NewRecorder()

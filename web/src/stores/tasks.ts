@@ -2,18 +2,36 @@ import { defineStore } from 'pinia'
 import { apiGet, apiPost } from '@/api/client'
 import type { Task, TasksResponse } from '@/api/types'
 
+export interface TaskFilters {
+  status?: string
+  type?: string
+  limit?: number
+  offset?: number
+}
+
+function buildTasksPath(filters: TaskFilters = {}) {
+  const params = new URLSearchParams()
+  if (filters.status) params.set('status', filters.status)
+  if (filters.type) params.set('type', filters.type)
+  params.set('limit', String(filters.limit ?? 50))
+  if (filters.offset) params.set('offset', String(filters.offset))
+  return `/api/tasks?${params.toString()}`
+}
+
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
     items: [] as Task[],
+    total: 0,
     selected: null as Task | null,
     loading: false,
     error: ''
   }),
   actions: {
-    async loadTasks() {
+    async loadTasks(filters: TaskFilters = {}) {
       return this.withLoading(async () => {
-        const response = await apiGet<TasksResponse>('/api/tasks')
+        const response = await apiGet<TasksResponse>(buildTasksPath(filters))
         this.items = Array.isArray(response.items) ? response.items : []
+        this.total = response.total ?? this.items.length
         return this.items
       })
     },

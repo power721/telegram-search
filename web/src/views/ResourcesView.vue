@@ -1,12 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import ResourceFilters from '@/components/resources/ResourceFilters.vue'
 import ResourceTable from '@/components/resources/ResourceTable.vue'
 import { useResourcesStore } from '@/stores/resources'
 
+const pageSizeOptions = [20, 50, 100]
 const resources = useResourcesStore()
 const keyword = ref('')
 const category = ref('')
+const pageSize = ref(50)
+const offset = ref(0)
+
+const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
+const canGoPrevious = computed(() => offset.value > 0)
+const canGoNext = computed(() => offset.value + pageSize.value < resources.total)
 
 const labels: Record<string, string> = {
   cloud_drive: '网盘',
@@ -17,7 +24,35 @@ const labels: Record<string, string> = {
 }
 
 async function load() {
-  await resources.load({ keyword: keyword.value, category: category.value })
+  await resources.load({
+    keyword: keyword.value,
+    category: category.value,
+    limit: pageSize.value,
+    offset: offset.value
+  })
+}
+
+async function resetAndLoad() {
+  offset.value = 0
+  await load()
+}
+
+async function previousPage() {
+  if (!canGoPrevious.value) return
+  offset.value = Math.max(0, offset.value - pageSize.value)
+  await load()
+}
+
+async function nextPage() {
+  if (!canGoNext.value) return
+  offset.value += pageSize.value
+  await load()
+}
+
+async function changePageSize(event: Event) {
+  pageSize.value = Number((event.target as HTMLSelectElement).value)
+  offset.value = 0
+  await load()
 }
 
 onMounted(() => {
@@ -42,7 +77,7 @@ onMounted(() => {
         type="button"
         @click="
           category = key;
-          load()
+          resetAndLoad()
         "
       >
         <span>{{ label }}</span>
@@ -54,10 +89,37 @@ onMounted(() => {
       v-model:category="category"
       v-model:keyword="keyword"
       class="filters"
-      @submit="load"
+      @submit="resetAndLoad"
     />
     <p v-if="resources.error" class="error-text">{{ resources.error }}</p>
     <ResourceTable class="table" :items="resources.items" />
+    <div class="pagination">
+      <label>
+        每页
+        <select aria-label="每页条数" :value="pageSize" @change="changePageSize">
+          <option v-for="option in pageSizeOptions" :key="option" :value="option">
+            {{ option }}
+          </option>
+        </select>
+      </label>
+      <button
+        aria-label="上一页"
+        :disabled="!canGoPrevious || resources.loading"
+        type="button"
+        @click="previousPage"
+      >
+        上一页
+      </button>
+      <span>第 {{ page }} 页，共 {{ resources.total }} 条</span>
+      <button
+        aria-label="下一页"
+        :disabled="!canGoNext || resources.loading"
+        type="button"
+        @click="nextPage"
+      >
+        下一页
+      </button>
+    </div>
   </section>
 </template>
 
@@ -104,6 +166,45 @@ onMounted(() => {
 
 .error-text {
   color: #b42318;
+}
+
+.pagination {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.pagination label {
+  align-items: center;
+  color: #667085;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pagination select {
+  background: #ffffff;
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  padding: 7px 8px;
+}
+
+.pagination button {
+  background: #ffffff;
+  border: 1px solid #d9dee7;
+  border-radius: 6px;
+  padding: 7px 10px;
+}
+
+.pagination button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
+.pagination span {
+  color: #667085;
 }
 
 @media (max-width: 900px) {

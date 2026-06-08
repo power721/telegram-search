@@ -1,10 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { apiGet } from '@/api/client'
 import TasksView from './TasksView.vue'
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn().mockResolvedValue({
+    total: 75,
     items: [
       {
         id: 1,
@@ -32,6 +34,7 @@ vi.mock('@/api/client', () => ({
 describe('TasksView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.clearAllMocks()
   })
 
   it('renders task status, progress, errors and actions', async () => {
@@ -57,5 +60,49 @@ describe('TasksView', () => {
     expect(wrapper.text()).toContain('重试')
     expect(wrapper.text()).toContain('取消')
     expect(wrapper.text()).toContain('暂停')
+  })
+
+  it('loads the next tasks page with page size 50', async () => {
+    const wrapper = mount(TasksView, {
+      global: {
+        stubs: {
+          'n-button': { template: '<button :disabled="disabled"><slot /></button>', props: ['disabled'] },
+          'n-tag': { template: '<span><slot /></span>' },
+          'n-drawer': true,
+          'n-drawer-content': true,
+          'n-descriptions': { template: '<div><slot /></div>' },
+          'n-descriptions-item': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.get('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
+    expect(wrapper.text()).toContain('第 2 页')
+  })
+
+  it('reloads tasks from page one when page size changes', async () => {
+    const wrapper = mount(TasksView, {
+      global: {
+        stubs: {
+          'n-button': { template: '<button :disabled="disabled"><slot /></button>', props: ['disabled'] },
+          'n-tag': { template: '<span><slot /></span>' },
+          'n-drawer': true,
+          'n-drawer-content': true,
+          'n-descriptions': { template: '<div><slot /></div>' },
+          'n-descriptions-item': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.get('select[aria-label="每页条数"]').setValue('20')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=20')
+    expect(wrapper.text()).toContain('第 1 页')
   })
 })

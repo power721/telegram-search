@@ -35,4 +35,18 @@ describe('useResourcesStore', () => {
     expect(store.items[0].title).toBe('Course')
     expect(store.grouped.files).toBe(4)
   })
+
+  it('passes page offsets when loading resources', async () => {
+    vi.mocked(apiGet).mockResolvedValue({
+      items: [],
+      total: 75,
+      grouped: {}
+    })
+    const store = useResourcesStore()
+
+    await store.load({ limit: 50, offset: 50 })
+
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
+    expect(store.total).toBe(75)
+  })
 })

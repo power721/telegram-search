@@ -118,16 +118,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]model.Task,
 	if limit > 200 {
 		limit = 200
 	}
-	where := []string{"1=1"}
-	args := []any{}
-	if filter.Status != "" {
-		where = append(where, "status = ?")
-		args = append(args, filter.Status)
-	}
-	if filter.Type != "" {
-		where = append(where, "type = ?")
-		args = append(args, filter.Type)
-	}
+	where, args := taskListWhere(filter)
 	args = append(args, limit, filter.Offset)
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, type, status, progress, total, message, error_code, error_message, retry_count, next_run_at, payload_json, started_at, finished_at, created_at, updated_at
@@ -140,6 +131,32 @@ LIMIT ? OFFSET ?`, args...)
 	}
 	defer rows.Close()
 	return scanTasks(rows)
+}
+
+func (r *Repository) Count(ctx context.Context, filter ListFilter) (int, error) {
+	where, args := taskListWhere(filter)
+	var total int
+	if err := r.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM sync_tasks
+WHERE `+strings.Join(where, " AND "), args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count tasks: %w", err)
+	}
+	return total, nil
+}
+
+func taskListWhere(filter ListFilter) ([]string, []any) {
+	where := []string{"1=1"}
+	args := []any{}
+	if filter.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, filter.Status)
+	}
+	if filter.Type != "" {
+		where = append(where, "type = ?")
+		args = append(args, filter.Type)
+	}
+	return where, args
 }
 
 func (r *Repository) ListRestartable(ctx context.Context, now time.Time) ([]model.Task, error) {

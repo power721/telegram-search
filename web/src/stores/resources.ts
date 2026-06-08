@@ -8,6 +8,7 @@ export interface ResourceFilters {
   category?: string
   extension?: string
   limit?: number
+  offset?: number
 }
 
 function buildResourcePath(path: string, filters: ResourceFilters = {}, includeLimit = true) {
@@ -18,6 +19,7 @@ function buildResourcePath(path: string, filters: ResourceFilters = {}, includeL
   if (filters.category) params.set('category', filters.category)
   if (filters.extension) params.set('extension', filters.extension)
   if (includeLimit) params.set('limit', String(filters.limit ?? 50))
+  if (filters.offset) params.set('offset', String(filters.offset))
   const query = params.toString()
   return query ? `${path}?${query}` : path
 }

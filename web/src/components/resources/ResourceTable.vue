@@ -15,6 +15,10 @@ function categoryLabel(category: string) {
   }
   return labels[category] ?? category
 }
+
+function itemLabel(item: ResourceItem) {
+  return item.title || item.file_name || item.url || '-'
+}
 </script>
 
 <template>
@@ -26,8 +30,11 @@ function categoryLabel(category: string) {
     </div>
     <article v-for="item in items" :key="item.id" class="table-row">
       <div>
-        <strong>{{ item.title || item.file_name || item.url }}</strong>
-        <p>{{ item.url || item.file_name }}</p>
+        <strong>{{ itemLabel(item) }}</strong>
+        <p v-if="item.url">
+          <a :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
+        </p>
+        <p v-else>{{ item.file_name || '-' }}</p>
       </div>
       <span>{{ categoryLabel(item.category) }}</span>
       <span>{{ item.channel_title || 'Telegram' }}</span>
@@ -63,13 +70,19 @@ function categoryLabel(category: string) {
 }
 
 .table-row strong,
-.table-row p {
+.table-row p,
+.table-row a {
   overflow-wrap: anywhere;
 }
 
 .table-row p {
   color: #667085;
   margin: 4px 0 0;
+}
+
+.table-row a {
+  color: #175cd3;
+  text-decoration: underline;
 }
 
 @media (max-width: 760px) {

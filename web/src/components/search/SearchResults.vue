@@ -42,7 +42,9 @@ function sourceLabel(source?: string) {
       </header>
       <article v-for="item in result?.links.items ?? []" :key="`l-${item.id}`" class="result-row">
         <strong>{{ item.note || item.url }}</strong>
-        <p>{{ item.url }}</p>
+        <p>
+          <a :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
+        </p>
         <small>{{ sourceLabel(item.source) }}</small>
       </article>
     </section>
@@ -115,13 +117,19 @@ small {
 }
 
 .result-row strong,
-.result-row p {
+.result-row p,
+.result-row a {
   overflow-wrap: anywhere;
 }
 
 .result-row p {
   color: #475467;
   margin: 4px 0;
+}
+
+.result-row a {
+  color: #175cd3;
+  text-decoration: underline;
 }
 
 @media (max-width: 900px) {

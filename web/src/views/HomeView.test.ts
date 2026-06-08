@@ -32,8 +32,9 @@ vi.mock('@/api/client', () => ({
         grouped: { cloud_drive: 2, magnet: 1, ed2k: 0, http: 3, files: 4 }
       })
     }
-    if (path === '/api/tasks') {
+    if (path.startsWith('/api/tasks')) {
       return Promise.resolve({
+        total: 1,
         items: [{ id: 1, type: 'history_sync', status: 'failed', error_message: 'temporary failure' }]
       })
     }

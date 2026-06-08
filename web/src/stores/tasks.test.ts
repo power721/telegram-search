@@ -5,8 +5,9 @@ import { useTasksStore } from './tasks'
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn((path: string) => {
-    if (path === '/api/tasks') {
+    if (path === '/api/tasks?limit=50') {
       return Promise.resolve({
+        total: 1,
         items: [
           {
             id: 1,
@@ -45,7 +46,7 @@ describe('tasks store', () => {
 
     expect(store.items).toHaveLength(1)
     expect(store.selected?.id).toBe(1)
-    expect(apiGet).toHaveBeenCalledWith('/api/tasks')
+    expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50')
     expect(apiGet).toHaveBeenCalledWith('/api/tasks/1')
     expect(apiPost).toHaveBeenCalledWith('/api/tasks/1/retry')
     expect(apiPost).toHaveBeenCalledWith('/api/tasks/1/cancel')
@@ -54,11 +55,21 @@ describe('tasks store', () => {
   })
 
   it('keeps task items as an empty array when the API returns null items', async () => {
-    vi.mocked(apiGet).mockResolvedValueOnce({ items: null } as never)
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: null, total: 0 } as never)
     const store = useTasksStore()
 
     await store.loadTasks()
 
     expect(store.items).toEqual([])
+  })
+
+  it('passes page offsets and stores task totals', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: [], total: 75 } as never)
+    const store = useTasksStore()
+
+    await store.loadTasks({ limit: 50, offset: 50 })
+
+    expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
+    expect(store.total).toBe(75)
   })
 })

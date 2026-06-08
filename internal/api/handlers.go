@@ -489,17 +489,23 @@ func (h handlers) tasks(c *gin.Context) {
 	if !ok {
 		return
 	}
-	items, err := h.deps.TaskRepository.List(c.Request.Context(), taskpkg.ListFilter{
+	filter := taskpkg.ListFilter{
 		Status: c.Query("status"),
 		Type:   c.Query("type"),
 		Limit:  limit,
 		Offset: offset,
-	})
+	}
+	items, err := h.deps.TaskRepository.List(c.Request.Context(), filter)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	total, err := h.deps.TaskRepository.Count(c.Request.Context(), filter)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
 }
 
 func (h handlers) task(c *gin.Context) {

@@ -194,6 +194,7 @@ export interface Task {
 
 export interface TasksResponse {
   items: Task[]
+  total: number
 }
 
 export interface RuntimeEvent<T = unknown> {

@@ -103,6 +103,20 @@ export interface TelegramLoginResponse {
   }
 }
 
+export interface TelegramQRLoginStartResponse {
+  login_id: string
+  status: 'pending'
+  qr_url: string
+  expires_at: string
+}
+
+export interface TelegramQRLoginStatusResponse extends TelegramLoginResponse {
+  login_id: string
+  status: 'pending' | 'online'
+  qr_url?: string
+  expires_at?: string
+}
+
 export interface TelegramAccountsResponse {
   items: TelegramAccount[]
 }

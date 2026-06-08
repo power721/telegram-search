@@ -70,6 +70,20 @@ func TestApplyFullChannelMetadata(t *testing.T) {
 	}
 }
 
+func TestProfileFromUserIncludesPhone(t *testing.T) {
+	user := &tg.User{ID: 42}
+	user.SetFirstName("Ada")
+	user.SetLastName("Lovelace")
+	user.SetUsername("ada")
+	user.SetPhone("15550000000")
+
+	profile := profileFromUser(user)
+
+	if profile.TelegramUserID != 42 || profile.Phone != "+15550000000" || profile.Username != "ada" {
+		t.Fatalf("profile = %+v, want id, normalized phone, username", profile)
+	}
+}
+
 func testDialog(channelID int64) tg.DialogClass {
 	return &tg.Dialog{Peer: &tg.PeerChannel{ChannelID: channelID}}
 }

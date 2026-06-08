@@ -14,10 +14,12 @@
     "typecheck": "vue-tsc --build"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "@unocss/reset": "^66.7.0",
     "@vueuse/core": "^12.8.2",
     "naive-ui": "^2.44.1",
     "pinia": "^3.0.4",
+    "qrcode": "^1.5.4",
     "vue": "^3.5.32",
     "vue-router": "^5.0.4"
   },

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -57,6 +58,7 @@ type Dependencies struct {
 	Telegram         telegram.Client
 	Sessions         *session.Manager
 	CodeStore        *telegram.CodeStore
+	QRLogins         *QRLoginStore
 }
 
 func NewRouter(deps Dependencies) *gin.Engine {
@@ -67,6 +69,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	h := handlers{deps: deps}
 	if h.deps.APIKeyService == nil && h.deps.APIKeys != nil && h.deps.Settings != nil {
 		h.deps.APIKeyService = apikey.NewService(h.deps.APIKeys, h.deps.Settings)
+	}
+	if h.deps.QRLogins == nil {
+		h.deps.QRLogins = NewQRLoginStore(2 * time.Minute)
 	}
 	api := router.Group("/api")
 	api.GET("/health", h.health)
@@ -102,6 +107,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	telegramAPI.POST("/login/send-code", h.sendCode)
 	telegramAPI.POST("/login/sign-in", h.signIn)
 	telegramAPI.POST("/login/password", h.password)
+	telegramAPI.POST("/login/qr/start", h.startQRLogin)
+	telegramAPI.GET("/login/qr/:login_id", h.pollQRLogin)
+	telegramAPI.DELETE("/login/qr/:login_id", h.cancelQRLogin)
 	business.GET("/accounts", h.accounts)
 	business.POST("/accounts/:id/logout", h.logoutAccount)
 	business.DELETE("/accounts/:id", h.deleteAccount)

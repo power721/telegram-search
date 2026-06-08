@@ -74,6 +74,7 @@ func run(configPath string) error {
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
+	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	watchFilter := messagefilter.New(watchRules)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
@@ -131,7 +132,7 @@ func run(configPath string) error {
 
 	router := api.NewRouter(api.Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, StorageUsage: storageUsage,
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),

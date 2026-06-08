@@ -484,6 +484,67 @@ func (h handlers) analyzeChannel(c *gin.Context) {
 	})
 }
 
+func (h handlers) createRemoteSearchTask(c *gin.Context) {
+	var req struct {
+		ChannelID int64  `json:"channel_id"`
+		Query     string `json:"query"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	query := strings.TrimSpace(req.Query)
+	if query == "" {
+		errorText(c, http.StatusBadRequest, "query is required")
+		return
+	}
+	if req.ChannelID <= 0 {
+		errorText(c, http.StatusBadRequest, "channel_id must be a positive integer")
+		return
+	}
+	if h.deps.RemoteSearch == nil {
+		errorText(c, http.StatusServiceUnavailable, "remote search is unavailable")
+		return
+	}
+	item, err := h.deps.Channels.FindByID(c.Request.Context(), req.ChannelID)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	if !item.RemoteSearchAllowed {
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":    "remote_search_not_allowed",
+			"message": "remote search is not allowed for this channel",
+		}})
+		return
+	}
+	if item.LastMessageID > 0 || item.LastSyncTime != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":    "remote_search_requires_unsynced_channel",
+			"message": "remote search requires an unsynced channel",
+		}})
+		return
+	}
+	task := model.RemoteSearchTask{
+		AccountID: item.AccountID,
+		ChannelID: item.ID,
+		Query:     query,
+		Status:    model.RemoteSearchStatusQueued,
+		Source:    "remote",
+		ExpiresAt: time.Now().UTC().Add(30 * time.Minute),
+	}
+	id, err := h.deps.RemoteSearch.Create(c.Request.Context(), task)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	task, err = h.deps.RemoteSearch.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, task)
+}
+
 func (h handlers) checkStorageQuota(c *gin.Context) bool {
 	if h.deps.StorageUsage == nil {
 		return true

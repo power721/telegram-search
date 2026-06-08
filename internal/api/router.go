@@ -32,6 +32,7 @@ type Dependencies struct {
 	Messages         *repository.MessageRepository
 	Links            *repository.LinkRepository
 	WatchRules       *repository.WatchRuleRepository
+	RemoteSearch     *repository.RemoteSearchTaskRepository
 	Maintenance      *repository.MaintenanceRepository
 	Status           *repository.StatusRepository
 	BackupDB         *sql.DB
@@ -86,6 +87,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.PUT("/watch-rules/:id", h.updateWatchRule)
 	api.DELETE("/watch-rules/:id", h.deleteWatchRule)
 	api.GET("/search", h.search)
+	api.POST("/search/remote", h.createRemoteSearchTask)
 	api.GET("/messages/latest", h.latest)
 	api.GET("/links/merged", h.mergedLinks)
 	api.GET("/links", h.links)

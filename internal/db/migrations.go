@@ -103,6 +103,20 @@ CREATE TABLE IF NOT EXISTS telegram_watch_rules (
   FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS remote_search_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL,
+  channel_id INTEGER NOT NULL,
+  query TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'remote',
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY(account_id) REFERENCES telegram_accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,

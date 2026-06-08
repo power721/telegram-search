@@ -143,6 +143,20 @@ type ChannelAnalysis struct {
 	IndexedCounts ChannelIndexedCounts `json:"indexed_counts"`
 }
 
+const RemoteSearchStatusQueued = "queued"
+
+type RemoteSearchTask struct {
+	ID        int64     `json:"id"`
+	AccountID int64     `json:"account_id"`
+	ChannelID int64     `json:"channel_id"`
+	Query     string    `json:"query"`
+	Status    string    `json:"status"`
+	Source    string    `json:"source"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 type Message struct {
 	ID                int64      `json:"id"`
 	AccountID         int64      `json:"account_id"`

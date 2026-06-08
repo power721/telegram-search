@@ -1271,6 +1271,86 @@ func TestChannelAnalyze(t *testing.T) {
 	}
 }
 
+func TestRemoteSearchEntry(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	allowedID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   71,
+		Title:               "Allowed",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: true,
+	})
+	blockedID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   72,
+		Title:               "Blocked",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: false,
+	})
+	syncedAt := time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC)
+	syncedID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   73,
+		Title:               "Synced",
+		Type:                model.ChannelTypeChannel,
+		LastMessageID:       100,
+		LastSyncTime:        &syncedAt,
+		RemoteSearchAllowed: true,
+	})
+	router := NewRouter(deps)
+
+	for _, tc := range []struct {
+		name string
+		body string
+		code int
+		err  string
+	}{
+		{"empty query", `{"channel_id":` + strconv.FormatInt(allowedID, 10) + `,"query":" "}`, http.StatusBadRequest, "bad_request"},
+		{"blocked", `{"channel_id":` + strconv.FormatInt(blockedID, 10) + `,"query":"ubuntu iso"}`, http.StatusConflict, "remote_search_not_allowed"},
+		{"synced", `{"channel_id":` + strconv.FormatInt(syncedID, 10) + `,"query":"ubuntu iso"}`, http.StatusConflict, "remote_search_requires_unsynced_channel"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, req)
+			if w.Code != tc.code {
+				t.Fatalf("status = %d body=%s, want %d", w.Code, w.Body.String(), tc.code)
+			}
+			if tc.err != "" {
+				var body struct {
+					Error struct {
+						Code string `json:"code"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+					t.Fatalf("invalid error JSON: %v", err)
+				}
+				if body.Error.Code != tc.err {
+					t.Fatalf("error code = %q, want %q body=%s", body.Error.Code, tc.err, w.Body.String())
+				}
+			}
+		})
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(allowedID, 10)+`,"query":"ubuntu iso"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())
+	}
+	var body model.RemoteSearchTask
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.ID == 0 || body.Status != model.RemoteSearchStatusQueued || body.Source != "remote" || body.Query != "ubuntu iso" || body.ExpiresAt.IsZero() {
+		t.Fatalf("remote search task = %+v", body)
+	}
+}
+
 func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)
@@ -1402,6 +1482,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
+	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	users := repository.NewUserRepository(conn)
@@ -1419,7 +1500,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		StorageUsage: storage.NewUsageService(config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}),
 		Search:       searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,

@@ -1,6 +1,6 @@
 # tg-search API Documentation
 
-This document describes the active REST API surface for the Phase 1A backend foundation. All responses are JSON.
+This document describes the active REST API surface for the Phase 1C Telegram onboarding baseline. All responses are JSON.
 
 ## Error Response
 
@@ -78,6 +78,167 @@ Response `201`:
 
 Marks setup complete and returns setup status.
 
+### `POST /api/setup/telegram-api`
+
+Stores Telegram API credentials for first-run setup. `app_hash` is write-only and is never returned.
+
+Request:
+
+```json
+{
+  "app_id": 123456,
+  "app_hash": "your_app_hash"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "configured": true,
+  "app_id": 123456,
+  "app_hash_set": true
+}
+```
+
+## Telegram Settings
+
+### `GET /api/settings/telegram-api`
+
+Returns redacted Telegram API configuration state.
+
+```json
+{
+  "configured": true,
+  "app_id": 123456,
+  "app_hash_set": true
+}
+```
+
+### `PUT /api/settings/telegram-api`
+
+Updates Telegram API credentials. The response is the same redacted shape as `GET /api/settings/telegram-api`.
+
+## Telegram Login
+
+Telegram onboarding creates or updates an account, stores the local session path, and starts metadata-only channel sync after successful login. It does not sync message history.
+
+### `POST /api/telegram/login/send-code`
+
+Request:
+
+```json
+{
+  "phone": "+10000000000"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "status": "LOGIN_REQUIRED"
+}
+```
+
+### `POST /api/telegram/login/sign-in`
+
+Request:
+
+```json
+{
+  "phone": "+10000000000",
+  "code": "12345"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "status": "ONLINE",
+  "account": {
+    "id": 1,
+    "phone": "+10000000000",
+    "telegram_user_id": 42,
+    "first_name": "Ada",
+    "last_name": "Lovelace",
+    "username": "ada",
+    "status": "ONLINE",
+    "session_path": "/data/tg-search/sessions/1.session",
+    "last_online_at": "2026-06-08T02:00:00Z",
+    "last_error": ""
+  },
+  "metadata_sync": {
+    "status": "succeeded",
+    "channel_count": 3
+  }
+}
+```
+
+If 2FA is required, response `202`:
+
+```json
+{
+  "status": "LOGIN_REQUIRED",
+  "password_required": true
+}
+```
+
+### `POST /api/telegram/login/password`
+
+Submits the 2FA password for a pending login.
+
+Request:
+
+```json
+{
+  "phone": "+10000000000",
+  "password": "2fa-password"
+}
+```
+
+Response `200` uses the same successful login shape as `/api/telegram/login/sign-in`.
+
+If metadata sync fails after login, the account remains `ONLINE`, `account.last_error` is stored, and `metadata_sync.status` is `failed`.
+
+## Accounts
+
+### `GET /api/accounts`
+
+Returns Telegram accounts.
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "phone": "+10000000000",
+      "telegram_user_id": 42,
+      "first_name": "Ada",
+      "last_name": "Lovelace",
+      "username": "ada",
+      "status": "ONLINE",
+      "session_path": "/data/tg-search/sessions/1.session",
+      "last_online_at": "2026-06-08T02:00:00Z",
+      "last_error": ""
+    }
+  ]
+}
+```
+
+### `DELETE /api/accounts/:id`
+
+Stops account runtime state, removes the local session file, and deletes the account row.
+
+### `POST /api/accounts/:id/channels/sync-metadata`
+
+Runs metadata-only channel sync for an account. The sync stores channel title, username, type, member count, description, avatar state, `sync_state="metadata_only"`, and `listen_state="disabled"`. It does not fetch message history.
+
+### `GET /api/channels?account_id=1`
+
+Returns channels for an account. Omit `account_id` to list all channels.
+
 ## Auth
 
 ### `POST /api/auth/login`
@@ -137,6 +298,6 @@ Returns basic runtime counts and Telegram account status summary.
 }
 ```
 
-## Existing Telegram APIs
+## Search And Resources
 
-The existing backend Telegram login, channel, message search, link, maintenance, and backup endpoints remain present during Phase 1A. Later phases rename and reshape these APIs around the standalone `tg-search` admin console.
+Message search, link, maintenance, and backup endpoints from the existing backend remain available while later phases reshape them around Global Search and the Telegram Resource Library.

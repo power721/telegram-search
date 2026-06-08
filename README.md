@@ -2,7 +2,7 @@
 
 Self-hosted personal Telegram search foundation.
 
-`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, and dashboard navigation. Later phases add Telegram onboarding, channel control, Global Search, and the Telegram Resource Library.
+`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, and account navigation. Later phases add channel control, Global Search, and the Telegram Resource Library.
 
 ## Quickstart
 
@@ -47,21 +47,39 @@ Frontend: http://127.0.0.1:5173
 
 The Vite development server proxies `/api` requests to the backend at `http://127.0.0.1:6000`.
 
+## First-Run Setup
+
+```text
+Admin Account -> API Key -> Telegram API -> Telegram Login -> Home
+```
+
+Telegram Login starts a metadata-only channel sync after the account is online. It collects account and channel metadata such as title, username, member count, description, avatar state, sync state, and listen state. It does not fetch message history during onboarding.
+
 ## Foundation APIs
 
 ```text
 GET    /api/setup/status
 POST   /api/setup/admin
 POST   /api/setup/api-key
+POST   /api/setup/telegram-api
 POST   /api/setup/complete
 POST   /api/auth/login
 POST   /api/auth/logout
 GET    /api/auth/me
+GET    /api/settings/telegram-api
+PUT    /api/settings/telegram-api
+POST   /api/telegram/login/send-code
+POST   /api/telegram/login/sign-in
+POST   /api/telegram/login/password
+GET    /api/accounts
+DELETE /api/accounts/:id
+POST   /api/accounts/:id/channels/sync-metadata
+GET    /api/channels
 GET    /api/storage/usage
 GET    /api/status
 ```
 
-Telegram account, channel, search, maintenance, and backup APIs from the existing backend remain available while the product is redesigned in later phases.
+Search, maintenance, and backup APIs from the existing backend remain available while the product is redesigned in later phases.
 
 ## Storage Usage Response
 

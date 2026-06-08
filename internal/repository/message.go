@@ -128,6 +128,58 @@ ON CONFLICT(message_id) DO UPDATE SET
 
 func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]model.SearchResult, error) {
 	limit := clampLimit(params.Limit, 50)
+	where, args := messageSearchWhere(params)
+	args = append(args, limit, params.Offset)
+	query := `
+SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
+       mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
+       a.phone, a.username, a.first_name, c.title, c.username
+FROM telegram_messages_fts
+JOIN telegram_messages m ON m.id = telegram_messages_fts.rowid
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+JOIN telegram_accounts a ON a.id = m.account_id
+JOIN telegram_channels c ON c.id = m.channel_id
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY ` + dateOrderBy(params.Sort, "m.date", "m.id") + `
+LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search messages: %w", err)
+	}
+	var out []model.SearchResult
+	for rows.Next() {
+		item, err := scanSearchResult(rows)
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return attachLinks(ctx, r.db, out)
+}
+
+func (r *MessageRepository) CountSearch(ctx context.Context, params SearchParams) (int, error) {
+	where, args := messageSearchWhere(params)
+	query := `
+SELECT count(*)
+FROM telegram_messages_fts
+JOIN telegram_messages m ON m.id = telegram_messages_fts.rowid
+WHERE ` + strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count search messages: %w", err)
+	}
+	return total, nil
+}
+
+func messageSearchWhere(params SearchParams) ([]string, []any) {
 	where := []string{`telegram_messages_fts MATCH ?`, `m.deleted = 0`}
 	args := []any{params.Query}
 	if params.AccountID > 0 {
@@ -154,40 +206,7 @@ func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]
 		where = append(where, `(m.date < ? OR (m.date = ? AND m.id < ?))`)
 		args = append(args, *params.BeforeDate, *params.BeforeDate, params.BeforeID)
 	}
-	args = append(args, limit, params.Offset)
-	query := `
-SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
-       mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
-       a.phone, a.username, a.first_name, c.title, c.username
-FROM telegram_messages_fts
-JOIN telegram_messages m ON m.id = telegram_messages_fts.rowid
-JOIN telegram_message_contents mc ON mc.message_id = m.id
-JOIN telegram_accounts a ON a.id = m.account_id
-JOIN telegram_channels c ON c.id = m.channel_id
-WHERE ` + strings.Join(where, " AND ") + `
-ORDER BY m.date DESC, m.id DESC
-LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search messages: %w", err)
-	}
-	var out []model.SearchResult
-	for rows.Next() {
-		item, err := scanSearchResult(rows)
-		if err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, err
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	return attachLinks(ctx, r.db, out)
+	return where, args
 }
 
 func (r *MessageRepository) Latest(ctx context.Context, params LatestParams) ([]model.SearchResult, error) {

@@ -74,6 +74,51 @@ func (r *LinkRepository) ReplaceForMessageTx(ctx context.Context, tx *sql.Tx, me
 
 func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([]model.LinkResult, error) {
 	limit := clampLimit(params.Limit, 50)
+	where, args := linkSearchWhere(params)
+	args = append(args, limit, params.Offset)
+	query := `
+SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
+       COALESCE(l.source_snippet, ''), COALESCE(l.category, ''), l.created_at,
+       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+FROM telegram_links l
+JOIN telegram_messages m ON m.id = l.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+JOIN telegram_channels c ON c.id = m.channel_id
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY ` + dateOrderBy(params.Sort, "m.date", "l.id") + `
+LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search links: %w", err)
+	}
+	defer rows.Close()
+	var out []model.LinkResult
+	for rows.Next() {
+		var item model.LinkResult
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *LinkRepository) CountSearch(ctx context.Context, params LinkSearchParams) (int, error) {
+	where, args := linkSearchWhere(params)
+	query := `
+SELECT count(*)
+FROM telegram_links l
+JOIN telegram_messages m ON m.id = l.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+WHERE ` + strings.Join(where, " AND ")
+	var total int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("count search links: %w", err)
+	}
+	return total, nil
+}
+
+func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 	where := []string{`m.deleted = 0`}
 	args := []any{}
 	if params.Type != "" {
@@ -104,32 +149,7 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 		where = append(where, `m.date < ?`)
 		args = append(args, *params.DateTo)
 	}
-	args = append(args, limit, params.Offset)
-	query := `
-SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
-       COALESCE(l.source_snippet, ''), COALESCE(l.category, ''), l.created_at,
-       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
-FROM telegram_links l
-JOIN telegram_messages m ON m.id = l.message_id
-JOIN telegram_message_contents mc ON mc.message_id = m.id
-JOIN telegram_channels c ON c.id = m.channel_id
-WHERE ` + strings.Join(where, " AND ") + `
-ORDER BY m.date DESC, l.id DESC
-LIMIT ? OFFSET ?`
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search links: %w", err)
-	}
-	defer rows.Close()
-	var out []model.LinkResult
-	for rows.Next() {
-		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
-			return nil, err
-		}
-		out = append(out, item)
-	}
-	return out, rows.Err()
+	return where, args
 }
 
 func (r *LinkRepository) SearchMerged(ctx context.Context, params MergedLinkSearchParams) (model.MergedLinksResponse, error) {

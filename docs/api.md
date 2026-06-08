@@ -350,7 +350,9 @@ Returns grouped local search results.
 }
 ```
 
-Scoped endpoints use the same filters (`q`, `account_id`, `channel_id`, `limit`, `offset`, date range where applicable):
+`total` is the full filtered match count for each group, not the number of items in the current page. `items` is paginated by `limit` and `offset`.
+
+Scoped endpoints use the same filters (`q`, `account_id`, `channel_id`, `limit`, `offset`, `sort`, date range where applicable):
 
 ```text
 GET /api/search/messages
@@ -358,6 +360,15 @@ GET /api/search/links
 GET /api/search/files
 GET /api/search/channels
 ```
+
+Supported `sort` values:
+
+```text
+date_desc
+date_asc
+```
+
+Omitting `sort` uses `date_desc`.
 
 Legacy endpoints remain available:
 

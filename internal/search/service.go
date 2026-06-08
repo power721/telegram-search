@@ -17,6 +17,7 @@ type Params struct {
 	AccountID  int64
 	ChannelID  int64
 	LinkType   string
+	Sort       string
 	DateFrom   *time.Time
 	DateTo     *time.Time
 	BeforeDate *time.Time
@@ -38,6 +39,7 @@ type LinkParams struct {
 	AccountID int64
 	ChannelID int64
 	Keyword   string
+	Sort      string
 	DateFrom  *time.Time
 	DateTo    *time.Time
 	Limit     int
@@ -51,6 +53,7 @@ type SearchQuery struct {
 	MessageType string
 	LinkType    string
 	FileType    string
+	Sort        string
 	DateFrom    *time.Time
 	DateTo      *time.Time
 	Limit       int
@@ -108,6 +111,7 @@ func (s *Service) Messages(ctx context.Context, query SearchQuery) (model.ListRe
 		AccountID: query.AccountID,
 		ChannelID: query.ChannelID,
 		LinkType:  query.LinkType,
+		Sort:      query.Sort,
 		DateFrom:  query.DateFrom,
 		DateTo:    query.DateTo,
 		Limit:     query.Limit,
@@ -116,7 +120,18 @@ func (s *Service) Messages(ctx context.Context, query SearchQuery) (model.ListRe
 	if err != nil {
 		return model.ListResult[model.SearchResult]{}, err
 	}
-	return model.ListResult[model.SearchResult]{Items: items, Total: len(items)}, nil
+	total, err := s.messages.CountSearch(ctx, repository.SearchParams{
+		Query:     strings.TrimSpace(query.Query),
+		AccountID: query.AccountID,
+		ChannelID: query.ChannelID,
+		LinkType:  query.LinkType,
+		DateFrom:  query.DateFrom,
+		DateTo:    query.DateTo,
+	})
+	if err != nil {
+		return model.ListResult[model.SearchResult]{}, err
+	}
+	return model.ListResult[model.SearchResult]{Items: items, Total: total}, nil
 }
 
 func (s *Service) ScopedLinks(ctx context.Context, query SearchQuery) (model.ListResult[model.LinkResult], error) {
@@ -129,6 +144,7 @@ func (s *Service) ScopedLinks(ctx context.Context, query SearchQuery) (model.Lis
 		AccountID: query.AccountID,
 		ChannelID: query.ChannelID,
 		Keyword:   keyword,
+		Sort:      query.Sort,
 		DateFrom:  query.DateFrom,
 		DateTo:    query.DateTo,
 		Limit:     query.Limit,
@@ -137,7 +153,18 @@ func (s *Service) ScopedLinks(ctx context.Context, query SearchQuery) (model.Lis
 	if err != nil {
 		return model.ListResult[model.LinkResult]{}, err
 	}
-	return model.ListResult[model.LinkResult]{Items: items, Total: len(items)}, nil
+	total, err := s.links.CountSearch(ctx, repository.LinkSearchParams{
+		Type:      query.LinkType,
+		AccountID: query.AccountID,
+		ChannelID: query.ChannelID,
+		Keyword:   keyword,
+		DateFrom:  query.DateFrom,
+		DateTo:    query.DateTo,
+	})
+	if err != nil {
+		return model.ListResult[model.LinkResult]{}, err
+	}
+	return model.ListResult[model.LinkResult]{Items: items, Total: total}, nil
 }
 
 func (s *Service) Files(ctx context.Context, query SearchQuery) (model.ListResult[model.FileResult], error) {
@@ -153,6 +180,7 @@ func (s *Service) Files(ctx context.Context, query SearchQuery) (model.ListResul
 		Category:  query.FileType,
 		AccountID: query.AccountID,
 		ChannelID: query.ChannelID,
+		Sort:      query.Sort,
 		DateFrom:  query.DateFrom,
 		DateTo:    query.DateTo,
 		Limit:     query.Limit,
@@ -161,7 +189,18 @@ func (s *Service) Files(ctx context.Context, query SearchQuery) (model.ListResul
 	if err != nil {
 		return model.ListResult[model.FileResult]{}, err
 	}
-	return model.ListResult[model.FileResult]{Items: items, Total: len(items)}, nil
+	total, err := s.files.CountSearch(ctx, repository.FileSearchParams{
+		Query:     keyword,
+		Category:  query.FileType,
+		AccountID: query.AccountID,
+		ChannelID: query.ChannelID,
+		DateFrom:  query.DateFrom,
+		DateTo:    query.DateTo,
+	})
+	if err != nil {
+		return model.ListResult[model.FileResult]{}, err
+	}
+	return model.ListResult[model.FileResult]{Items: items, Total: total}, nil
 }
 
 func (s *Service) Channels(ctx context.Context, query SearchQuery) (model.ListResult[model.ChannelSearchResult], error) {
@@ -220,6 +259,7 @@ func (s *Service) Search(ctx context.Context, params Params) ([]model.SearchResu
 		AccountID:  params.AccountID,
 		ChannelID:  params.ChannelID,
 		LinkType:   params.LinkType,
+		Sort:       params.Sort,
 		DateFrom:   params.DateFrom,
 		DateTo:     params.DateTo,
 		BeforeDate: params.BeforeDate,
@@ -245,6 +285,7 @@ func (s *Service) Links(ctx context.Context, params LinkParams) ([]model.LinkRes
 		AccountID: params.AccountID,
 		ChannelID: params.ChannelID,
 		Keyword:   params.Keyword,
+		Sort:      params.Sort,
 		DateFrom:  params.DateFrom,
 		DateTo:    params.DateTo,
 		Limit:     params.Limit,

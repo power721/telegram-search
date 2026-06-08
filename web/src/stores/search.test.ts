@@ -30,6 +30,20 @@ describe('useSearchStore', () => {
     expect(store.global?.messages.total).toBe(1)
   })
 
+  it('passes pagination and sort filters to global search', async () => {
+    vi.mocked(apiGet).mockResolvedValue({
+      messages: { items: [], total: 0 },
+      links: { items: [], total: 0 },
+      files: { items: [], total: 0 },
+      channels: { items: [], total: 0 }
+    })
+    const store = useSearchStore()
+
+    await store.searchGlobal('ubuntu', { limit: 25, offset: 50, sort: 'date_asc' })
+
+    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=25&offset=50&sort=date_asc')
+  })
+
   it('creates and loads remote search results', async () => {
     vi.mocked(apiPost).mockResolvedValue({ id: 7, query: 'ubuntu', source: 'remote' })
     vi.mocked(apiGet).mockResolvedValue({ task: { id: 7 }, items: [{ source: 'remote' }] })

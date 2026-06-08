@@ -8,7 +8,9 @@ export interface SearchFilters {
   channelId?: number
   linkType?: string
   fileType?: string
+  sort?: 'date_desc' | 'date_asc'
   limit?: number
+  offset?: number
 }
 
 function buildSearchPath(path: string, filters: SearchFilters) {
@@ -20,6 +22,8 @@ function buildSearchPath(path: string, filters: SearchFilters) {
   if (filters.linkType) params.set('link_type', filters.linkType)
   if (filters.fileType) params.set('file_type', filters.fileType)
   params.set('limit', String(filters.limit ?? 50))
+  if (filters.offset) params.set('offset', String(filters.offset))
+  if (filters.sort) params.set('sort', filters.sort)
   return `${path}?${params.toString()}`
 }
 

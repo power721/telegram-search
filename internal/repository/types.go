@@ -17,6 +17,7 @@ type SearchParams struct {
 	AccountID  int64
 	ChannelID  int64
 	LinkType   string
+	Sort       string
 	DateFrom   *time.Time
 	DateTo     *time.Time
 	BeforeDate *time.Time
@@ -39,6 +40,7 @@ type LinkSearchParams struct {
 	AccountID int64
 	ChannelID int64
 	Keyword   string
+	Sort      string
 	DateFrom  *time.Time
 	DateTo    *time.Time
 	Limit     int
@@ -51,6 +53,7 @@ type FileSearchParams struct {
 	Extension string
 	AccountID int64
 	ChannelID int64
+	Sort      string
 	DateFrom  *time.Time
 	DateTo    *time.Time
 	Limit     int
@@ -76,4 +79,11 @@ func clampLimit(limit int, fallback int) int {
 		return 200
 	}
 	return limit
+}
+
+func dateOrderBy(sort string, dateColumn string, idColumn string) string {
+	if sort == "date_asc" {
+		return dateColumn + " ASC, " + idColumn + " ASC"
+	}
+	return dateColumn + " DESC, " + idColumn + " DESC"
 }

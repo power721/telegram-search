@@ -64,6 +64,63 @@ func TestGlobalSearchGroupsResults(t *testing.T) {
 	}
 }
 
+func TestGlobalSearchTotalsUseFullFilteredCounts(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Ubuntu Channel", Username: "ubuntu_resources", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu release one", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu release two", RawJSON: "{}", Date: now.Add(-time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "ubuntu release three", RawJSON: "{}", Date: now.Add(-2 * time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	suffixes := []string{"a", "b", "c"}
+	for i, message := range stored {
+		if _, err := links.SaveBatch(ctx, message.ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu-" + suffixes[i], Note: "ubuntu download"}}); err != nil {
+			t.Fatalf("save link %d: %v", i, err)
+		}
+		if _, err := files.SaveBatch(ctx, message.ID, []model.File{{FileName: "ubuntu-" + suffixes[i] + ".iso", Extension: ".iso", MimeType: "application/x-iso9660-image", SizeBytes: 5000}}); err != nil {
+			t.Fatalf("save file %d: %v", i, err)
+		}
+	}
+
+	service := NewService(messages, links, files, channels)
+	result, err := service.Global(ctx, SearchQuery{Query: "ubuntu", Limit: 1, Offset: 1})
+	if err != nil {
+		t.Fatalf("Global returned error: %v", err)
+	}
+	if result.Messages.Total != 3 || len(result.Messages.Items) != 1 {
+		t.Fatalf("messages group = %+v, want total 3 with one paged item", result.Messages)
+	}
+	if result.Links.Total != 3 || len(result.Links.Items) != 1 {
+		t.Fatalf("links group = %+v, want total 3 with one paged item", result.Links)
+	}
+	if result.Files.Total != 3 || len(result.Files.Items) != 1 {
+		t.Fatalf("files group = %+v, want total 3 with one paged item", result.Files)
+	}
+	if result.Channels.Total != 1 || len(result.Channels.Items) != 0 {
+		t.Fatalf("channels group = %+v, want total 1 with offset beyond page", result.Channels)
+	}
+}
+
 func TestServiceSearchLatestAndLinks(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

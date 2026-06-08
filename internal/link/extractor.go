@@ -57,7 +57,7 @@ func NewExtractor() *Extractor {
 			providerParser("123", `(?i)(https?://[A-Za-z0-9-]+\.share\.123pan\.cn/123pan/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
 			providerParser("guangya", `(?i)(https?://(?:www\.)?guangyapan\.com/s/[A-Za-z0-9_-]+)`, 1, 0),
 			providerParser("magnet", `(?i)(magnet:\?[^\s"'<>，。；、]+)`, 1, 0),
-			providerParser("ed2k", `(?i)(ed2k://[^\s"'<>，。；、]+)`, 1, 0),
+			providerParser("ed2k", `(?i)(ed2k://\|file\|[^\r\n|]+\|\d+\|[A-Z0-9]+\|/)`, 1, 0),
 			providerParser("url", `(?i)(https?://[^\s"'<>，。；、]+)`, 1, 0),
 		},
 		passwordPattern: regexp.MustCompile(`(?i)(?:密码|提取码|验证码|访问码|分享密码|密钥|pwd|password|code|share_pwd|pass_code|#)[=:：\s]*([A-Za-z0-9]{1,4})`),
@@ -284,7 +284,7 @@ func cleanNoteCandidate(raw string) string {
 	candidate = strings.TrimRight(candidate, ":：-—| \t")
 	candidate = strings.TrimSpace(candidate)
 	candidate = stripLeadingSymbols(candidate)
-	for _, prefix := range []string{"名称", "标题", "片名"} {
+	for _, prefix := range []string{"名称", "标题", "片名", "电影", "电视剧", "剧集", "动漫", "动画", "综艺"} {
 		switch {
 		case strings.HasPrefix(candidate, prefix+"："):
 			candidate = strings.TrimSpace(candidate[len(prefix)+len("："):])
@@ -295,7 +295,7 @@ func cleanNoteCandidate(raw string) string {
 	}
 	candidate = strings.TrimRight(candidate, ":：-—| \t")
 	candidate = strings.TrimSpace(candidate)
-	if candidate == "" || isLinkLabel(candidate) {
+	if candidate == "" || isLinkLabel(candidate) || isMetadataLine(candidate) {
 		return ""
 	}
 	return candidate
@@ -308,7 +308,7 @@ func stripLeadingSymbols(value string) string {
 			value = value[size:]
 			continue
 		}
-		if isSymbolOrPunctuation(r) {
+		if isSymbolOrPunctuation(r) || unicode.IsMark(r) {
 			value = value[size:]
 			continue
 		}
@@ -350,5 +350,31 @@ func isLinkLabel(value string) bool {
 		"ed2k":   {},
 	}
 	_, ok := labels[normalized]
+	return ok
+}
+
+func isMetadataLine(value string) bool {
+	head := value
+	for _, separator := range []string{"：", ":"} {
+		if idx := strings.Index(head, separator); idx >= 0 {
+			head = head[:idx]
+			break
+		}
+	}
+	normalized := strings.ToLower(strings.NewReplacer(" ", "", "\t", "", "_", "", "-", "").Replace(strings.TrimSpace(head)))
+	metadataLabels := map[string]struct{}{
+		"tmdbid": {},
+		"id":     {},
+		"评分":     {},
+		"类型":     {},
+		"分类":     {},
+		"质量":     {},
+		"文件":     {},
+		"大小":     {},
+		"主演":     {},
+		"简介":     {},
+		"标签":     {},
+	}
+	_, ok := metadataLabels[normalized]
 	return ok
 }

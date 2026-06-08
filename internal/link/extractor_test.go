@@ -221,6 +221,35 @@ func TestExtractResourceFields(t *testing.T) {
 	}
 }
 
+func TestExtractMediaMessageEd2KWithSpaces(t *testing.T) {
+	text := `📺 电视剧：斗破苍穹 (2017) - S05E202
+🍿 TMDB ID: 79481
+⭐️ 评分: 8.2
+🎭 类型: 动画,动作冒险,Sci-Fi & Fantasy
+📂 分类: 国漫
+🎞️ 质量: WEB-DL 2160p
+📦 文件: 1 个
+💾 大小: 854.19 MB
+👥 主演: 刘三木,刘雨轩,万苏婉,鬼月,陈奕雯
+📝 简介: 萧炎曾是家族里公认的斗气天才，年仅11岁便已经抵达了常人穷尽一生都无法修炼到的境界。可12岁那年，一场意外让萧炎的全部努力都化为了乌有，失去一切的他体会到了人情的冷暖和世态的炎凉，之后，萧炎和纳兰嫣然...
+
+🔗 链接: 
+ed2k://|file|斗破苍穹.2017 - S05E202 - 第 202 集 - 2160p.WEB-DL.SDR.HEVC.AAC 2.0.{tmdb-79481}.mp4|895680618|24E12F6E5868DC08F432B28CDA67172B|/
+#国漫`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	wantURL := "ed2k://|file|斗破苍穹.2017 - S05E202 - 第 202 集 - 2160p.WEB-DL.SDR.HEVC.AAC 2.0.{tmdb-79481}.mp4|895680618|24E12F6E5868DC08F432B28CDA67172B|/"
+	if links[0].Type != "ed2k" || links[0].URL != wantURL {
+		t.Fatalf("link = %+v, want ed2k url %s", links[0], wantURL)
+	}
+	if links[0].Note != "斗破苍穹 (2017) - S05E202" {
+		t.Fatalf("note = %q, want media title", links[0].Note)
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

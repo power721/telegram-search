@@ -25,6 +25,17 @@ telegram_sync_cursors      -> per account/channel cursor state
 }
 ```
 
+## Authentication
+
+Business API endpoints require an API key. Send it with either header:
+
+```text
+Authorization: Bearer <api-key>
+X-API-Key: <api-key>
+```
+
+Health, readiness, first-run setup, admin login/session, and API key management endpoints are available without an API key where required for bootstrap. API key management requires an authenticated admin session.
+
 ## Setup
 
 ### `GET /api/setup/status`
@@ -65,24 +76,18 @@ Response `201`:
 
 ### `POST /api/setup/api-key`
 
-Creates an optional API key. The plaintext key is returned only once.
-
-Request:
-
-```json
-{
-  "name": "cli"
-}
-```
+Ensures the active API key exists during first-run setup. The key is generated automatically and this endpoint has no request body.
 
 Response `201`:
 
 ```json
 {
   "id": 1,
-  "name": "cli",
+  "name": "default",
   "prefix": "0123abcd",
-  "key": "0123abcd..."
+  "key": "0123abcd...",
+  "created_at": "2026-06-08T02:00:00Z",
+  "updated_at": "2026-06-08T02:00:00Z"
 }
 ```
 
@@ -130,6 +135,28 @@ Returns redacted Telegram API configuration state.
 ### `PUT /api/settings/telegram-api`
 
 Updates Telegram API credentials. The response is the same redacted shape as `GET /api/settings/telegram-api`.
+
+## API Key Settings
+
+### `GET /api/settings/api-key`
+
+Returns the active API key. Requires an authenticated admin session. The full key is returned so it can be viewed in settings.
+
+```json
+{
+  "id": 1,
+  "name": "default",
+  "prefix": "0123abcd",
+  "key": "0123abcd...",
+  "last_used_at": "2026-06-08T03:00:00Z",
+  "created_at": "2026-06-08T02:00:00Z",
+  "updated_at": "2026-06-08T02:00:00Z"
+}
+```
+
+### `POST /api/settings/api-key/regenerate`
+
+Creates a replacement API key, disables old keys immediately, and returns the new full key. Requires an authenticated admin session.
 
 ## Telegram Login
 

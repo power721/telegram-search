@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_PATH="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+IMAGE="haroldli/tg-search:latest"
+CONTAINER_NAME="tg-search"
+DATA_DIR="$ROOT_DIR/data"
+PORT=6000
+TZ_VALUE="${TZ:-Asia/Shanghai}"
+EXTRA_MOUNTS=()
+
+usage() {
+  cat <<EOF
+Usage: $0 [-d data_dir] [-p port] [-v host_path:container_path]
+
+Build haroldli/tg-search:latest locally, restart the tg-search container,
+and follow container logs.
+
+Options:
+  -d  Host data directory mounted to /data/tg-search. Default: $ROOT_DIR/data
+  -p  Host port mapped to container port 6000. Default: 6000
+  -v  Extra Docker volume mount. Can be specified multiple times.
+  -h  Show this help.
+EOF
+}
+
+abs_path() {
+  local path="$1"
+  local dir
+  local base
+
+  if [[ "$path" = /* ]]; then
+    printf '%s\n' "$path"
+    return
+  fi
+
+  dir="$(dirname "$path")"
+  base="$(basename "$path")"
+  printf '%s/%s\n' "$(cd "$dir" && pwd)" "$base"
+}
+
+while getopts ":d:p:v:h" arg; do
+  case "$arg" in
+    d)
+      DATA_DIR="$OPTARG"
+      ;;
+    p)
+      PORT="$OPTARG"
+      ;;
+    v)
+      EXTRA_MOUNTS+=("-v" "$OPTARG")
+      ;;
+    h)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+shift $((OPTIND - 1))
+
+if [[ $# -gt 0 ]]; then
+  DATA_DIR="$1"
+fi
+
+if [[ $# -gt 1 ]]; then
+  PORT="$2"
+fi
+
+mkdir -p "$DATA_DIR"
+DATA_DIR="$(abs_path "$DATA_DIR")"
+
+echo "=== build $IMAGE ==="
+docker build -f "$ROOT_DIR/Dockerfile" --tag="$IMAGE" "$ROOT_DIR"
+
+echo "=== restart $CONTAINER_NAME ==="
+docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
+docker run -d \
+  -p "$PORT:6000" \
+  -e "TZ=$TZ_VALUE" \
+  -v "$DATA_DIR:/data/tg-search" \
+  "${EXTRA_MOUNTS[@]}" \
+  --restart=unless-stopped \
+  --name="$CONTAINER_NAME" \
+  "$IMAGE"
+
+sleep 1
+
+IP="$(ip a | awk '{ for (i = 1; i <= NF; i++) if ($i == "inet" && $(i + 1) ~ /^192\.168\./) { split($(i + 1), parts, "/"); print parts[1]; exit } }')"
+if [[ -z "$IP" ]]; then
+  IP="$(ip a | awk '{ for (i = 1; i <= NF; i++) if ($i == "inet" && $(i + 1) ~ /^10\./) { split($(i + 1), parts, "/"); print parts[1]; exit } }')"
+fi
+
+if [[ -n "$IP" ]]; then
+  echo ""
+  echo -e "\e[32m请用以下地址访问：\e[0m"
+  echo -e "    \e[32m管理界面\e[0m： http://$IP:$PORT/"
+else
+  echo -e "\e[32m云服务器请用公网IP访问，端口：$PORT\e[0m"
+fi
+echo ""
+
+docker logs -f "$CONTAINER_NAME"

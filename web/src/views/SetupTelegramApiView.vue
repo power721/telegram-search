@@ -17,7 +17,7 @@ async function submit() {
   try {
     await telegram.saveTelegramAPI(Number(appID.value), appHash.value)
     await setup.load()
-    message.success('Telegram API saved')
+    message.success('Telegram API ready')
     await router.push('/setup/telegram-login')
   } catch (error) {
     message.error(error instanceof Error ? error.message : 'Could not save Telegram API')
@@ -31,13 +31,23 @@ async function submit() {
       <p class="eyebrow">First Run Setup</p>
       <h1>Telegram API</h1>
       <n-form @submit.prevent="submit">
-        <n-form-item label="App ID">
-          <n-input-number v-model:value="appID" class="full-width" :show-button="false" />
+        <n-form-item label="App ID (Optional)">
+          <n-input-number
+            v-model:value="appID"
+            class="full-width"
+            placeholder="Use built-in"
+            :show-button="false"
+          />
         </n-form-item>
-        <n-form-item label="App Hash">
-          <n-input v-model:value="appHash" type="password" autocomplete="off" />
+        <n-form-item label="App Hash (Optional)">
+          <n-input
+            v-model:value="appHash"
+            type="password"
+            autocomplete="off"
+            placeholder="Use built-in"
+          />
         </n-form-item>
-        <n-button type="primary" block :loading="telegram.loading" @click="submit">Save API</n-button>
+        <n-button type="primary" block :loading="telegram.loading" @click="submit">Continue</n-button>
       </n-form>
     </section>
   </main>

@@ -167,6 +167,23 @@ func TestSetupAndAuthAPIs(t *testing.T) {
 		t.Fatalf("admin_configured = true, want false")
 	}
 
+	depsWithRuntimeTelegram := testDeps(t)
+	depsWithRuntimeTelegram.RuntimeConfig.Telegram.APIID = config.DefaultTelegramAPIID
+	depsWithRuntimeTelegram.RuntimeConfig.Telegram.APIHash = config.DefaultTelegramAPIHash
+	routerWithRuntimeTelegram := NewRouter(depsWithRuntimeTelegram)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	routerWithRuntimeTelegram.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup status with runtime telegram code = %d body=%s", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status with runtime telegram: %v", err)
+	}
+	if !status.TelegramConfigured {
+		t.Fatalf("telegram_configured = false, want true from built-in runtime credentials")
+	}
+
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/admin", bytes.NewBufferString(`{"username":"admin","password":"secret123"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -248,10 +265,29 @@ func TestSetupAPIKeyCreatesKeyOnce(t *testing.T) {
 
 func TestTelegramAPISettings(t *testing.T) {
 	deps := testDeps(t)
+	deps.RuntimeConfig.Telegram.APIID = config.DefaultTelegramAPIID
+	deps.RuntimeConfig.Telegram.APIHash = config.DefaultTelegramAPIHash
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":"hash-secret"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":0,"app_hash":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup telegram api skip code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, config.DefaultTelegramAPIID)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("partial setup telegram api code = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":"hash-secret"}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

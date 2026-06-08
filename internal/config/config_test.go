@@ -53,7 +53,7 @@ telegram:
 	}
 }
 
-func TestLoadRequiresTelegramCredentials(t *testing.T) {
+func TestLoadAppliesBuiltInTelegramDefaults(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	err := os.WriteFile(configPath, []byte(`
@@ -64,9 +64,113 @@ server:
 		t.Fatal(err)
 	}
 
-	_, err = Load(configPath)
-	if err == nil {
-		t.Fatal("Load returned nil error, want missing Telegram credentials error")
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Telegram.APIID != DefaultTelegramAPIID {
+		t.Fatalf("api id = %d, want built-in default %d", cfg.Telegram.APIID, DefaultTelegramAPIID)
+	}
+	if cfg.Telegram.APIHash != DefaultTelegramAPIHash {
+		t.Fatalf("api hash = %q, want built-in default", cfg.Telegram.APIHash)
+	}
+}
+
+func TestLoadGeneratesDefaultConfigAtExplicitMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	if err := os.Mkdir(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWD); err != nil {
+			t.Fatalf("restore working directory: %v", err)
+		}
+	})
+
+	configPath := filepath.Join(dir, "missing", "config.yaml")
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Telegram.APIID == 0 {
+		t.Fatal("generated config missing telegram.api_id")
+	}
+	if cfg.Telegram.APIHash == "" {
+		t.Fatal("generated config missing telegram.api_hash")
+	}
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Fatalf("generated host = %q, want 127.0.0.1", cfg.Server.Host)
+	}
+	if cfg.Storage.Path != "data" {
+		t.Fatalf("generated storage path = %q, want data", cfg.Storage.Path)
+	}
+	if _, err := os.Stat(configPath); err != nil {
+		t.Fatalf("generated config not written: %v", err)
+	}
+	if err := EnsureRuntimeDirs(cfg); err != nil {
+		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
+	}
+}
+
+func TestLoadGeneratesLocalDefaultConfigWhenNoConfigExists(t *testing.T) {
+	dir := t.TempDir()
+	work := filepath.Join(dir, "work")
+	if err := os.Mkdir(work, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldWD); err != nil {
+			t.Fatalf("restore working directory: %v", err)
+		}
+	})
+
+	t.Setenv("HOME", dir)
+	oldDefaultPath := defaultConfigPath
+	oldLocalPath := localConfigPath
+	defaultConfigPath = filepath.Join(dir, "unwritable-parent", "config.yaml")
+	localConfigPath = filepath.Join(dir, "config.yaml")
+	t.Cleanup(func() {
+		defaultConfigPath = oldDefaultPath
+		localConfigPath = oldLocalPath
+	})
+
+	if err := os.WriteFile(filepath.Join(dir, "unwritable-parent"), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Telegram.APIID == 0 || cfg.Telegram.APIHash == "" {
+		t.Fatalf("generated Telegram credentials are incomplete: %+v", cfg.Telegram)
+	}
+	if cfg.Storage.Path != "data" {
+		t.Fatalf("generated storage path = %q, want data", cfg.Storage.Path)
+	}
+	if _, err := os.Stat(localConfigPath); err != nil {
+		t.Fatalf("local config was not generated: %v", err)
+	}
+	if err := EnsureRuntimeDirs(cfg); err != nil {
+		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
 	}
 }
 

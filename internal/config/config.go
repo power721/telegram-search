@@ -11,6 +11,16 @@ import (
 
 const DefaultPath = "/data/tg-search/config.yaml"
 
+const (
+	DefaultTelegramAPIID   = 26375241
+	DefaultTelegramAPIHash = "70f574f48a016d683c64f2f7a217d04f"
+)
+
+var (
+	defaultConfigPath = DefaultPath
+	localConfigPath   = "config.yaml"
+)
+
 type Config struct {
 	Telegram TelegramConfig `yaml:"telegram"`
 	Server   ServerConfig   `yaml:"server"`
@@ -130,6 +140,10 @@ func probeWritable(dir string) error {
 
 func defaultConfig() Config {
 	return Config{
+		Telegram: TelegramConfig{
+			APIID:   DefaultTelegramAPIID,
+			APIHash: DefaultTelegramAPIHash,
+		},
 		Server: ServerConfig{
 			Host: "127.0.0.1",
 			Port: 9900,
@@ -148,19 +162,38 @@ func defaultConfig() Config {
 
 func resolvePath(path string) (string, error) {
 	if path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path, nil
+		}
+		cfg := localRuntimeConfig()
+		if filepath.Clean(path) == filepath.Clean(DefaultPath) {
+			cfg = dockerRuntimeConfig()
+		}
+		if err := writeGeneratedConfig(path, cfg); err != nil {
+			return "", err
+		}
 		return path, nil
 	}
-	if _, err := os.Stat(DefaultPath); err == nil {
-		return DefaultPath, nil
+	if _, err := os.Stat(defaultConfigPath); err == nil {
+		return defaultConfigPath, nil
 	}
-	if _, err := os.Stat("config.yaml"); err == nil {
-		return "config.yaml", nil
+	if _, err := os.Stat(localConfigPath); err == nil {
+		return localConfigPath, nil
 	}
-	return "", fmt.Errorf("config not found at %s or local config.yaml", DefaultPath)
+	if err := writeGeneratedConfig(localConfigPath, localRuntimeConfig()); err != nil {
+		return "", fmt.Errorf("generate default config: %w", err)
+	}
+	return localConfigPath, nil
 }
 
 func applyDefaults(cfg *Config) {
 	defaults := defaultConfig()
+	if cfg.Telegram.APIID == 0 {
+		cfg.Telegram.APIID = defaults.Telegram.APIID
+	}
+	if cfg.Telegram.APIHash == "" {
+		cfg.Telegram.APIHash = defaults.Telegram.APIHash
+	}
 	if cfg.Server.Host == "" {
 		cfg.Server.Host = defaults.Server.Host
 	}
@@ -207,4 +240,39 @@ func validate(cfg Config) error {
 		return errors.New("storage.path is required")
 	}
 	return nil
+}
+
+func writeGeneratedConfig(path string, cfg Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal generated config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create config directory %s: %w", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write generated config %s: %w", path, err)
+	}
+	return nil
+}
+
+func dockerRuntimeConfig() Config {
+	cfg := generatedConfig()
+	cfg.Server.Host = "0.0.0.0"
+	cfg.Storage.Path = "/data/tg-search"
+	return cfg
+}
+
+func localRuntimeConfig() Config {
+	cfg := generatedConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Storage.Path = "data"
+	return cfg
+}
+
+func generatedConfig() Config {
+	cfg := defaultConfig()
+	cfg.Telegram.APIID = DefaultTelegramAPIID
+	cfg.Telegram.APIHash = DefaultTelegramAPIHash
+	return cfg
 }

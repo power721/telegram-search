@@ -186,8 +186,16 @@ func (h handlers) setupAPIKey(c *gin.Context) {
 }
 
 func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
-	settings, ok := readTelegramAPISettingsRequest(c, true)
+	settings, ok := readSetupTelegramAPISettingsRequest(c)
 	if !ok {
+		return
+	}
+	if settings.AppID == 0 && settings.AppHash == "" {
+		runtimeSettings := model.TelegramAPISettings{
+			AppID:   h.deps.RuntimeConfig.Telegram.APIID,
+			AppHash: h.deps.RuntimeConfig.Telegram.APIHash,
+		}
+		c.JSON(http.StatusOK, repository.RedactTelegramAPI(runtimeSettings))
 		return
 	}
 	if err := h.deps.Settings.SaveTelegramAPI(c.Request.Context(), settings); err != nil {
@@ -245,6 +253,29 @@ func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.Tel
 	}
 	req.AppHash = strings.TrimSpace(req.AppHash)
 	if requireHash && req.AppHash == "" {
+		errorText(c, http.StatusBadRequest, "app_hash is required")
+		return model.TelegramAPISettings{}, false
+	}
+	return model.TelegramAPISettings{AppID: req.AppID, AppHash: req.AppHash}, true
+}
+
+func readSetupTelegramAPISettingsRequest(c *gin.Context) (model.TelegramAPISettings, bool) {
+	var req struct {
+		AppID   int    `json:"app_id"`
+		AppHash string `json:"app_hash"`
+	}
+	if !bindJSON(c, &req) {
+		return model.TelegramAPISettings{}, false
+	}
+	req.AppHash = strings.TrimSpace(req.AppHash)
+	if req.AppID == 0 && req.AppHash == "" {
+		return model.TelegramAPISettings{}, true
+	}
+	if req.AppID <= 0 {
+		errorText(c, http.StatusBadRequest, "app_id must be greater than zero")
+		return model.TelegramAPISettings{}, false
+	}
+	if req.AppHash == "" {
 		errorText(c, http.StatusBadRequest, "app_hash is required")
 		return model.TelegramAPISettings{}, false
 	}
@@ -330,7 +361,8 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	}
 	status.AdminConfigured = adminCount > 0
 	status.APIKeyConfigured = keyCount > 0
-	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured
+	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured ||
+		(h.deps.RuntimeConfig.Telegram.APIID > 0 && h.deps.RuntimeConfig.Telegram.APIHash != "")
 	status.Complete = ok && completeRaw == `true`
 	return status, nil
 }

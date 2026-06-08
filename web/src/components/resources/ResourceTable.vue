@@ -48,6 +48,7 @@ function itemLabel(item: ResourceItem) {
   border: 1px solid #d9dee7;
   border-radius: 8px;
   overflow: hidden;
+  width: 100%;
 }
 
 .table-head,

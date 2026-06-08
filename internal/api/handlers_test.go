@@ -972,6 +972,7 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	}
 	deps.Telegram = fake
 	deps.ChannelSync = channel.NewService(deps.Channels, fake, deps.Sessions)
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, &apiWebAccessChecker{results: map[string]bool{"async_resources": true}})
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
@@ -1036,6 +1037,147 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	}
 	if fake.fetchHistoryCalls != 0 {
 		t.Fatalf("FetchHistory calls = %d, want 0", fake.fetchHistoryCalls)
+	}
+}
+
+func TestTelegramSignInQueuesMetadataSyncWhenRetryQueueAvailable(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.SyncQueue = scheduler.NewRetryQueue(scheduler.RetryQueueOptions{
+		Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+	fake := &fakeTelegram{
+		channels: []telegram.Channel{
+			{
+				TelegramChannelID: 200,
+				AccessHash:        300,
+				Title:             "Async Resources",
+				Username:          "async_resources",
+				Type:              model.ChannelTypeChannel,
+				MemberCount:       42,
+				Description:       "loaded in the background",
+			},
+		},
+	}
+	deps.Telegram = fake
+	deps.ChannelSync = channel.NewService(deps.Channels, fake, deps.Sessions)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	deps.CodeStore.Save("+10000000000", "hash")
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sign-in status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Account      model.Account `json:"account"`
+		MetadataSync struct {
+			Status string `json:"status"`
+			JobID  string `json:"job_id"`
+		} `json:"metadata_sync"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v body=%s", err, w.Body.String())
+	}
+	if body.MetadataSync.Status != "queued" || body.MetadataSync.JobID == "" {
+		t.Fatalf("metadata_sync = %+v, want queued job id", body.MetadataSync)
+	}
+	done, err := deps.SyncQueue.Wait(ctx, body.MetadataSync.JobID)
+	if err != nil {
+		t.Fatalf("wait metadata sync job: %v", err)
+	}
+	if done.Status != scheduler.RetryJobSucceeded {
+		t.Fatalf("job status = %q error=%s, want succeeded", done.Status, done.Error)
+	}
+	items, err := deps.Channels.FindByAccountID(ctx, body.Account.ID)
+	if err != nil {
+		t.Fatalf("find channels: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("channels len = %d, want saved messages plus async channel", len(items))
+	}
+}
+
+func TestTelegramSignInQueuedMetadataSyncChecksWebAccess(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.SyncQueue = scheduler.NewRetryQueue(scheduler.RetryQueueOptions{
+		Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+	})
+	fake := &fakeTelegram{
+		channels: []telegram.Channel{
+			{
+				TelegramChannelID: 201,
+				AccessHash:        301,
+				Title:             "Public After Login",
+				Username:          "public_after_login",
+				Type:              model.ChannelTypeChannel,
+			},
+		},
+	}
+	checker := &apiWebAccessChecker{results: map[string]bool{"public_after_login": true}}
+	deps.Telegram = fake
+	deps.ChannelSync = channel.NewService(deps.Channels, fake, deps.Sessions)
+	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, checker)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	deps.CodeStore.Save("+10000000000", "hash")
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sign-in status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Account      model.Account `json:"account"`
+		MetadataSync struct {
+			JobID string `json:"job_id"`
+		} `json:"metadata_sync"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v body=%s", err, w.Body.String())
+	}
+	done, err := deps.SyncQueue.Wait(ctx, body.MetadataSync.JobID)
+	if err != nil {
+		t.Fatalf("wait metadata sync job: %v", err)
+	}
+	if done.Status != scheduler.RetryJobSucceeded {
+		t.Fatalf("job status = %q error=%s, want succeeded", done.Status, done.Error)
+	}
+	if !sameStringSlices(checker.calls, []string{"public_after_login"}) {
+		t.Fatalf("checker calls = %v, want public_after_login", checker.calls)
+	}
+	items, err := deps.Channels.FindByAccountID(ctx, body.Account.ID)
+	if err != nil {
+		t.Fatalf("find channels: %v", err)
+	}
+	var public model.Channel
+	for _, item := range items {
+		if item.Username == "public_after_login" {
+			public = item
+		}
+	}
+	if public.ID == 0 || public.WebAccess == nil || !*public.WebAccess || public.WebAccessCheckedAt == nil {
+		t.Fatalf("public channel = %+v, want web access checked true", public)
 	}
 }
 
@@ -1763,6 +1905,62 @@ func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
 	}
 }
 
+func TestBatchChannelControlAPIUpdatesSelectedChannels(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channel1, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 61,
+		Title:             "Control 1",
+		Type:              model.ChannelTypeChannel,
+	})
+	channel2, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 62,
+		Title:             "Control 2",
+		Type:              model.ChannelTypeChannel,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/channels/control", bytes.NewBufferString(`{
+		"channel_ids": [`+strconv.FormatInt(channel1, 10)+`,`+strconv.FormatInt(channel2, 10)+`],
+		"control": {
+			"history_sync_enabled": true,
+			"sync_profile": "Normal",
+			"listen_enabled": true,
+			"remote_search_allowed": true
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []model.Channel `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items len = %d, want 2", len(body.Items))
+	}
+	for _, id := range []int64{channel1, channel2} {
+		stored, err := deps.Channels.FindByID(ctx, id)
+		if err != nil {
+			t.Fatalf("find channel %d: %v", id, err)
+		}
+		if !stored.HistorySyncEnabled || stored.SyncProfile != "Normal" || !stored.ListenEnabled || !stored.RemoteSearchAllowed {
+			t.Fatalf("stored channel %d control = %+v", id, stored)
+		}
+		if stored.SyncState != "pending" || stored.ListenState != "enabled" {
+			t.Fatalf("stored channel %d states = sync:%q listen:%q, want pending/enabled", id, stored.SyncState, stored.ListenState)
+		}
+	}
+}
+
 func TestChannelControlAPIRejectsInvalidProfile(t *testing.T) {
 	deps := testDeps(t)
 	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
@@ -2174,7 +2372,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	settings := repository.NewSettingsRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
 	client := telegram.NopClient{}
-	watchFilter := messagefilter.New(watchRules)
+	watchFilter := messagefilter.New(messagefilter.NewSettingsRuleStore(watchRules, settings))
 	searchService := search.NewService(messages, links, files, channels)
 	resourceService := resource.NewService(links, files, resourceStats)
 	historyService := history.NewService(history.Options{

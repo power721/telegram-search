@@ -18,7 +18,12 @@ vi.mock('@/api/client', () => ({
       }
     ]
   }),
-  apiPatch: vi.fn().mockResolvedValue({ id: 1, sync_profile: 'Deep' }),
+  apiPatch: vi.fn((path: string) => {
+    if (path === '/api/channels/control') {
+      return Promise.resolve({ items: [{ id: 1, sync_profile: 'Normal' }] })
+    }
+    return Promise.resolve({ id: 1, sync_profile: 'Deep' })
+  }),
   apiPost: vi.fn((path: string) => {
     if (path.endsWith('/analyze')) {
       return Promise.resolve({ channel: { id: 1 }, indexed_counts: { messages: 0, links: 0, files: 0 } })
@@ -45,6 +50,12 @@ describe('channels store', () => {
       listen_enabled: false,
       remote_search_allowed: true
     })
+    await store.updateControls([1], {
+      history_sync_enabled: true,
+      sync_profile: 'Normal',
+      listen_enabled: true,
+      remote_search_allowed: true
+    })
     await store.checkWebAccess([1])
     await store.syncChannels([1], 250)
     await store.analyzeChannel(1)
@@ -56,6 +67,15 @@ describe('channels store', () => {
       sync_profile: 'Deep',
       listen_enabled: false,
       remote_search_allowed: true
+    })
+    expect(apiPatch).toHaveBeenCalledWith('/api/channels/control', {
+      channel_ids: [1],
+      control: {
+        history_sync_enabled: true,
+        sync_profile: 'Normal',
+        listen_enabled: true,
+        remote_search_allowed: true
+      }
     })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1] })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1], max_messages: 250 })

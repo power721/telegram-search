@@ -98,6 +98,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/channels", h.channels)
 	api.POST("/channels/sync", h.syncChannels)
 	api.POST("/channels/web-access/check", h.checkChannelWebAccess)
+	api.PATCH("/channels/control", h.updateChannelsControl)
 	api.GET("/channels/:id", h.channel)
 	api.PATCH("/channels/:id/control", h.updateChannelControl)
 	api.POST("/channels/:id/analyze", h.analyzeChannel)

@@ -22,6 +22,7 @@ import (
 	"tg-search/internal/backup"
 	channelpkg "tg-search/internal/channel"
 	"tg-search/internal/config"
+	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
@@ -38,7 +39,6 @@ type handlers struct {
 const adminSessionCookie = "tg_search_session"
 const (
 	setupAPIKeyDoneKey      = "setup.api_key_done"
-	setupListenRulesKey     = "setup.listen_rules"
 	setupListenRulesDoneKey = "setup.listen_rules_done"
 )
 
@@ -225,7 +225,7 @@ func (h handlers) setupListenRules(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	if err := h.deps.Settings.Set(c.Request.Context(), setupListenRulesKey, string(data)); err != nil {
+	if err := h.deps.Settings.Set(c.Request.Context(), messagefilter.GlobalListenRulesSettingKey, string(data)); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -822,18 +822,11 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	profile, err := channelpkg.ParseProfile(req.SyncProfile)
-	if err != nil {
-		errorText(c, http.StatusBadRequest, err.Error())
+	control, ok := h.validateChannelControl(c, req)
+	if !ok {
 		return
 	}
-	req.SyncProfile = profile
-	if profile == channelpkg.SyncProfileDeep || profile == channelpkg.SyncProfileFull {
-		if !h.checkStorageQuota(c) {
-			return
-		}
-	}
-	if err := h.deps.Channels.UpdateControl(c.Request.Context(), id, req); err != nil {
+	if err := h.deps.Channels.UpdateControl(c.Request.Context(), id, control); err != nil {
 		errorJSON(c, http.StatusNotFound, err)
 		return
 	}
@@ -843,6 +836,68 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) updateChannelsControl(c *gin.Context) {
+	var req struct {
+		ChannelIDs []int64              `json:"channel_ids"`
+		Control    model.ChannelControl `json:"control"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.ChannelIDs) == 0 {
+		errorText(c, http.StatusBadRequest, "channel_ids is required")
+		return
+	}
+	for _, id := range req.ChannelIDs {
+		if id <= 0 {
+			errorText(c, http.StatusBadRequest, "channel_ids must contain positive integers")
+			return
+		}
+	}
+	control, ok := h.validateChannelControl(c, req.Control)
+	if !ok {
+		return
+	}
+	if err := h.deps.Channels.UpdateControls(c.Request.Context(), req.ChannelIDs, control); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	items := make([]model.Channel, 0, len(req.ChannelIDs))
+	seen := map[int64]struct{}{}
+	for _, id := range req.ChannelIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		item, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+		items = append(items, item)
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h handlers) validateChannelControl(c *gin.Context, control model.ChannelControl) (model.ChannelControl, bool) {
+	profile, err := channelpkg.ParseProfile(control.SyncProfile)
+	if err != nil {
+		errorText(c, http.StatusBadRequest, err.Error())
+		return model.ChannelControl{}, false
+	}
+	control.SyncProfile = profile
+	if profile == channelpkg.SyncProfileDeep || profile == channelpkg.SyncProfileFull {
+		if !h.checkStorageQuota(c) {
+			return model.ChannelControl{}, false
+		}
+	}
+	return control, true
 }
 
 func (h handlers) analyzeChannel(c *gin.Context) {
@@ -1679,6 +1734,39 @@ func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, pr
 	}
 	metadataSync := gin.H{"status": "skipped", "channel_count": 0}
 	if h.deps.ChannelSync != nil {
+		if h.deps.SyncQueue != nil {
+			accountForSync := account
+			jobCtx := context.WithoutCancel(c.Request.Context())
+			job := h.deps.SyncQueue.Enqueue(jobCtx, "metadata-sync", func(ctx context.Context) error {
+				items, err := h.deps.ChannelSync.SyncAccount(ctx, accountForSync)
+				if err != nil {
+					accountForSync.LastError = err.Error()
+					if updateErr := h.deps.Accounts.Update(ctx, accountForSync); updateErr != nil {
+						return updateErr
+					}
+					return err
+				}
+				if h.deps.ChannelWebAccess != nil {
+					channelIDs := make([]int64, 0, len(items))
+					for _, item := range items {
+						channelIDs = append(channelIDs, item.ID)
+					}
+					if len(channelIDs) > 0 {
+						if _, err := h.deps.ChannelWebAccess.CheckMany(ctx, channelIDs); err != nil {
+							return err
+						}
+					}
+				}
+				return nil
+			})
+			metadataSync = gin.H{"status": "queued", "channel_count": 0, "job_id": job.ID}
+			c.JSON(http.StatusOK, gin.H{
+				"status":        model.AccountStatusOnline,
+				"account":       account,
+				"metadata_sync": metadataSync,
+			})
+			return
+		}
 		items, err := h.deps.ChannelSync.SyncAccount(c.Request.Context(), account)
 		if err != nil {
 			account.LastError = err.Error()

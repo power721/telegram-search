@@ -80,6 +80,54 @@ WHERE id = ?`,
 	return requireRows(res, "channel not found")
 }
 
+func (r *ChannelRepository) UpdateControls(ctx context.Context, ids []int64, control model.ChannelControl) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if control.SyncProfile == "" {
+		control.SyncProfile = "Normal"
+	}
+	syncState := "metadata_only"
+	if control.HistorySyncEnabled {
+		syncState = "pending"
+	}
+	listenState := "disabled"
+	if control.ListenEnabled {
+		listenState = "enabled"
+	}
+	seen := map[int64]struct{}{}
+	unique := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin update channel controls: %w", err)
+	}
+	defer tx.Rollback()
+	for _, id := range unique {
+		res, err := tx.ExecContext(ctx, `
+UPDATE telegram_channels
+SET history_sync_enabled = ?, sync_profile = ?, listen_enabled = ?, remote_search_allowed = ?, sync_state = ?, listen_state = ?, updated_at = ?
+WHERE id = ?`,
+			control.HistorySyncEnabled, control.SyncProfile, control.ListenEnabled, control.RemoteSearchAllowed, syncState, listenState, time.Now().UTC(), id)
+		if err != nil {
+			return fmt.Errorf("update channel control: %w", err)
+		}
+		if err := requireRows(res, "channel not found"); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit update channel controls: %w", err)
+	}
+	return nil
+}
+
 func (r *ChannelRepository) UpdateCursor(ctx context.Context, channelID int64, lastMessageID int64, syncTime time.Time) error {
 	return r.updateCursor(ctx, r.db, channelID, lastMessageID, syncTime)
 }

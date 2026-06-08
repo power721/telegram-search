@@ -111,6 +111,7 @@ type Channel struct {
 	WebAccess           *bool      `json:"web_access,omitempty"`
 	WebAccessCheckedAt  *time.Time `json:"web_access_checked_at,omitempty"`
 	WebAccessError      string     `json:"web_access_error"`
+	IndexedMessageCount int64      `json:"indexed_message_count"`
 	CreatedAt           time.Time  `json:"created_at"`
 	UpdatedAt           time.Time  `json:"updated_at"`
 }

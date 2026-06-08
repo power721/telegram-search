@@ -46,7 +46,7 @@ describe('channels store', () => {
       remote_search_allowed: true
     })
     await store.checkWebAccess([1])
-    await store.syncChannels([1])
+    await store.syncChannels([1], 250)
     await store.analyzeChannel(1)
     await store.createRemoteSearch(1, 'ubuntu iso')
 
@@ -58,7 +58,7 @@ describe('channels store', () => {
       remote_search_allowed: true
     })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1] })
-    expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1] })
+    expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1], max_messages: 250 })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/1/analyze')
     expect(apiPost).toHaveBeenCalledWith('/api/search/remote', { channel_id: 1, query: 'ubuntu iso' })
   })

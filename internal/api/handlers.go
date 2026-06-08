@@ -1022,7 +1022,8 @@ func (h handlers) syncChannel(c *gin.Context) {
 
 func (h handlers) syncChannels(c *gin.Context) {
 	var req struct {
-		ChannelIDs []int64 `json:"channel_ids"`
+		ChannelIDs  []int64 `json:"channel_ids"`
+		MaxMessages *int    `json:"max_messages"`
 	}
 	if !bindJSON(c, &req) {
 		return
@@ -1037,11 +1038,20 @@ func (h handlers) syncChannels(c *gin.Context) {
 			return
 		}
 	}
+	maxMessages := 0
+	if req.MaxMessages != nil {
+		if *req.MaxMessages <= 0 {
+			errorText(c, http.StatusBadRequest, "max_messages must be a positive integer")
+			return
+		}
+		maxMessages = *req.MaxMessages
+	}
 	if h.deps.SyncQueue != nil {
 		channelIDs := append([]int64(nil), req.ChannelIDs...)
+		limit := maxMessages
 		jobCtx := context.WithoutCancel(c.Request.Context())
 		job := h.deps.SyncQueue.Enqueue(jobCtx, "channels-sync", func(ctx context.Context) error {
-			result := h.deps.History.SyncMany(ctx, channelIDs)
+			result := h.deps.History.SyncManyWithMaxMessages(ctx, channelIDs, limit)
 			if len(result.Failures) > 0 {
 				return fmt.Errorf("sync failures: %v", result.Failures)
 			}
@@ -1050,7 +1060,7 @@ func (h handlers) syncChannels(c *gin.Context) {
 		c.JSON(http.StatusAccepted, gin.H{"job_id": job.ID, "status": job.Status})
 		return
 	}
-	result := h.deps.History.SyncMany(c.Request.Context(), req.ChannelIDs)
+	result := h.deps.History.SyncManyWithMaxMessages(c.Request.Context(), req.ChannelIDs, maxMessages)
 	c.JSON(http.StatusAccepted, result)
 }
 

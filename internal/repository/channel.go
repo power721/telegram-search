@@ -107,14 +107,28 @@ WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
 
 func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
-FROM telegram_channels WHERE id = ?`, id))
+SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
+FROM telegram_channels c
+LEFT JOIN (
+  SELECT channel_id, COUNT(*) AS indexed_message_count
+  FROM telegram_messages
+  WHERE deleted = 0
+  GROUP BY channel_id
+) message_counts ON message_counts.channel_id = c.id
+WHERE c.id = ?`, id))
 }
 
 func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
-FROM telegram_channels WHERE account_id = ? AND telegram_channel_id = ?`, accountID, telegramChannelID))
+SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
+FROM telegram_channels c
+LEFT JOIN (
+  SELECT channel_id, COUNT(*) AS indexed_message_count
+  FROM telegram_messages
+  WHERE deleted = 0
+  GROUP BY channel_id
+) message_counts ON message_counts.channel_id = c.id
+WHERE c.account_id = ? AND c.telegram_channel_id = ?`, accountID, telegramChannelID))
 }
 
 func (r *ChannelRepository) FindAll(ctx context.Context) ([]model.Channel, error) {
@@ -122,13 +136,20 @@ func (r *ChannelRepository) FindAll(ctx context.Context) ([]model.Channel, error
 }
 
 func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64) ([]model.Channel, error) {
-	return r.find(ctx, `WHERE account_id = ?`, []any{accountID})
+	return r.find(ctx, `WHERE c.account_id = ?`, []any{accountID})
 }
 
 func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
 	query := `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
-FROM telegram_channels ` + where + ` ORDER BY title, id`
+SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
+FROM telegram_channels c
+LEFT JOIN (
+  SELECT channel_id, COUNT(*) AS indexed_message_count
+  FROM telegram_messages
+  WHERE deleted = 0
+  GROUP BY channel_id
+) message_counts ON message_counts.channel_id = c.id
+` + where + ` ORDER BY c.title, c.id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("find channels: %w", err)
@@ -195,6 +216,7 @@ func scanChannelRows(row interface {
 		&webAccess,
 		&webAccessCheckedAt,
 		&channel.WebAccessError,
+		&channel.IndexedMessageCount,
 		&channel.CreatedAt,
 		&channel.UpdatedAt,
 	)

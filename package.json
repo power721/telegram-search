@@ -1,0 +1,10 @@
+{
+  "name": "tg-search",
+  "private": true,
+  "scripts": {
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:test": "npm --prefix web run test",
+    "web:typecheck": "npm --prefix web run typecheck"
+  }
+}

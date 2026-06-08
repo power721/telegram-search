@@ -375,7 +375,7 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
@@ -388,6 +388,49 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	}
 	if account.Status != model.AccountStatusLoginRequired {
 		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+}
+
+func TestTelegramLoginRoutes(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.Telegram = &fakeTelegram{}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	deps.CodeStore.Save("+10000000000", "hash")
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("sign-in status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	if _, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusLoginRequired}); err != nil {
+		t.Fatalf("save password account: %v", err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/password", bytes.NewBufferString(`{"phone":"+10000000001","password":"secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("password status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/login/send-code", bytes.NewBufferString(`{"phone":"+10000000002"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("old send-code status = %d body=%s, want 404", w.Code, w.Body.String())
 	}
 }
 
@@ -1043,6 +1086,14 @@ type fakeTelegram struct {
 
 func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
 	return telegram.SentCode{PhoneCodeHash: "hash"}, nil
+}
+
+func (fakeTelegram) SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (telegram.Profile, error) {
+	return telegram.Profile{TelegramUserID: 42, FirstName: "Ada", LastName: "Lovelace", Username: "ada"}, nil
+}
+
+func (fakeTelegram) Password(ctx context.Context, password string, sessionPath string) (telegram.Profile, error) {
+	return telegram.Profile{TelegramUserID: 43, FirstName: "Grace", LastName: "Hopper", Username: "grace"}, nil
 }
 
 type apiWebAccessChecker struct {

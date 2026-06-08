@@ -5,6 +5,7 @@ import "testing"
 func TestSecretsRedactsKnownSensitiveKeys(t *testing.T) {
 	input := map[string]any{
 		"api_hash":        "hash",
+		"app_hash":        "app-hash",
 		"password":        "pass",
 		"code":            "12345",
 		"phone_code_hash": "secret-code-hash",
@@ -14,7 +15,7 @@ func TestSecretsRedactsKnownSensitiveKeys(t *testing.T) {
 
 	got := Secrets(input)
 
-	for _, key := range []string{"api_hash", "password", "code", "phone_code_hash", "session"} {
+	for _, key := range []string{"api_hash", "app_hash", "password", "code", "phone_code_hash", "session"} {
 		if got[key] != Redacted {
 			t.Fatalf("%s = %q, want redacted", key, got[key])
 		}

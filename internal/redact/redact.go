@@ -5,6 +5,7 @@ import "strings"
 const Redacted = "[REDACTED]"
 
 var sensitiveKeys = map[string]struct{}{
+	"app_hash":        {},
 	"api_hash":        {},
 	"code":            {},
 	"login_code":      {},

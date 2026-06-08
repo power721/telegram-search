@@ -18,6 +18,8 @@ const (
 	ChannelTypeSavedMessages = "saved_messages"
 )
 
+const UserRoleAdmin = "admin"
+
 type Account struct {
 	ID             int64     `json:"id"`
 	Phone          string    `json:"phone"`
@@ -28,6 +30,45 @@ type Account struct {
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type User struct {
+	ID           int64      `json:"id"`
+	Username     string     `json:"username"`
+	PasswordHash string     `json:"-"`
+	Role         string     `json:"role"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+type APIKey struct {
+	ID         int64      `json:"id"`
+	Name       string     `json:"name"`
+	KeyHash    string     `json:"-"`
+	Prefix     string     `json:"prefix"`
+	Enabled    bool       `json:"enabled"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type SetupStatus struct {
+	Complete           bool `json:"complete"`
+	AdminConfigured    bool `json:"admin_configured"`
+	APIKeyConfigured   bool `json:"api_key_configured"`
+	TelegramConfigured bool `json:"telegram_configured"`
+}
+
+type StorageUsage struct {
+	DBBytes         int64 `json:"db_bytes"`
+	IndexBytes      int64 `json:"index_bytes"`
+	MediaCacheBytes int64 `json:"media_cache_bytes"`
+	TotalBytes      int64 `json:"total_bytes"`
+	MaxDBBytes      int64 `json:"max_db_bytes"`
+	MaxMediaBytes   int64 `json:"max_media_bytes"`
+	DBOverQuota     bool  `json:"db_over_quota"`
+	MediaOverQuota  bool  `json:"media_over_quota"`
 }
 
 type Channel struct {

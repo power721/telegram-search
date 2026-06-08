@@ -33,6 +33,34 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertColumnExists(t, conn, "telegram_links", "note")
 }
 
+func TestMigrateCreatesFreshFoundationSchema(t *testing.T) {
+	ctx := context.Background()
+	conn, err := Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	for _, table := range []string{
+		"telegram_accounts",
+		"telegram_channels",
+		"telegram_messages",
+		"telegram_links",
+		"telegram_watch_rules",
+		"users",
+		"api_keys",
+		"settings",
+	} {
+		var name string
+		err := conn.QueryRowContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&name)
+		if err != nil {
+			t.Fatalf("table %s missing: %v", table, err)
+		}
+	}
+}
+
 func TestFTSTriggersIndexUpdateAndSoftDelete(t *testing.T) {
 	ctx := context.Background()
 	conn, err := Open(filepath.Join(t.TempDir(), "telegram.db"))

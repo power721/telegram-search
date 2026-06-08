@@ -15,7 +15,7 @@ type migration struct {
 var migrations = []migration{
 	{
 		version: 1,
-		name:    "core_schema",
+		name:    "fresh_tg_search_schema",
 		sql: `
 CREATE TABLE IF NOT EXISTS telegram_accounts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS telegram_channels (
   type TEXT NOT NULL,
   last_message_id INTEGER NOT NULL DEFAULT 0,
   last_sync_time DATETIME,
+  web_access INTEGER,
+  web_access_checked_at DATETIME,
+  web_access_error TEXT,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   UNIQUE(account_id, telegram_channel_id, type),
@@ -69,28 +72,61 @@ CREATE TABLE IF NOT EXISTS telegram_links (
   type TEXT NOT NULL,
   url TEXT NOT NULL,
   password TEXT,
+  note TEXT,
   created_at DATETIME NOT NULL,
   UNIQUE(message_id, type, url),
   FOREIGN KEY(message_id) REFERENCES telegram_messages(id) ON DELETE CASCADE
 );
-`,
-	},
-	{
-		version: 2,
-		name:    "indexes",
-		sql: `
+
+CREATE TABLE IF NOT EXISTS telegram_watch_rules (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  channel_id INTEGER NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  includes_json TEXT NOT NULL DEFAULT '[]',
+  excludes_json TEXT NOT NULL DEFAULT '[]',
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL,
+  last_login_at DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  prefix TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_used_at DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date ON telegram_messages(channel_id, date);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_telegram_message_id ON telegram_messages(telegram_message_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_id ON telegram_messages(account_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_type ON telegram_links(type);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_message_id ON telegram_links(message_id);
 CREATE INDEX IF NOT EXISTS idx_telegram_channels_account_id ON telegram_channels(account_id);
-`,
-	},
-	{
-		version: 3,
-		name:    "fts5",
-		sql: `
+CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_date_id ON telegram_messages(account_id, date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_messages(channel_id, date DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS telegram_messages_fts
 USING fts5(text, content='telegram_messages', content_rowid='id');
 
@@ -113,46 +149,6 @@ BEGIN
   INSERT INTO telegram_messages_fts(rowid, text)
   SELECT new.id, new.text WHERE new.deleted = 0;
 END;
-`,
-	},
-	{
-		version: 4,
-		name:    "performance_indexes",
-		sql: `
-CREATE INDEX IF NOT EXISTS idx_telegram_messages_account_date_id ON telegram_messages(account_id, date DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_telegram_messages_channel_date_id ON telegram_messages(channel_id, date DESC, id DESC);
-CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
-`,
-	},
-	{
-		version: 5,
-		name:    "watch_rules",
-		sql: `
-CREATE TABLE IF NOT EXISTS telegram_watch_rules (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  channel_id INTEGER NOT NULL UNIQUE,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  includes_json TEXT NOT NULL DEFAULT '[]',
-  excludes_json TEXT NOT NULL DEFAULT '[]',
-  created_at DATETIME NOT NULL,
-  updated_at DATETIME NOT NULL,
-  FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
-);
-`,
-	},
-	{
-		version: 6,
-		name:    "channel_web_access",
-		sql: `
-ALTER TABLE telegram_channels ADD COLUMN web_access INTEGER;
-ALTER TABLE telegram_channels ADD COLUMN web_access_checked_at DATETIME;
-`,
-	},
-	{
-		version: 7,
-		name:    "link_note",
-		sql: `
-ALTER TABLE telegram_links ADD COLUMN note TEXT;
 `,
 	},
 }

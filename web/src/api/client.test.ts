@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiDelete, apiGet, apiPost } from './client'
+import { ApiError, apiDelete, apiGet, apiPost, clearAPIKey, setAPIKey } from './client'
 
 describe('api client', () => {
   const originalFetch = globalThis.fetch
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    clearAPIKey()
   })
 
   afterEach(() => {
@@ -49,6 +50,37 @@ describe('api client', () => {
     await expect(apiDelete('/api/accounts/1')).resolves.toEqual({ deleted: true })
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/accounts/1', {
       method: 'DELETE',
+      credentials: 'include',
+      headers: { Accept: 'application/json' }
+    })
+  })
+
+  it('sends X-API-Key when an api key is loaded', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ service: 'ok' })
+    } as Response)
+
+    setAPIKey('secret-key')
+    await apiGet('/api/status')
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/status', {
+      credentials: 'include',
+      headers: { Accept: 'application/json', 'X-API-Key': 'secret-key' }
+    })
+  })
+
+  it('clears X-API-Key when requested', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ service: 'ok' })
+    } as Response)
+
+    setAPIKey('secret-key')
+    clearAPIKey()
+    await apiGet('/api/status')
+
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/status', {
       credentials: 'include',
       headers: { Accept: 'application/json' }
     })

@@ -23,12 +23,17 @@ export interface ListenRulesPayload {
   link_types: string[]
 }
 
-export interface APIKeySetupResponse {
+export interface APIKeyResponse {
   id: number
   name: string
   prefix: string
   key: string
+  last_used_at?: string
+  created_at?: string
+  updated_at?: string
 }
+
+export type APIKeySetupResponse = APIKeyResponse
 
 export interface WatchRulePayload extends ListenRulesPayload {
   channel_id: number

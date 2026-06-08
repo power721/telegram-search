@@ -12,10 +12,20 @@ export class ApiError extends Error {
   }
 }
 
+let apiKey = ''
+
+export function setAPIKey(key: string) {
+  apiKey = key
+}
+
+export function clearAPIKey() {
+  apiKey = ''
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(path, {
     credentials: 'include',
-    headers: { Accept: 'application/json' }
+    headers: jsonHeaders()
   })
   return readResponse<T>(response)
 }
@@ -24,10 +34,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'POST',
     credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
+    headers: jsonHeaders(true),
     body: body === undefined ? undefined : JSON.stringify(body)
   })
   return readResponse<T>(response)
@@ -37,10 +44,7 @@ export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method: 'PATCH',
     credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json'
-    },
+    headers: jsonHeaders(true),
     body: body === undefined ? undefined : JSON.stringify(body)
   })
   return readResponse<T>(response)
@@ -50,9 +54,20 @@ export async function apiDelete<T>(path: string): Promise<T> {
   const response = await fetch(path, {
     method: 'DELETE',
     credentials: 'include',
-    headers: { Accept: 'application/json' }
+    headers: jsonHeaders()
   })
   return readResponse<T>(response)
+}
+
+function jsonHeaders(contentType = false) {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (contentType) {
+    headers['Content-Type'] = 'application/json'
+  }
+  if (apiKey) {
+    headers['X-API-Key'] = apiKey
+  }
+  return headers
 }
 
 async function readResponse<T>(response: Response): Promise<T> {

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useResourcesStore } from '@/stores/resources'
 import { useStatusStore } from '@/stores/status'
 
 const status = useStatusStore()
+const resources = useResourcesStore()
 
 onMounted(() => {
   void status.load()
+  void resources.loadGrouped()
 })
 
 const cards = computed(() => [
@@ -13,6 +16,14 @@ const cards = computed(() => [
   { label: 'Channels', value: status.service?.channels ?? 0 },
   { label: 'Messages', value: status.service?.messages ?? 0 },
   { label: 'Links', value: status.service?.links ?? 0 }
+])
+
+const resourceTypes = computed(() => [
+  { label: 'Cloud Drive', value: resources.grouped.cloud_drive ?? 0 },
+  { label: 'Magnet', value: resources.grouped.magnet ?? 0 },
+  { label: 'ED2K', value: resources.grouped.ed2k ?? 0 },
+  { label: 'HTTP', value: resources.grouped.http ?? 0 },
+  { label: 'Files', value: resources.grouped.files ?? 0 }
 ])
 
 function formatBytes(value = 0) {
@@ -66,11 +77,10 @@ function formatBytes(value = 0) {
       <section class="panel">
         <h2>Top Resource Types</h2>
         <div class="resource-types">
-          <span>Cloud Drive</span>
-          <span>Magnet</span>
-          <span>ED2K</span>
-          <span>HTTP</span>
-          <span>Files</span>
+          <span v-for="item in resourceTypes" :key="item.label">
+            {{ item.label }}
+            <strong>{{ item.value }}</strong>
+          </span>
         </div>
       </section>
     </div>
@@ -161,6 +171,8 @@ dd {
 .resource-types span {
   border: 1px solid #d9dee7;
   border-radius: 6px;
+  display: inline-flex;
+  gap: 8px;
   padding: 6px 8px;
 }
 

@@ -149,3 +149,113 @@ export interface RemoteSearchTask {
   source: string
   expires_at: string
 }
+
+export interface ListResult<T> {
+  items: T[]
+  total: number
+}
+
+export interface Link {
+  id: number
+  message_id: number
+  type: string
+  url: string
+  password?: string
+  note?: string
+  source_snippet?: string
+  category?: string
+}
+
+export interface MessageSearchResult {
+  id: number
+  channel_id: number
+  telegram_message_id: number
+  text: string
+  raw_json?: string
+  date?: string
+  channel_title?: string
+  channel_username?: string
+  links?: Link[]
+  source?: 'local' | 'remote'
+}
+
+export interface LinkSearchResult extends Link {
+  message_text?: string
+  message_date?: string
+  channel_id?: number
+  channel_title?: string
+  telegram_message_id?: number
+  source?: 'local' | 'remote'
+}
+
+export interface FileSearchResult {
+  id: number
+  message_id: number
+  file_name: string
+  extension: string
+  mime_type: string
+  size_bytes: number
+  category: string
+  message_text?: string
+  message_date?: string
+  channel_id?: number
+  channel_title?: string
+  telegram_message_id?: number
+  source?: 'local' | 'remote'
+}
+
+export interface ChannelSearchResult extends TelegramChannel {
+  source?: 'local' | 'remote'
+}
+
+export interface GlobalSearchResult {
+  messages: ListResult<MessageSearchResult>
+  links: ListResult<LinkSearchResult>
+  files: ListResult<FileSearchResult>
+  channels: ListResult<ChannelSearchResult>
+}
+
+export interface RemoteSearchItem {
+  source: 'remote'
+  channel_id: number
+  channel_title: string
+  channel_username?: string
+  telegram_message_id: number
+  text: string
+  raw_json?: string
+  date?: string
+}
+
+export interface RemoteSearchResults {
+  task: RemoteSearchTask
+  items: RemoteSearchItem[]
+}
+
+export interface ResourceItem {
+  id: string
+  kind: 'link' | 'file'
+  type?: string
+  category: string
+  url?: string
+  file_name?: string
+  extension?: string
+  mime_type?: string
+  size_bytes?: number
+  note?: string
+  title?: string
+  source_snippet?: string
+  datetime?: string
+  channel_id?: number
+  channel_title?: string
+  telegram_message_id?: number
+}
+
+export interface ResourcesResponse {
+  items: ResourceItem[]
+  total: number
+  grouped: Record<string, number>
+}
+
+export interface ResourcesGroupedResponse {
+  grouped: Record<string, number>
+}

@@ -27,6 +27,11 @@ vi.mock('@/api/client', () => ({
         media_over_quota: false
       })
     }
+    if (path === '/api/resources/grouped?limit=50') {
+      return Promise.resolve({
+        grouped: { cloud_drive: 2, magnet: 1, ed2k: 0, http: 3, files: 4 }
+      })
+    }
     return Promise.reject(new Error('unexpected path'))
   })
 }))
@@ -41,5 +46,7 @@ describe('HomeView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(wrapper.text()).toContain('Storage Usage')
     expect(wrapper.text()).toContain('4.3 GB')
+    expect(wrapper.text()).toContain('Top Resource Types')
+    expect(wrapper.text()).toContain('Cloud Drive')
   })
 })

@@ -7,10 +7,12 @@ import LoginView from '@/views/LoginView.vue'
 import { placeholderView } from '@/views/placeholders'
 import AccountsView from '@/views/AccountsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import SearchView from '@/views/SearchView.vue'
 import SetupAdminView from '@/views/SetupAdminView.vue'
 import SetupTelegramApiView from '@/views/SetupTelegramApiView.vue'
 import SetupTelegramLoginView from '@/views/SetupTelegramLoginView.vue'
 import ChannelsView from '@/views/ChannelsView.vue'
+import ResourcesView from '@/views/ResourcesView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -37,9 +39,9 @@ export const router = createRouter({
       component: AppLayout,
       children: [
         { path: '', name: 'home', component: HomeView },
-        { path: 'search', name: 'search', component: placeholderView('Search') },
+        { path: 'search', name: 'search', component: SearchView },
         { path: 'channels', name: 'channels', component: ChannelsView },
-        { path: 'resources', name: 'resources', component: placeholderView('Resources') },
+        { path: 'resources', name: 'resources', component: ResourcesView },
         { path: 'accounts', name: 'accounts', component: AccountsView },
         { path: 'tasks', name: 'tasks', component: placeholderView('Tasks') },
         { path: 'settings', name: 'settings', component: SettingsView }

@@ -21,15 +21,18 @@ const (
 const UserRoleAdmin = "admin"
 
 type Account struct {
-	ID             int64     `json:"id"`
-	Phone          string    `json:"phone"`
-	TelegramUserID int64     `json:"telegram_user_id"`
-	FirstName      string    `json:"first_name"`
-	LastName       string    `json:"last_name"`
-	Username       string    `json:"username"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             int64      `json:"id"`
+	Phone          string     `json:"phone"`
+	TelegramUserID int64      `json:"telegram_user_id"`
+	FirstName      string     `json:"first_name"`
+	LastName       string     `json:"last_name"`
+	Username       string     `json:"username"`
+	Status         string     `json:"status"`
+	SessionPath    string     `json:"session_path"`
+	LastOnlineAt   *time.Time `json:"last_online_at,omitempty"`
+	LastError      string     `json:"last_error"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type User struct {
@@ -90,10 +93,16 @@ type Channel struct {
 	Title              string     `json:"title"`
 	Username           string     `json:"username"`
 	Type               string     `json:"type"`
+	MemberCount        int64      `json:"member_count"`
+	Description        string     `json:"description"`
+	AvatarState        string     `json:"avatar_state"`
+	SyncState          string     `json:"sync_state"`
+	ListenState        string     `json:"listen_state"`
 	LastMessageID      int64      `json:"last_message_id"`
 	LastSyncTime       *time.Time `json:"last_sync_time,omitempty"`
 	WebAccess          *bool      `json:"web_access,omitempty"`
 	WebAccessCheckedAt *time.Time `json:"web_access_checked_at,omitempty"`
+	WebAccessError     string     `json:"web_access_error"`
 	CreatedAt          time.Time  `json:"created_at"`
 	UpdatedAt          time.Time  `json:"updated_at"`
 }

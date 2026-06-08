@@ -403,3 +403,86 @@ func TestLinkRepositorySearchMergedGroupsAndDeduplicatesNewest(t *testing.T) {
 		t.Fatalf("aliyun links = %+v, want one aliyun note", merged.MergedByType["aliyun"])
 	}
 }
+
+func TestAccountRepositoryPersistsExpandedMetadata(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+
+	now := time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC)
+	accountID, err := accounts.Save(ctx, model.Account{
+		Phone:        "+10000000000",
+		Status:       model.AccountStatusOnline,
+		SessionPath:  "/data/tg-search/sessions/1.session",
+		LastOnlineAt: &now,
+		LastError:    "",
+	})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+
+	got, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if got.SessionPath != "/data/tg-search/sessions/1.session" {
+		t.Fatalf("session_path = %q", got.SessionPath)
+	}
+	if got.LastOnlineAt == nil || !got.LastOnlineAt.Equal(now) {
+		t.Fatalf("last_online_at = %v, want %v", got.LastOnlineAt, now)
+	}
+	if got.LastError != "" {
+		t.Fatalf("last_error = %q, want empty", got.LastError)
+	}
+}
+
+func TestChannelRepositoryPersistsExpandedMetadata(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 200,
+		AccessHash:        300,
+		Title:             "VIP",
+		Username:          "vip",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       1234,
+		Description:       "private resource channel",
+		AvatarState:       "unknown",
+		SyncState:         "metadata_only",
+		ListenState:       "disabled",
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+
+	got, err := channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if got.MemberCount != 1234 || got.Description != "private resource channel" ||
+		got.AvatarState != "unknown" || got.SyncState != "metadata_only" || got.ListenState != "disabled" {
+		t.Fatalf("channel metadata = %+v", got)
+	}
+}

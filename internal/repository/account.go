@@ -26,18 +26,21 @@ func (r *AccountRepository) Save(ctx context.Context, account model.Account) (in
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
 INSERT INTO telegram_accounts
-  (phone, telegram_user_id, first_name, last_name, username, status, created_at, updated_at)
+  (phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(phone) DO UPDATE SET
   telegram_user_id = excluded.telegram_user_id,
   first_name = excluded.first_name,
   last_name = excluded.last_name,
   username = excluded.username,
   status = excluded.status,
+  session_path = excluded.session_path,
+  last_online_at = excluded.last_online_at,
+  last_error = excluded.last_error,
   updated_at = excluded.updated_at
 RETURNING id`,
-		account.Phone, account.TelegramUserID, account.FirstName, account.LastName, account.Username, account.Status, now, now,
+		account.Phone, account.TelegramUserID, account.FirstName, account.LastName, account.Username, account.Status, account.SessionPath, account.LastOnlineAt, account.LastError, now, now,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("save account: %w", err)
@@ -48,9 +51,9 @@ RETURNING id`,
 func (r *AccountRepository) Update(ctx context.Context, account model.Account) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE telegram_accounts
-SET phone = ?, telegram_user_id = ?, first_name = ?, last_name = ?, username = ?, status = ?, updated_at = ?
+SET phone = ?, telegram_user_id = ?, first_name = ?, last_name = ?, username = ?, status = ?, session_path = ?, last_online_at = ?, last_error = ?, updated_at = ?
 WHERE id = ?`,
-		account.Phone, account.TelegramUserID, account.FirstName, account.LastName, account.Username, account.Status, time.Now().UTC(), account.ID)
+		account.Phone, account.TelegramUserID, account.FirstName, account.LastName, account.Username, account.Status, account.SessionPath, account.LastOnlineAt, account.LastError, time.Now().UTC(), account.ID)
 	if err != nil {
 		return fmt.Errorf("update account: %w", err)
 	}
@@ -78,19 +81,19 @@ func (r *AccountRepository) Delete(ctx context.Context, id int64) error {
 
 func (r *AccountRepository) FindByID(ctx context.Context, id int64) (model.Account, error) {
 	return scanAccount(r.db.QueryRowContext(ctx, `
-SELECT id, phone, telegram_user_id, first_name, last_name, username, status, created_at, updated_at
+SELECT id, phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at
 FROM telegram_accounts WHERE id = ?`, id))
 }
 
 func (r *AccountRepository) FindByPhone(ctx context.Context, phone string) (model.Account, error) {
 	return scanAccount(r.db.QueryRowContext(ctx, `
-SELECT id, phone, telegram_user_id, first_name, last_name, username, status, created_at, updated_at
+SELECT id, phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at
 FROM telegram_accounts WHERE phone = ?`, phone))
 }
 
 func (r *AccountRepository) FindAll(ctx context.Context) ([]model.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, phone, telegram_user_id, first_name, last_name, username, status, created_at, updated_at
+SELECT id, phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at
 FROM telegram_accounts ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("find accounts: %w", err)
@@ -122,9 +125,13 @@ func scanAccountRows(row interface {
 	Scan(...any) error
 }) (model.Account, error) {
 	var account model.Account
-	err := row.Scan(&account.ID, &account.Phone, &account.TelegramUserID, &account.FirstName, &account.LastName, &account.Username, &account.Status, &account.CreatedAt, &account.UpdatedAt)
+	var lastOnline sql.NullTime
+	err := row.Scan(&account.ID, &account.Phone, &account.TelegramUserID, &account.FirstName, &account.LastName, &account.Username, &account.Status, &account.SessionPath, &lastOnline, &account.LastError, &account.CreatedAt, &account.UpdatedAt)
 	if err != nil {
 		return model.Account{}, err
+	}
+	if lastOnline.Valid {
+		account.LastOnlineAt = &lastOnline.Time
 	}
 	return account, nil
 }

@@ -22,19 +22,34 @@ func (r *ChannelRepository) Save(ctx context.Context, channel model.Channel) (in
 	if channel.Type == "" {
 		channel.Type = model.ChannelTypeChannel
 	}
+	if channel.AvatarState == "" {
+		channel.AvatarState = "unknown"
+	}
+	if channel.SyncState == "" {
+		channel.SyncState = "metadata_only"
+	}
+	if channel.ListenState == "" {
+		channel.ListenState = "disabled"
+	}
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
 INSERT INTO telegram_channels
-  (account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, created_at, updated_at)
+  (account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access_error, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   access_hash = excluded.access_hash,
   title = excluded.title,
   username = excluded.username,
+  member_count = excluded.member_count,
+  description = excluded.description,
+  avatar_state = excluded.avatar_state,
+  sync_state = excluded.sync_state,
+  listen_state = excluded.listen_state,
+  web_access_error = excluded.web_access_error,
   updated_at = excluded.updated_at
 RETURNING id`,
-		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.LastMessageID, channel.LastSyncTime, now, now,
+		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("save channel: %w", err)
@@ -63,13 +78,13 @@ WHERE id = ?`, lastMessageID, syncTime, time.Now().UTC(), channelID)
 
 func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels WHERE id = ?`, id))
 }
 
 func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
 	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels WHERE account_id = ? AND telegram_channel_id = ?`, accountID, telegramChannelID))
 }
 
@@ -83,7 +98,7 @@ func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64
 
 func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
 	query := `
-SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, last_message_id, last_sync_time, web_access, web_access_checked_at, created_at, updated_at
+SELECT id, account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, last_message_id, last_sync_time, web_access, web_access_checked_at, web_access_error, created_at, updated_at
 FROM telegram_channels ` + where + ` ORDER BY title, id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -125,7 +140,27 @@ func scanChannelRows(row interface {
 	var lastSync sql.NullTime
 	var webAccess sql.NullBool
 	var webAccessCheckedAt sql.NullTime
-	err := row.Scan(&channel.ID, &channel.AccountID, &channel.TelegramChannelID, &channel.AccessHash, &channel.Title, &channel.Username, &channel.Type, &channel.LastMessageID, &lastSync, &webAccess, &webAccessCheckedAt, &channel.CreatedAt, &channel.UpdatedAt)
+	err := row.Scan(
+		&channel.ID,
+		&channel.AccountID,
+		&channel.TelegramChannelID,
+		&channel.AccessHash,
+		&channel.Title,
+		&channel.Username,
+		&channel.Type,
+		&channel.MemberCount,
+		&channel.Description,
+		&channel.AvatarState,
+		&channel.SyncState,
+		&channel.ListenState,
+		&channel.LastMessageID,
+		&lastSync,
+		&webAccess,
+		&webAccessCheckedAt,
+		&channel.WebAccessError,
+		&channel.CreatedAt,
+		&channel.UpdatedAt,
+	)
 	if err != nil {
 		return model.Channel{}, err
 	}

@@ -12,15 +12,38 @@ import (
 var ErrUnavailable = errors.New("telegram client is unavailable")
 var ErrPasswordRequired = errors.New("telegram password required")
 
+const (
+	QRLoginStatusPending = "pending"
+	QRLoginStatusOnline  = "online"
+)
+
 type SentCode struct {
 	PhoneCodeHash string
 }
 
 type Profile struct {
 	TelegramUserID int64
+	Phone          string
 	FirstName      string
 	LastName       string
 	Username       string
+}
+
+type QRLoginToken struct {
+	URL       string
+	ExpiresAt time.Time
+}
+
+type QRLoginPollResult struct {
+	Status  string
+	Token   QRLoginToken
+	Profile Profile
+}
+
+type QRLoginSession interface {
+	Token() QRLoginToken
+	Poll(context.Context) (QRLoginPollResult, error)
+	Cancel(context.Context) error
 }
 
 type AccountSession struct {
@@ -60,6 +83,7 @@ type Client interface {
 	SendCode(ctx context.Context, phone string, sessionPath string) (SentCode, error)
 	SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (Profile, error)
 	Password(ctx context.Context, password string, sessionPath string) (Profile, error)
+	StartQRLogin(ctx context.Context, sessionPath string) (QRLoginSession, error)
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
 	SearchMessages(ctx context.Context, session AccountSession, channel ChannelRef, query string, limit int) ([]Message, error)
@@ -102,6 +126,10 @@ func (NopClient) SignIn(context.Context, string, string, string, string) (Profil
 
 func (NopClient) Password(context.Context, string, string) (Profile, error) {
 	return Profile{}, ErrUnavailable
+}
+
+func (NopClient) StartQRLogin(context.Context, string) (QRLoginSession, error) {
+	return nil, ErrUnavailable
 }
 
 func (NopClient) ListChannels(context.Context, AccountSession) ([]Channel, error) {

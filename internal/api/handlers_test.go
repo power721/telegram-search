@@ -1164,6 +1164,64 @@ func TestTelegramLoginRoutes(t *testing.T) {
 	}
 }
 
+func TestTelegramQRLoginStartAndPendingPoll(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	fake := &fakeTelegram{
+		qrTokenURL: "tg://login?token=test-token",
+		qrExpires:  time.Now().UTC().Add(time.Minute),
+	}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var started struct {
+		LoginID   string    `json:"login_id"`
+		QRURL     string    `json:"qr_url"`
+		ExpiresAt time.Time `json:"expires_at"`
+		Status    string    `json:"status"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatalf("invalid start JSON: %v body=%s", err, w.Body.String())
+	}
+	if started.LoginID == "" || started.QRURL != "tg://login?token=test-token" || started.Status != "pending" {
+		t.Fatalf("start body = %+v, want login id, token url, pending", started)
+	}
+	accounts, err := deps.Accounts.FindAll(ctx)
+	if err != nil {
+		t.Fatalf("find accounts: %v", err)
+	}
+	if len(accounts) != 0 {
+		t.Fatalf("accounts len = %d, want 0 before QR confirmation", len(accounts))
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("poll status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var polled struct {
+		LoginID   string    `json:"login_id"`
+		QRURL     string    `json:"qr_url"`
+		ExpiresAt time.Time `json:"expires_at"`
+		Status    string    `json:"status"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &polled); err != nil {
+		t.Fatalf("invalid poll JSON: %v body=%s", err, w.Body.String())
+	}
+	if polled.LoginID != started.LoginID || polled.Status != "pending" || polled.QRURL != started.QRURL {
+		t.Fatalf("poll body = %+v, want same pending QR session", polled)
+	}
+}
+
 func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -2664,6 +2722,9 @@ type fakeTelegram struct {
 	channels          []telegram.Channel
 	listErr           error
 	fetchHistoryCalls int
+	qrTokenURL        string
+	qrExpires         time.Time
+	qrSession         *fakeQRLoginSession
 }
 
 func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
@@ -2676,6 +2737,14 @@ func (fakeTelegram) SignIn(ctx context.Context, phone string, code string, phone
 
 func (fakeTelegram) Password(ctx context.Context, password string, sessionPath string) (telegram.Profile, error) {
 	return telegram.Profile{TelegramUserID: 43, FirstName: "Grace", LastName: "Hopper", Username: "grace"}, nil
+}
+
+func (f *fakeTelegram) StartQRLogin(ctx context.Context, sessionPath string) (telegram.QRLoginSession, error) {
+	session := &fakeQRLoginSession{
+		token: telegram.QRLoginToken{URL: f.qrTokenURL, ExpiresAt: f.qrExpires},
+	}
+	f.qrSession = session
+	return session, nil
 }
 
 func (f *fakeTelegram) ListChannels(ctx context.Context, accountSession telegram.AccountSession) ([]telegram.Channel, error) {
@@ -2696,6 +2765,28 @@ func (f *fakeTelegram) ListChannels(ctx context.Context, accountSession telegram
 func (f *fakeTelegram) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
 	f.fetchHistoryCalls++
 	return nil, nil
+}
+
+type fakeQRLoginSession struct {
+	token     telegram.QRLoginToken
+	result    telegram.QRLoginPollResult
+	cancelled bool
+}
+
+func (s *fakeQRLoginSession) Token() telegram.QRLoginToken {
+	return s.token
+}
+
+func (s *fakeQRLoginSession) Poll(ctx context.Context) (telegram.QRLoginPollResult, error) {
+	if s.result.Status == "" {
+		return telegram.QRLoginPollResult{Status: telegram.QRLoginStatusPending, Token: s.token}, nil
+	}
+	return s.result, nil
+}
+
+func (s *fakeQRLoginSession) Cancel(ctx context.Context) error {
+	s.cancelled = true
+	return nil
 }
 
 type apiWebAccessChecker struct {

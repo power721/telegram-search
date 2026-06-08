@@ -741,6 +741,51 @@ func (h handlers) password(c *gin.Context) {
 	h.updateAccountProfile(c, account, profile)
 }
 
+func (h handlers) startQRLogin(c *gin.Context) {
+	sessionPath := h.sessionPath(0)
+	session, err := h.deps.Telegram.StartQRLogin(c.Request.Context(), sessionPath)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	item := h.deps.QRLogins.Add(sessionPath, session)
+	token := session.Token()
+	c.JSON(http.StatusOK, gin.H{
+		"login_id":   item.LoginID,
+		"status":     telegram.QRLoginStatusPending,
+		"qr_url":     token.URL,
+		"expires_at": token.ExpiresAt,
+	})
+}
+
+func (h handlers) pollQRLogin(c *gin.Context) {
+	loginID := c.Param("login_id")
+	item, ok := h.deps.QRLogins.Find(loginID)
+	if !ok {
+		errorText(c, http.StatusNotFound, "qr login session not found")
+		return
+	}
+	result, err := item.Session.Poll(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	token := result.Token
+	if token.URL == "" {
+		token = item.Session.Token()
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"login_id":   item.LoginID,
+		"status":     telegram.QRLoginStatusPending,
+		"qr_url":     token.URL,
+		"expires_at": token.ExpiresAt,
+	})
+}
+
+func (h handlers) cancelQRLogin(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"canceled": true})
+}
+
 func (h handlers) accounts(c *gin.Context) {
 	items, err := h.deps.Accounts.FindAll(c.Request.Context())
 	if err != nil {

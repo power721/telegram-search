@@ -19,6 +19,16 @@ function categoryLabel(category: string) {
 function itemLabel(item: ResourceItem) {
   return item.title || item.file_name || item.url || '-'
 }
+
+function formatDate(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
+}
 </script>
 
 <template>
@@ -27,6 +37,7 @@ function itemLabel(item: ResourceItem) {
       <span>资源</span>
       <span>类型</span>
       <span>来源</span>
+      <span>发布时间</span>
     </div>
     <article v-for="item in items" :key="item.id" class="table-row">
       <div>
@@ -38,6 +49,7 @@ function itemLabel(item: ResourceItem) {
       </div>
       <span>{{ categoryLabel(item.category) }}</span>
       <span>{{ item.channel_title || 'Telegram' }}</span>
+      <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
     </article>
   </div>
 </template>
@@ -55,7 +67,7 @@ function itemLabel(item: ResourceItem) {
 .table-row {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 130px 160px;
+  grid-template-columns: minmax(0, 1fr) 120px 150px 180px;
   padding: 12px 14px;
 }
 
@@ -72,7 +84,8 @@ function itemLabel(item: ResourceItem) {
 
 .table-row strong,
 .table-row p,
-.table-row a {
+.table-row a,
+.table-row time {
   overflow-wrap: anywhere;
 }
 
@@ -84,6 +97,10 @@ function itemLabel(item: ResourceItem) {
 .table-row a {
   color: #175cd3;
   text-decoration: underline;
+}
+
+.table-row time {
+  color: #475467;
 }
 
 @media (max-width: 760px) {

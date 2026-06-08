@@ -2,16 +2,21 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 
+	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
@@ -21,6 +26,163 @@ import (
 
 type handlers struct {
 	deps Dependencies
+}
+
+const adminSessionCookie = "tg_search_session"
+
+func (h handlers) setupStatus(c *gin.Context) {
+	status, err := h.loadSetupStatus(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) setupAdmin(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	id, err := h.deps.AdminAuth.CreateAdmin(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": id, "username": strings.TrimSpace(req.Username), "role": model.UserRoleAdmin})
+}
+
+func (h handlers) setupAPIKey(c *gin.Context) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		errorText(c, http.StatusBadRequest, "name is required")
+		return
+	}
+	keyBytes := make([]byte, 32)
+	if _, err := rand.Read(keyBytes); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	plaintext := hex.EncodeToString(keyBytes)
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	prefix := plaintext[:8]
+	id, err := h.deps.APIKeys.Create(c.Request.Context(), model.APIKey{
+		Name:    name,
+		KeyHash: string(hash),
+		Prefix:  prefix,
+		Enabled: true,
+	})
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"id": id, "name": name, "prefix": prefix, "key": plaintext})
+}
+
+func (h handlers) setupComplete(c *gin.Context) {
+	if err := h.deps.Settings.Set(c.Request.Context(), "setup.complete", `true`); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	status, err := h.loadSetupStatus(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) authLogin(c *gin.Context) {
+	var req struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	user, err := h.deps.AdminAuth.Authenticate(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
+		if errors.Is(err, adminauth.ErrInvalidCredentials) {
+			errorText(c, http.StatusUnauthorized, "invalid username or password")
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	token, err := h.deps.AdminAuth.CreateSession(user)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.SetCookie(adminSessionCookie, token, 86400, "/", "", false, true)
+	user.PasswordHash = ""
+	c.JSON(http.StatusOK, user)
+}
+
+func (h handlers) authLogout(c *gin.Context) {
+	if cookie, err := c.Cookie(adminSessionCookie); err == nil {
+		h.deps.AdminAuth.DeleteSession(cookie)
+	}
+	c.SetCookie(adminSessionCookie, "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"logged_out": true})
+}
+
+func (h handlers) authMe(c *gin.Context) {
+	cookie, err := c.Cookie(adminSessionCookie)
+	if err != nil {
+		errorText(c, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	user, ok := h.deps.AdminAuth.UserForSession(cookie)
+	if !ok {
+		errorText(c, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	user.PasswordHash = ""
+	c.JSON(http.StatusOK, user)
+}
+
+func (h handlers) storageUsage(c *gin.Context) {
+	usage, err := h.deps.StorageUsage.Usage()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, usage)
+}
+
+func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error) {
+	var status model.SetupStatus
+	adminCount, err := h.deps.Users.Count(ctx)
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
+	keyCount, err := h.deps.APIKeys.CountEnabled(ctx)
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
+	completeRaw, ok, err := h.deps.Settings.Get(ctx, "setup.complete")
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
+	status.AdminConfigured = adminCount > 0
+	status.APIKeyConfigured = keyCount > 0
+	status.TelegramConfigured = false
+	status.Complete = ok && completeRaw == `true`
+	return status, nil
 }
 
 func (h handlers) status(c *gin.Context) {

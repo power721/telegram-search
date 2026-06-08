@@ -6,12 +6,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"tg-search/internal/adminauth"
 	"tg-search/internal/channel"
 	"tg-search/internal/history"
 	"tg-search/internal/repository"
 	"tg-search/internal/scheduler"
 	"tg-search/internal/search"
 	"tg-search/internal/session"
+	"tg-search/internal/storage"
 	"tg-search/internal/telegram"
 )
 
@@ -20,6 +22,11 @@ type AccountRuntime interface {
 }
 
 type Dependencies struct {
+	Users            *repository.UserRepository
+	APIKeys          *repository.APIKeyRepository
+	Settings         *repository.SettingsRepository
+	AdminAuth        *adminauth.Service
+	StorageUsage     *storage.UsageService
 	Accounts         *repository.AccountRepository
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
@@ -47,6 +54,14 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	h := handlers{deps: deps}
 	api := router.Group("/api")
+	api.GET("/setup/status", h.setupStatus)
+	api.POST("/setup/admin", h.setupAdmin)
+	api.POST("/setup/api-key", h.setupAPIKey)
+	api.POST("/setup/complete", h.setupComplete)
+	api.POST("/auth/login", h.authLogin)
+	api.POST("/auth/logout", h.authLogout)
+	api.GET("/auth/me", h.authMe)
+	api.GET("/storage/usage", h.storageUsage)
 	api.GET("/status", h.status)
 	api.POST("/login/send-code", h.sendCode)
 	api.POST("/login/sign-in", h.signIn)

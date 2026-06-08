@@ -15,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"tg-search/internal/adminauth"
 	"tg-search/internal/channel"
+	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/history"
 	"tg-search/internal/link"
@@ -26,6 +28,7 @@ import (
 	"tg-search/internal/scheduler"
 	"tg-search/internal/search"
 	"tg-search/internal/session"
+	"tg-search/internal/storage"
 	"tg-search/internal/telegram"
 )
 
@@ -67,6 +70,133 @@ func TestCoreReadAPIs(t *testing.T) {
 		if _, ok := body[tc.key]; !ok {
 			t.Fatalf("%s response missing key %q: %s", tc.path, tc.key, w.Body.String())
 		}
+	}
+}
+
+func TestSetupAndAuthAPIs(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup status code = %d body=%s", w.Code, w.Body.String())
+	}
+	var status model.SetupStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if status.AdminConfigured {
+		t.Fatalf("admin_configured = true, want false")
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/admin", bytes.NewBufferString(`{"username":"admin","password":"secret123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("setup admin code = %d body=%s", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"admin","password":"secret123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("login code = %d body=%s", w.Code, w.Body.String())
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || cookies[0].Name != adminSessionCookie || !cookies[0].HttpOnly {
+		t.Fatalf("cookies = %+v, want HttpOnly %s cookie", cookies, adminSessionCookie)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.AddCookie(cookies[0])
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me code = %d body=%s", w.Code, w.Body.String())
+	}
+	var me model.User
+	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
+		t.Fatalf("decode me: %v", err)
+	}
+	if me.Username != "admin" || me.PasswordHash != "" {
+		t.Fatalf("me = %+v, want admin without password hash", me)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.AddCookie(cookies[0])
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("logout code = %d body=%s", w.Code, w.Body.String())
+	}
+	cleared := w.Result().Cookies()
+	if len(cleared) != 1 || cleared[0].MaxAge >= 0 {
+		t.Fatalf("logout cookies = %+v, want cleared session", cleared)
+	}
+}
+
+func TestSetupAPIKeyCreatesKeyOnce(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/api-key", bytes.NewBufferString(`{"name":"cli"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("api key code = %d body=%s", w.Code, w.Body.String())
+	}
+	var body struct {
+		Name   string `json:"name"`
+		Prefix string `json:"prefix"`
+		Key    string `json:"key"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode api key: %v", err)
+	}
+	if body.Name != "cli" || len(body.Prefix) != 8 || len(body.Key) != 64 {
+		t.Fatalf("api key response = %+v", body)
+	}
+	count, err := deps.APIKeys.CountEnabled(context.Background())
+	if err != nil {
+		t.Fatalf("count keys: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("enabled key count = %d, want 1", count)
+	}
+}
+
+func TestStorageUsageAPI(t *testing.T) {
+	deps := testDeps(t)
+	root := t.TempDir()
+	writeSizedFile(t, filepath.Join(root, "tg-search.db"), 10)
+	writeSizedFile(t, filepath.Join(root, "index", "fts.data"), 20)
+	writeSizedFile(t, filepath.Join(root, "thumbnails", "thumb.bin"), 30)
+	deps.StorageUsage = storage.NewUsageService(config.Config{
+		Storage: config.StorageConfig{
+			Path:          root,
+			MaxDBSize:     config.Size(100),
+			MaxMediaCache: config.Size(100),
+		},
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/storage/usage", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("storage usage code = %d body=%s", w.Code, w.Body.String())
+	}
+	var usage model.StorageUsage
+	if err := json.Unmarshal(w.Body.Bytes(), &usage); err != nil {
+		t.Fatalf("decode usage: %v", err)
+	}
+	if usage.DBBytes != 10 || usage.IndexBytes != 20 || usage.MediaCacheBytes != 30 || usage.TotalBytes != 60 {
+		t.Fatalf("usage = %+v", usage)
 	}
 }
 
@@ -817,7 +947,8 @@ func testDeps(t *testing.T) Dependencies {
 
 func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	t.Helper()
-	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	root := t.TempDir()
+	conn, err := db.Open(filepath.Join(root, "tg-search.db"))
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}
@@ -832,6 +963,9 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	watchRules := repository.NewWatchRuleRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
+	users := repository.NewUserRepository(conn)
+	apiKeys := repository.NewAPIKeyRepository(conn)
+	settings := repository.NewSettingsRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
 	client := telegram.NopClient{}
 	watchFilter := messagefilter.New(watchRules)
@@ -843,9 +977,11 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelService := channel.NewService(channels, client, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
+		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
-		Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
+		StorageUsage: storage.NewUsageService(config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}),
+		Search:       searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn
 }
@@ -917,4 +1053,14 @@ func sameStringSlices(got []string, want []string) bool {
 		}
 	}
 	return true
+}
+
+func writeSizedFile(t *testing.T, path string, size int) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+	}
+	if err := os.WriteFile(path, make([]byte, size), 0o600); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
 }

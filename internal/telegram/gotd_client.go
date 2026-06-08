@@ -246,8 +246,13 @@ func profileFromUser(user *tg.User) Profile {
 	first, _ := user.GetFirstName()
 	last, _ := user.GetLastName()
 	username, _ := user.GetUsername()
+	phone, _ := user.GetPhone()
+	if phone != "" && phone[0] != '+' {
+		phone = "+" + phone
+	}
 	return Profile{
 		TelegramUserID: user.ID,
+		Phone:          phone,
 		FirstName:      first,
 		LastName:       last,
 		Username:       username,

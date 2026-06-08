@@ -94,7 +94,7 @@ telegram:
   api_hash: ${API_HASH}
 server:
   host: 127.0.0.1
-  port: 6000
+  port: 9900
 sync:
   workers: 5
   history_batch_size: 100
@@ -102,7 +102,7 @@ storage:
   path: /data/tg-provider
 ```
 
-Port `6000` is not exposed in Dockerfiles and is not intended for host publishing.
+Port `9900` is not exposed in Dockerfiles and is not intended for host publishing.
 
 ## Data Layout
 
@@ -150,12 +150,12 @@ AList-TVBox repository:
   - container starts provider with generated config when no provider config is mounted, using built-in API defaults.
   - user-provided `API_ID` and `API_HASH` override built-in API defaults.
   - user-provided `/data/tg-provider/config.yaml` overrides both environment values and built-in API defaults.
-  - `curl http://127.0.0.1:6000/api/status` succeeds inside the container when provider is configured.
+  - `curl http://127.0.0.1:9900/api/status` succeeds inside the container when provider is configured.
 
 ## Explicit Non-Goals
 
 - No Spring or native application API integration.
 - No search result DTO mapping.
 - No UI pages for Telegram login or provider status.
-- No public exposure of provider port `6000`.
+- No public exposure of provider port `9900`.
 - No revival of the old Python/Telethon TG image tags.

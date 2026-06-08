@@ -46,7 +46,7 @@ assert_contains() {
 assert_contains "docker build -f $ROOT_DIR/Dockerfile --tag=haroldli/tg-search:latest $ROOT_DIR"
 assert_contains "=== generate $TMP_DIR/data/config.yaml ==="
 assert_contains "docker rm -f tg-search"
-assert_contains "docker run -d -p 7000:6000 -e TZ=Asia/Shanghai -v $TMP_DIR/data:/data/tg-search --restart=unless-stopped --name=tg-search haroldli/tg-search:latest"
+assert_contains "docker run -d -p 7000:9900 -e TZ=Asia/Shanghai -v $TMP_DIR/data:/data/tg-search --restart=unless-stopped --name=tg-search haroldli/tg-search:latest"
 assert_contains "docker logs -f tg-search"
 assert_contains "http://192.168.1.20:7000/"
 

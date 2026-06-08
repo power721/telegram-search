@@ -3,7 +3,7 @@ telegram:
   api_hash: 70f574f48a016d683c64f2f7a217d04f
 server:
   host: 0.0.0.0
-  port: 6000
+  port: 9900
 sync:
   workers: 5
   history_batch_size: 100

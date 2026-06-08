@@ -207,7 +207,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:6000',
+        target: 'http://127.0.0.1:9900',
         changeOrigin: true
       }
     }
@@ -1636,7 +1636,7 @@ npm run web:build
 Document development URLs:
 
 ```text
-Backend: http://127.0.0.1:6000
+Backend: http://127.0.0.1:9900
 Frontend: http://127.0.0.1:5173
 ```
 

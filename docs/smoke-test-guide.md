@@ -29,7 +29,7 @@ docker compose up -d
 URLs:
 
 ```text
-Service: http://127.0.0.1:6000
+Service: http://127.0.0.1:9900
 ```
 
 ## Automated Checks
@@ -37,7 +37,7 @@ Service: http://127.0.0.1:6000
 Run:
 
 ```bash
-BASE_URL=http://127.0.0.1:6000 scripts/smoke.sh
+BASE_URL=http://127.0.0.1:9900 scripts/smoke.sh
 ```
 
 The script checks:
@@ -61,17 +61,17 @@ docker compose up -d
 Confirm runtime health:
 
 ```bash
-curl -s http://127.0.0.1:6000/api/health
-curl -s http://127.0.0.1:6000/api/ready
-curl -s http://127.0.0.1:6000/api/storage/usage
+curl -s http://127.0.0.1:9900/api/health
+curl -s http://127.0.0.1:9900/api/ready
+curl -s http://127.0.0.1:9900/api/storage/usage
 ```
 
-Open `http://127.0.0.1:6000` and verify the embedded admin console appears.
+Open `http://127.0.0.1:9900` and verify the embedded admin console appears.
 
 Create admin:
 
 ```bash
-curl -s -X POST http://127.0.0.1:6000/api/setup/admin \
+curl -s -X POST http://127.0.0.1:9900/api/setup/admin \
   -H 'content-type: application/json' \
   -d '{"username":"admin","password":"secret123"}'
 ```
@@ -79,7 +79,7 @@ curl -s -X POST http://127.0.0.1:6000/api/setup/admin \
 Login:
 
 ```bash
-curl -i -X POST http://127.0.0.1:6000/api/auth/login \
+curl -i -X POST http://127.0.0.1:9900/api/auth/login \
   -H 'content-type: application/json' \
   -d '{"username":"admin","password":"secret123"}'
 ```
@@ -117,7 +117,7 @@ Verify backup and restart:
 ```bash
 DATA_DIR=./data scripts/backup.sh
 docker compose restart tg-search
-BASE_URL=http://127.0.0.1:6000 scripts/smoke.sh
+BASE_URL=http://127.0.0.1:9900 scripts/smoke.sh
 ```
 
 For restore drills, stop the service before replacing the database:

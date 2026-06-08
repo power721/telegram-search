@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:6000}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:9900}"
 
 curl --fail --silent "$BASE_URL/api/health" >/dev/null
 curl --fail --silent "$BASE_URL/api/ready" >/dev/null

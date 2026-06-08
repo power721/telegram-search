@@ -14,7 +14,7 @@ telegram:
   api_hash: your_api_hash
 server:
   host: 127.0.0.1
-  port: 6000
+  port: 9900
 sync:
   workers: 5
   history_batch_size: 100
@@ -38,7 +38,7 @@ mkdir -p data
 cp config.yaml data/config.yaml
 docker compose up -d
 docker compose logs -f tg-search
-curl http://127.0.0.1:6000/api/health
+curl http://127.0.0.1:9900/api/health
 ```
 
 The container stores database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`, mounted as `./data` in the example Compose file.
@@ -62,11 +62,11 @@ npm run web:dev
 Development URLs:
 
 ```text
-Backend:  http://127.0.0.1:6000
+Backend:  http://127.0.0.1:9900
 Frontend: http://127.0.0.1:5173
 ```
 
-The Vite development server proxies `/api` requests to the backend at `http://127.0.0.1:6000`.
+The Vite development server proxies `/api` requests to the backend at `http://127.0.0.1:9900`.
 
 ## First-Run Setup
 

@@ -29,7 +29,7 @@ The API and sync services depend on interfaces instead of gotd concrete types wh
 
 ## Data Flow
 
-Startup loads config, creates runtime directories, opens SQLite, runs migrations, constructs repositories/services, and starts the Gin server on `127.0.0.1:6000` by default.
+Startup loads config, creates runtime directories, opens SQLite, runs migrations, constructs repositories/services, and starts the Gin server on `127.0.0.1:9900` by default.
 
 Login APIs create or update account records and delegate send-code/sign-in/password operations to the Telegram gateway. Session files are stored under the configured storage path's `sessions` directory.
 

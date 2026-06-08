@@ -176,7 +176,7 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=go-build /out/tg-search /usr/local/bin/tg-search
-EXPOSE 6000
+EXPOSE 9900
 VOLUME ["/data/tg-search"]
 ENTRYPOINT ["tg-search"]
 ```
@@ -207,7 +207,7 @@ services:
     container_name: tg-search
     restart: unless-stopped
     ports:
-      - "6000:6000"
+      - "9900:9900"
     volumes:
       - ./data:/data/tg-search
     environment:
@@ -365,7 +365,7 @@ Create `scripts/smoke.sh`:
 ```sh
 #!/bin/sh
 set -eu
-BASE_URL="${BASE_URL:-http://127.0.0.1:6000}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:9900}"
 curl --fail --silent "$BASE_URL/api/health" >/dev/null
 curl --fail --silent "$BASE_URL/api/ready" >/dev/null
 curl --fail --silent "$BASE_URL/api/setup/status" >/dev/null
@@ -458,7 +458,7 @@ Include:
 ```bash
 docker compose up -d
 docker compose logs -f tg-search
-curl http://127.0.0.1:6000/api/health
+curl http://127.0.0.1:9900/api/health
 ```
 
 - [ ] **Step 2: Document storage quota operations**

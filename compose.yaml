@@ -5,7 +5,7 @@ services:
     container_name: tg-search
     restart: unless-stopped
     ports:
-      - "6000:6000"
+      - "9900:9900"
     volumes:
       - ./data:/data/tg-search
     environment:

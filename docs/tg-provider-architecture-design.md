@@ -7,7 +7,7 @@ Version: v1.0
 
 AList-TVBox (Spring Boot)
         |
-        | HTTP localhost:6000
+        | HTTP localhost:9900
         v
 +-------------------+
 |   tg-provider     |
@@ -354,7 +354,7 @@ Expose:
 
 localhost only
 
-6000
+9900
 
 No public port mapping.
 
@@ -364,7 +364,7 @@ No public port mapping.
 
 GET
 
-http://127.0.0.1:6000/api/search?q=庆余年
+http://127.0.0.1:9900/api/search?q=庆余年
 
 Use RestTemplate or WebClient.
 

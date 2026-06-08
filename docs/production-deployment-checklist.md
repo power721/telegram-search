@@ -27,7 +27,7 @@
 ```bash
 docker compose up -d
 docker compose logs -f tg-search
-curl http://127.0.0.1:6000/api/health
+curl http://127.0.0.1:9900/api/health
 ```
 
 - `tg-search` starts with `go run ./cmd/tg-search -config config.yaml` or the packaged binary.

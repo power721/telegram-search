@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKFLOW="$ROOT_DIR/.github/workflows/release.yml"
+LOCAL_DOCKERFILE="$ROOT_DIR/Dockerfile"
 DOCKERFILE="$ROOT_DIR/Dockerfile.ci"
 DOCKERIGNORE="$ROOT_DIR/Dockerfile.ci.dockerignore"
 DEFAULT_CONFIG="$ROOT_DIR/docker/config.yaml"
@@ -25,6 +26,7 @@ assert_file_contains() {
 assert_file_contains "$WORKFLOW" "dist/linux/amd64/tg-search"
 assert_file_contains "$WORKFLOW" "dist/linux/arm64/tg-search"
 assert_file_contains "$WORKFLOW" "file: Dockerfile.ci"
+assert_file_contains "$LOCAL_DOCKERFILE" "COPY docker/config.yaml /app/config.yaml"
 assert_file_contains "$DOCKERFILE" "ARG TARGETARCH"
 assert_file_contains "$DOCKERFILE" 'COPY --chmod=755 dist/linux/${TARGETARCH}/tg-search /usr/local/bin/tg-search'
 assert_file_contains "$DOCKERFILE" "COPY docker/config.yaml /app/config.yaml"

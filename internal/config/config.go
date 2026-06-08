@@ -132,7 +132,7 @@ func defaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
 			Host: "127.0.0.1",
-			Port: 6000,
+			Port: 9900,
 		},
 		Sync: SyncConfig{
 			Workers:          5,

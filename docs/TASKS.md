@@ -82,7 +82,7 @@ Config sections:
 Acceptance Criteria:
 
 - Missing required Telegram fields return a clear error.
-- Default server is `127.0.0.1:6000`.
+- Default server is `127.0.0.1:9900`.
 - Default storage path is `/data/tg-provider`.
 
 ## Task 004: Add runtime directory initialization
@@ -275,7 +275,7 @@ Start HTTP API server using Gin.
 Acceptance Criteria:
 
 - Server listens on configured host and port.
-- Default bind address is `127.0.0.1:6000`.
+- Default bind address is `127.0.0.1:9900`.
 - `/api/status` returns a basic response.
 
 ## Task 018: Add health/status API
@@ -1083,7 +1083,7 @@ Harden server binding and Docker integration.
 Acceptance Criteria:
 
 - Default service listens on localhost only.
-- Docker does not publish port 6000 publicly by default.
+- Docker does not publish port 9900 publicly by default.
 
 ## Task 089: Add Spring Boot provider adapter design
 

@@ -1539,7 +1539,7 @@ Add to `docs/api.md` after the channel API section:
 创建监听规则。
 
 ```bash
-curl -s -X POST http://127.0.0.1:6000/api/watch-rules \
+curl -s -X POST http://127.0.0.1:9900/api/watch-rules \
   -H 'content-type: application/json' \
   -d '{"channel_id":1,"enabled":true,"includes":["庆余年"],"excludes":["预告"]}'
 ```

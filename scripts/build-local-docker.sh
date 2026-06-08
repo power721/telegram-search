@@ -8,7 +8,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE="haroldli/tg-search:latest"
 CONTAINER_NAME="tg-search"
 DATA_DIR="$ROOT_DIR/data"
-PORT=6000
+PORT=9900
 TZ_VALUE="${TZ:-Asia/Shanghai}"
 CONFIG_SOURCE=""
 EXTRA_MOUNTS=()
@@ -22,7 +22,7 @@ and follow container logs.
 
 Options:
   -d  Host data directory mounted to /data/tg-search. Default: $ROOT_DIR/data
-  -p  Host port mapped to container port 6000. Default: 6000
+  -p  Host port mapped to container port 9900. Default: 9900
   -c  Config file to copy into the data directory before starting.
   -v  Extra Docker volume mount. Can be specified multiple times.
   -h  Show this help.
@@ -82,7 +82,7 @@ telegram:
   api_hash: $api_hash
 server:
   host: 0.0.0.0
-  port: 6000
+  port: 9900
 sync:
   workers: 5
   history_batch_size: 100
@@ -143,7 +143,7 @@ docker build -f "$ROOT_DIR/Dockerfile" --tag="$IMAGE" "$ROOT_DIR"
 echo "=== restart $CONTAINER_NAME ==="
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 docker run -d \
-  -p "$PORT:6000" \
+  -p "$PORT:9900" \
   -e "TZ=$TZ_VALUE" \
   -v "$DATA_DIR:/data/tg-search" \
   "${EXTRA_MOUNTS[@]}" \

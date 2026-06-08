@@ -33,8 +33,8 @@ telegram:
 	if cfg.Server.Host != "127.0.0.1" {
 		t.Fatalf("host = %q, want default localhost", cfg.Server.Host)
 	}
-	if cfg.Server.Port != 6000 {
-		t.Fatalf("port = %d, want 6000", cfg.Server.Port)
+	if cfg.Server.Port != 9900 {
+		t.Fatalf("port = %d, want 9900", cfg.Server.Port)
 	}
 	if cfg.Sync.Workers != 5 {
 		t.Fatalf("workers = %d, want 5", cfg.Sync.Workers)

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	channelpkg "tg-search/internal/channel"
 	dbpkg "tg-search/internal/db"
 	"tg-search/internal/link"
@@ -36,6 +38,7 @@ type Options struct {
 	HistoryBatchSize int
 	Workers          int
 	RetryPolicy      retry.Policy
+	Logger           *zap.Logger
 }
 
 type Service struct {
@@ -53,6 +56,7 @@ type Service struct {
 	historyBatchSize int
 	workers          int
 	retryPolicy      retry.Policy
+	logger           *zap.Logger
 	mu               sync.Mutex
 	runningChannels  map[int64]struct{}
 }
@@ -91,6 +95,9 @@ func NewService(opts Options) *Service {
 	if opts.Cursors == nil && opts.DB != nil {
 		opts.Cursors = repository.NewSyncCursorRepository(opts.DB)
 	}
+	if opts.Logger == nil {
+		opts.Logger = zap.NewNop()
+	}
 	return &Service{
 		db:               opts.DB,
 		accounts:         opts.Accounts,
@@ -106,6 +113,7 @@ func NewService(opts Options) *Service {
 		historyBatchSize: opts.HistoryBatchSize,
 		workers:          opts.Workers,
 		retryPolicy:      opts.RetryPolicy,
+		logger:           opts.Logger,
 		runningChannels:  map[int64]struct{}{},
 	}
 }
@@ -127,6 +135,7 @@ func (s *Service) SyncChannelWithProgress(ctx context.Context, channelID int64, 
 }
 
 func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
+	started := time.Now()
 	result := SyncManyResult{
 		Results:  map[int64]SyncResult{},
 		Failures: map[int64]string{},
@@ -146,6 +155,7 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 		unique = append(unique, channelID)
 	}
 	if len(unique) == 0 {
+		s.logger.Info("history sync skipped", zap.Int("requested_channels", len(channelIDs)), zap.Int("skipped", result.Skipped))
 		return result
 	}
 
@@ -166,6 +176,7 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 			defer wg.Done()
 			for channelID := range jobs {
 				if !s.tryAcquireChannel(channelID) {
+					s.logger.Info("history sync channel skipped because already running", zap.Int64("channel_id", channelID))
 					mu.Lock()
 					result.Skipped++
 					mu.Unlock()
@@ -175,8 +186,10 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 				s.releaseChannel(channelID)
 				mu.Lock()
 				if err != nil {
+					s.logger.Warn("history sync channel failed", zap.Int64("channel_id", channelID), zap.Error(err))
 					result.Failures[channelID] = err.Error()
 				} else {
+					s.logger.Info("history sync channel completed", zap.Int64("channel_id", channelID), zap.Int("messages", syncResult.Messages), zap.Int("links", syncResult.Links))
 					result.Queued++
 					result.Results[channelID] = syncResult
 				}
@@ -195,16 +208,33 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 	}
 	close(jobs)
 	wg.Wait()
+	s.logger.Info("history sync many completed",
+		zap.Int("requested_channels", len(channelIDs)),
+		zap.Int("unique_channels", len(unique)),
+		zap.Int("queued", result.Queued),
+		zap.Int("skipped", result.Skipped),
+		zap.Int("failures", len(result.Failures)),
+		zap.Duration("duration", time.Since(started)),
+	)
 	return result
 }
 
 func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
+	started := time.Now()
+	s.logger.Info("history sync channel started", zap.Int64("channel_id", channelID), zap.String("profile", profile))
 	var result SyncResult
 	err := s.retryPolicy.Run(ctx, func() error {
 		next, err := s.syncChannelOnce(ctx, channelID, profile, progress)
 		result = next
 		return err
 	}, func(ctx context.Context, attempt retry.Attempt) {
+		s.logger.Warn("history sync retry scheduled",
+			zap.Int64("channel_id", channelID),
+			zap.Int("attempt", attempt.Number),
+			zap.Duration("delay", attempt.Delay),
+			zap.String("classification", string(attempt.Classification.Kind)),
+			zap.Error(attempt.Classification.Err),
+		)
 		if attempt.Classification.Kind == retry.KindFloodWait {
 			s.markChannelAccountStatus(ctx, channelID, model.AccountStatusFloodWait)
 			if progress != nil {
@@ -215,11 +245,27 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 		}
 	})
 	if err != nil {
+		s.logger.Error("history sync channel failed",
+			zap.Int64("channel_id", channelID),
+			zap.Int("messages", result.Messages),
+			zap.Int("links", result.Links),
+			zap.Duration("duration", time.Since(started)),
+			zap.Error(err),
+		)
 		return result, err
 	}
 	if result.Messages > 0 {
-		return result, s.refreshResourceStats(ctx)
+		if err := s.refreshResourceStats(ctx); err != nil {
+			s.logger.Error("history sync refresh resource stats failed", zap.Int64("channel_id", channelID), zap.Error(err))
+			return result, err
+		}
 	}
+	s.logger.Info("history sync channel completed",
+		zap.Int64("channel_id", channelID),
+		zap.Int("messages", result.Messages),
+		zap.Int("links", result.Links),
+		zap.Duration("duration", time.Since(started)),
+	)
 	return result, nil
 }
 

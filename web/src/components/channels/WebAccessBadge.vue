@@ -6,8 +6,8 @@ defineProps<{
 </script>
 
 <template>
-  <n-tag v-if="error" size="small" type="error">检测失败</n-tag>
-  <n-tag v-else-if="value === true" size="small" type="success">可访问</n-tag>
-  <n-tag v-else-if="value === false" size="small" type="warning">不可访问</n-tag>
-  <n-tag v-else size="small">未检测</n-tag>
+  <span v-if="error" class="status-pill status-danger">检测失败</span>
+  <span v-else-if="value === true" class="status-pill status-success">可访问</span>
+  <span v-else-if="value === false" class="status-pill status-warning">不可访问</span>
+  <span v-else class="status-pill status-muted">未检测</span>
 </template>

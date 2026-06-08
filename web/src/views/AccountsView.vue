@@ -51,6 +51,13 @@ function statusLabel(status: string) {
   return labels[status] ?? status
 }
 
+function statusClass(status: string) {
+  if (status === 'ONLINE') return 'status-success'
+  if (status === 'LOGIN_REQUIRED' || status === 'PASSWORD_REQUIRED') return 'status-warning'
+  if (status === 'ERROR') return 'status-danger'
+  return 'status-muted'
+}
+
 function needsLogin(account: TelegramAccount) {
   return account.status === 'LOGIN_REQUIRED'
 }
@@ -64,6 +71,10 @@ function openTelegramLogin(account?: TelegramAccount) {
   telegram.passwordRequired = false
   telegram.loginResult = null
   loginDialogVisible.value = true
+}
+
+function closeTelegramLogin() {
+  loginDialogVisible.value = false
 }
 
 async function sendCode() {
@@ -127,6 +138,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
       <div>
         <p class="page-kicker">Telegram</p>
         <h1 class="page-title">账号</h1>
+        <p class="page-subtitle">管理 Telegram 会话状态、重新登录和账号删除。</p>
       </div>
       <div class="header-actions">
         <n-button :loading="telegram.loading" @click="telegram.loadAccounts">刷新</n-button>
@@ -135,7 +147,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
     </div>
 
     <div class="table-panel">
-      <table>
+      <table class="data-table">
         <thead>
           <tr>
             <th>手机号</th>
@@ -147,13 +159,19 @@ function confirmDeleteAccount(account: TelegramAccount) {
           </tr>
         </thead>
         <tbody>
+          <tr v-if="telegram.loading && telegram.accounts.length === 0">
+            <td colspan="6">
+              <div class="loading-stack" aria-label="正在加载账号">
+                <span class="skeleton-line" />
+                <span class="skeleton-line short" />
+              </div>
+            </td>
+          </tr>
           <tr v-for="account in telegram.accounts" :key="account.id">
             <td>{{ account.phone }}</td>
             <td>{{ displayName(account.first_name, account.last_name, account.username) }}</td>
             <td>
-              <n-tag size="small" :type="account.status === 'ONLINE' ? 'success' : 'default'">
-                {{ statusLabel(account.status) }}
-              </n-tag>
+              <span class="status-pill" :class="statusClass(account.status)">{{ statusLabel(account.status) }}</span>
             </td>
             <td>{{ formatDate(account.last_online_at) }}</td>
             <td>{{ account.last_error || '-' }}</td>
@@ -177,8 +195,13 @@ function confirmDeleteAccount(account: TelegramAccount) {
               </div>
             </td>
           </tr>
-          <tr v-if="telegram.accounts.length === 0">
-            <td colspan="6" class="empty-cell">暂无账号</td>
+          <tr v-if="!telegram.loading && telegram.accounts.length === 0">
+            <td colspan="6">
+              <div class="empty-state">
+                <strong>暂无账号</strong>
+                <span>添加 Telegram 账号后即可同步频道元数据。</span>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -186,15 +209,29 @@ function confirmDeleteAccount(account: TelegramAccount) {
 
     <n-modal v-model:show="loginDialogVisible" :mask-closable="false">
       <n-card class="login-dialog" :bordered="false">
-        <p class="page-kicker">Telegram</p>
-        <h2>Telegram 登录</h2>
+        <div class="login-dialog-header">
+          <div>
+            <p class="page-kicker">Telegram</p>
+            <h2>Telegram 登录</h2>
+          </div>
+          <n-button
+            aria-label="关闭 Telegram 登录"
+            circle
+            quaternary
+            size="small"
+            :disabled="telegram.loading"
+            @click="closeTelegramLogin"
+          >
+            ×
+          </n-button>
+        </div>
         <n-form @submit.prevent>
           <n-form-item label="手机号">
             <n-input v-model:value="loginPhone" autocomplete="tel" />
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 
-          <div class="form-block">
+          <div class="form-section">
             <n-form-item label="验证码">
               <n-input
                 v-model:value="loginCode"
@@ -208,7 +245,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
             </n-button>
           </div>
 
-          <div v-if="telegram.passwordRequired" class="form-block">
+          <div v-if="telegram.passwordRequired" class="form-section">
             <n-form-item label="两步验证密码">
               <n-input v-model:value="loginPassword" type="password" autocomplete="current-password" />
             </n-form-item>
@@ -218,64 +255,17 @@ function confirmDeleteAccount(account: TelegramAccount) {
           </div>
         </n-form>
         <p v-if="metadataText" class="sync-result">{{ metadataText }}</p>
+        <div class="login-dialog-actions">
+          <n-button :disabled="telegram.loading" @click="closeTelegramLogin">取消</n-button>
+        </div>
       </n-card>
     </n-modal>
   </section>
 </template>
 
 <style scoped>
-.page-header {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.table-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
 table {
-  border-collapse: collapse;
   min-width: 760px;
-  width: 100%;
-}
-
-th,
-td {
-  border-bottom: 1px solid #edf0f5;
-  padding: 11px 12px;
-  text-align: left;
-  vertical-align: middle;
-}
-
-th {
-  color: #667085;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-tbody tr:last-child td {
-  border-bottom: 0;
 }
 
 .action-buttons {
@@ -284,18 +274,16 @@ tbody tr:last-child td {
   white-space: nowrap;
 }
 
-.empty-cell {
-  color: #667085;
-  text-align: center;
+.login-dialog {
+  max-width: 420px;
+  width: min(420px, calc(100vw - 32px));
 }
 
-.login-dialog {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  max-width: 420px;
-  padding: 24px;
-  width: min(420px, calc(100vw - 32px));
+.login-dialog-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .login-dialog h2 {
@@ -303,25 +291,24 @@ tbody tr:last-child td {
   margin: 0 0 22px;
 }
 
-.form-block {
-  border-top: 1px solid #edf0f5;
+.login-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
   margin-top: 16px;
-  padding-top: 16px;
 }
 
 .sync-result {
-  color: #475467;
+  color: var(--app-text-muted);
   margin: 16px 0 0;
 }
 
-@media (max-width: 840px) {
-  .page-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
 
-  .header-actions {
-    align-self: flex-start;
-  }
+.loading-stack .short {
+  width: 58%;
 }
 </style>

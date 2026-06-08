@@ -78,7 +78,7 @@ function save() {
 }
 
 label {
-  color: #354052;
+  color: var(--app-text);
   display: grid;
   gap: 8px;
 }

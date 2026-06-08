@@ -172,7 +172,7 @@ onBeforeUnmount(() => {
         </n-form-item>
         <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 
-        <div class="form-block">
+        <div class="form-section">
           <n-form-item label="验证码">
             <n-input
               v-model:value="code"
@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
           </n-button>
         </div>
 
-        <div v-if="telegram.passwordRequired" class="form-block">
+        <div v-if="telegram.passwordRequired" class="form-section">
           <n-form-item label="两步验证密码">
             <n-input v-model:value="password" type="password" autocomplete="current-password" />
           </n-form-item>
@@ -201,38 +201,8 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.setup-page {
-  align-items: center;
-  display: flex;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.setup-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  max-width: 420px;
-  padding: 24px;
-  width: 100%;
-}
-
-.eyebrow {
-  color: #667085;
-  font-size: 13px;
-  margin: 0 0 8px;
-}
-
 h1 {
-  font-size: 24px;
   margin: 0 0 22px;
-}
-
-.form-block {
-  border-top: 1px solid #edf0f5;
-  margin-top: 16px;
-  padding-top: 16px;
 }
 
 .mode-switch {
@@ -250,9 +220,9 @@ h1 {
 .qr-surface {
   align-items: center;
   aspect-ratio: 1;
-  background: #f8fafc;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   display: flex;
   justify-content: center;
   margin: 0 auto;
@@ -267,9 +237,9 @@ h1 {
 
 .qr-placeholder {
   align-items: center;
-  border: 1px dashed #98a2b3;
-  border-radius: 8px;
-  color: #667085;
+  border: 1px dashed var(--app-border-strong);
+  border-radius: var(--app-radius);
+  color: var(--app-text-muted);
   display: flex;
   font-size: 20px;
   font-weight: 700;
@@ -279,7 +249,7 @@ h1 {
 }
 
 .sync-result {
-  color: #475467;
+  color: var(--app-text-muted);
   margin: 16px 0 0;
 }
 </style>

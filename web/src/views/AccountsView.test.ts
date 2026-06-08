@@ -110,6 +110,18 @@ describe('AccountsView', () => {
     expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+10000000001')
   })
 
+  it('closes the telegram login dialog from close and cancel controls', async () => {
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '添加账号')!.trigger('click')
+    expect(wrapper.text()).toContain('Telegram 登录')
+    expect(wrapper.find('[aria-label="关闭 Telegram 登录"]').exists()).toBe(true)
+
+    await wrapper.findAll('button').find((button) => button.text() === '取消')!.trigger('click')
+    expect(wrapper.text()).not.toContain('Telegram 登录')
+  })
+
   it('logs in from the account dialog without navigating to setup', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()

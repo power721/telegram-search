@@ -72,31 +72,11 @@ async function submit() {
 </template>
 
 <style scoped>
-.setup-page {
-  align-items: center;
-  display: flex;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 24px;
-}
-
 .setup-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
   max-width: 520px;
-  padding: 24px;
-  width: 100%;
-}
-
-.eyebrow {
-  color: #667085;
-  font-size: 13px;
-  margin: 0 0 8px;
 }
 
 h1 {
-  font-size: 24px;
   margin: 0 0 22px;
 }
 </style>

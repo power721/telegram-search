@@ -64,6 +64,7 @@ async function changePageSize(event: Event) {
       <div>
         <p class="page-kicker">运行状态</p>
         <h1 class="page-title">任务</h1>
+        <p class="page-subtitle">查看后台同步、检测、重试和限流恢复任务。</p>
       </div>
       <n-button :loading="tasks.loading" @click="refreshTasks">刷新</n-button>
     </div>
@@ -113,69 +114,9 @@ async function changePageSize(event: Event) {
 </template>
 
 <style scoped>
-.page-header {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
-.error-strip {
-  background: #fff2f0;
-  border: 1px solid #ffccc7;
-  border-radius: 6px;
-  color: #a8071a;
-  margin-bottom: 12px;
-  padding: 9px 10px;
-}
-
-.pagination {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 14px;
-}
-
 .pagination label {
   align-items: center;
-  color: #667085;
   display: inline-flex;
   gap: 6px;
-}
-
-.pagination select {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 8px;
-}
-
-.pagination button {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 10px;
-}
-
-.pagination button:disabled {
-  color: #98a2b3;
-  cursor: not-allowed;
-}
-
-.pagination span {
-  color: #667085;
 }
 </style>

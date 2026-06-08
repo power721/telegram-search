@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import SearchFilters from '@/components/search/SearchFilters.vue'
 import SearchResults from '@/components/search/SearchResults.vue'
 import { useSearchStore } from '@/stores/search'
 
 const pageSizeOptions = [20, 50, 100]
 const search = useSearchStore()
+const route = useRoute()
 const query = ref('')
 const pageSize = ref(50)
 const offset = ref(0)
@@ -53,6 +55,10 @@ async function changePageSize(event: Event) {
 }
 
 onMounted(() => {
+  const routeQuery = route?.query?.q
+  if (typeof routeQuery === 'string') {
+    query.value = routeQuery
+  }
   void runSearch()
 })
 </script>
@@ -63,6 +69,7 @@ onMounted(() => {
       <div>
         <p class="page-kicker">全局搜索</p>
         <h1 class="page-title">搜索</h1>
+        <p class="page-subtitle">一次查询消息、链接、文件和频道，结果按本地索引来源分组。</p>
       </div>
     </div>
 
@@ -70,6 +77,7 @@ onMounted(() => {
     <p v-if="search.error" class="error-text">{{ search.error }}</p>
     <SearchResults
       class="results"
+      :loading="search.loading"
       :remote-items="search.remoteResults?.items"
       :result="search.global"
     />
@@ -104,64 +112,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page-header {
-  margin-bottom: 18px;
-}
-
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
 .results {
-  margin-top: 16px;
-}
-
-.error-text {
-  color: #b42318;
-}
-
-.pagination {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: flex-end;
-  margin-top: 14px;
+  min-width: 0;
 }
 
 .pagination label {
   align-items: center;
-  color: #667085;
   display: inline-flex;
   gap: 6px;
-}
-
-.pagination select {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 8px;
-}
-
-.pagination button {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 10px;
-}
-
-.pagination button:disabled {
-  color: #98a2b3;
-  cursor: not-allowed;
-}
-
-.pagination span {
-  color: #667085;
 }
 </style>

@@ -18,8 +18,11 @@ const categories = [
 
 <template>
   <form class="resource-filters" @submit.prevent="emit('submit')">
-    <n-input v-model:value="keyword" clearable placeholder="搜索资源库" />
+    <label class="filter-label" for="resource-keyword">关键词</label>
+    <n-input id="resource-keyword" v-model:value="keyword" clearable placeholder="搜索资源库" />
+    <label class="filter-label" for="resource-category">类型</label>
     <n-select
+      id="resource-category"
       v-model:value="category"
       :options="categories"
       class="category-select"
@@ -32,9 +35,7 @@ const categories = [
 
 <style scoped>
 .resource-filters {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) 180px auto;
+  grid-template-columns: auto minmax(0, 1fr) auto 180px auto;
 }
 
 @media (max-width: 760px) {

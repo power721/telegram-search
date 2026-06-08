@@ -148,13 +148,19 @@ describe('ChannelsView', () => {
   })
 
   function channelTitles(wrapper: ReturnType<typeof mount>) {
-    return wrapper.findAll('tbody tr').map((row) => row.findAll('td').at(0)?.text() ?? '')
+    return wrapper.findAll('tbody tr').map(rowTitle)
   }
 
   function channelRow(wrapper: ReturnType<typeof mount>, title: string) {
-    const row = wrapper.findAll('tbody tr').find((row) => row.findAll('td').at(0)?.text() === title)
+    const row = wrapper.findAll('tbody tr').find((row) => rowTitle(row) === title)
     if (!row) throw new Error(`missing row ${title}`)
     return row
+  }
+
+  function rowTitle(row: ReturnType<ReturnType<typeof mount>['findAll']>[number]) {
+    const titleWithDescription = row.find('.title-with-description')
+    if (titleWithDescription.exists()) return titleWithDescription.text()
+    return row.findAll('td').at(0)?.text() ?? ''
   }
 
   function mountChannelsView() {
@@ -191,6 +197,11 @@ describe('ChannelsView', () => {
             template:
               '<select v-bind="$attrs" :value="value" @change="$emit(\'update:value\', $event.target.value)"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>'
           },
+          'n-tooltip': {
+            props: ['contentStyle'],
+            template:
+              '<span class="tooltip"><slot name="trigger" /><span class="tooltip-content" :style="contentStyle"><slot /></span></span>'
+          },
           'n-drawer': true,
           'n-drawer-content': true,
           'n-switch': true
@@ -211,9 +222,11 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('无')
     expect(wrapper.text()).toContain('未监听')
     expect(wrapper.text()).toContain('监听中')
-    for (const label of ['标题', '用户名', '类型', '成员数', '描述', '同步状态', '监听状态', '已索引消息', '网页访问', '操作']) {
+    for (const label of ['标题', '用户名', '类型', '成员数', '同步状态', '监听状态', '已索引消息', '网页访问', '操作']) {
       expect(wrapper.text()).toContain(label)
     }
+    expect(wrapper.findAll('thead th')).toHaveLength(9)
+    expect(wrapper.findAll('thead th').some((header) => header.text() === '描述')).toBe(false)
     expect(wrapper.find('.profile-legend').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('同步档位')
     expect(wrapper.text()).not.toContain('普通')
@@ -221,6 +234,9 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('42')
     expect(wrapper.text()).toContain('1200')
     expect(wrapper.text()).toContain('Public movie releases')
+    const titleCell = channelRow(wrapper, 'Movies').findAll('td').at(0)
+    expect(titleCell?.find('.tooltip-content').text()).toBe('Public movie releases')
+    expect(titleCell?.find('.tooltip-content').attributes('style')).toContain('overflow-wrap: anywhere')
     const usernameCell = channelRow(wrapper, 'Movies').findAll('td').at(1)
     expect(usernameCell?.text()).toBe('@movies')
     const usernameLink = usernameCell?.find('a')
@@ -229,7 +245,7 @@ describe('ChannelsView', () => {
     const inaccessibleUsernameCell = channelRow(wrapper, 'Anime').findAll('td').at(1)
     expect(inaccessibleUsernameCell?.text()).toBe('@animehub')
     expect(inaccessibleUsernameCell?.find('a').exists()).toBe(false)
-    const webAccessCell = channelRow(wrapper, 'Movies').findAll('td').at(8)
+    const webAccessCell = channelRow(wrapper, 'Movies').findAll('td').at(7)
     expect(webAccessCell?.text()).toBe('可访问')
     const webAccessLink = webAccessCell?.find('a')
     expect(webAccessLink?.attributes('href')).toBe('https://t.me/s/movies')

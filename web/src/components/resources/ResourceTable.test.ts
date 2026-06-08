@@ -8,6 +8,18 @@ describe('ResourceTable', () => {
     expect(resourceTableSource).toMatch(/\.resource-table\s*\{[\s\S]*\bwidth:\s*100%;/)
   })
 
+  it('uses the shared compact table pattern with sticky headers and empty state', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: []
+      }
+    })
+
+    expect(wrapper.find('.resource-table').classes()).toContain('data-table')
+    expect(wrapper.find('.table-head').classes()).toContain('sticky-head')
+    expect(wrapper.find('.empty-state').text()).toContain('暂无资源')
+  })
+
   it('shows each resource message publish time', () => {
     const publishedAt = '2026-06-08T04:30:00Z'
     const wrapper = mount(ResourceTable, {

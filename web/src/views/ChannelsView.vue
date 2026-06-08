@@ -78,6 +78,14 @@ const webAccessOptions = [
   { label: '检测失败', value: 'error' }
 ]
 
+const descriptionTooltipStyle = {
+  maxWidth: '360px',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  lineHeight: '1.5'
+}
+
 const filteredChannels = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   return channels.items
@@ -144,6 +152,19 @@ function listenStateLabel(state: string) {
     error: '监听异常'
   }
   return labels[state] ?? state
+}
+
+function syncStateClass(state: string) {
+  if (state === 'synced') return 'status-success'
+  if (state === 'syncing' || state === 'pending') return 'status-info'
+  if (state === 'failed') return 'status-danger'
+  return 'status-muted'
+}
+
+function listenStateClass(state: string) {
+  if (state === 'enabled') return 'status-success'
+  if (state === 'error') return 'status-danger'
+  return 'status-muted'
 }
 
 function webAccessState(channel: TelegramChannel) {
@@ -386,16 +407,22 @@ async function useGlobalRule() {
       <div>
         <p class="page-kicker">Telegram</p>
         <h1 class="page-title">频道</h1>
+        <p class="page-subtitle">筛选频道、检查网页访问、启动历史同步并管理监听规则。</p>
       </div>
       <n-button :loading="channels.loading" @click="refreshChannels">刷新</n-button>
     </div>
 
     <div class="channel-toolbar">
-      <n-input v-model:value="searchQuery" class="channel-search" clearable placeholder="搜索标题或用户名" />
-      <n-select v-model:value="typeFilter" class="type-filter" :options="typeOptions" />
-      <n-select v-model:value="syncStateFilter" class="sync-state-filter" :options="syncStateOptions" />
-      <n-select v-model:value="listenStateFilter" class="listen-state-filter" :options="listenStateOptions" />
-      <n-select v-model:value="webAccessFilter" class="web-access-filter" :options="webAccessOptions" />
+      <label class="filter-label" for="channel-search">搜索</label>
+      <n-input id="channel-search" v-model:value="searchQuery" class="channel-search" clearable placeholder="搜索标题或用户名" />
+      <label class="filter-label" for="channel-type">类型</label>
+      <n-select id="channel-type" v-model:value="typeFilter" class="type-filter" :options="typeOptions" />
+      <label class="filter-label" for="channel-sync">同步</label>
+      <n-select id="channel-sync" v-model:value="syncStateFilter" class="sync-state-filter" :options="syncStateOptions" />
+      <label class="filter-label" for="channel-listen">监听</label>
+      <n-select id="channel-listen" v-model:value="listenStateFilter" class="listen-state-filter" :options="listenStateOptions" />
+      <label class="filter-label" for="channel-web">网页访问</label>
+      <n-select id="channel-web" v-model:value="webAccessFilter" class="web-access-filter" :options="webAccessOptions" />
       <n-button
         class="batch-web-access-check"
         :disabled="visibleWebCheckChannelIds.length === 0"
@@ -410,7 +437,7 @@ async function useGlobalRule() {
     </div>
 
     <div class="table-panel">
-      <table>
+      <table class="data-table">
         <thead>
           <tr>
             <th>
@@ -425,7 +452,6 @@ async function useGlobalRule() {
             </th>
             <th>类型</th>
             <th>成员数</th>
-            <th>描述</th>
             <th>同步状态</th>
             <th>监听状态</th>
             <th>
@@ -438,8 +464,25 @@ async function useGlobalRule() {
           </tr>
         </thead>
         <tbody>
+          <tr v-if="channels.loading && channels.items.length === 0">
+            <td colspan="9">
+              <div class="loading-stack" aria-label="正在加载频道">
+                <span class="skeleton-line" />
+                <span class="skeleton-line" />
+                <span class="skeleton-line short" />
+              </div>
+            </td>
+          </tr>
           <tr v-for="channel in filteredChannels" :key="channel.id">
-            <td>{{ channel.title }}</td>
+            <td class="title-cell">
+              <n-tooltip v-if="channel.description" trigger="hover" :content-style="descriptionTooltipStyle">
+                <template #trigger>
+                  <span class="title-with-description">{{ channel.title }}</span>
+                </template>
+                {{ channel.description }}
+              </n-tooltip>
+              <span v-else>{{ channel.title }}</span>
+            </td>
             <td>
               <a
                 v-if="webAccessUrl(channel)"
@@ -454,9 +497,16 @@ async function useGlobalRule() {
             </td>
             <td>{{ channelTypeLabel(channel.type) }}</td>
             <td>{{ channel.member_count }}</td>
-            <td class="description-cell">{{ channel.description || '-' }}</td>
-            <td>{{ syncStateLabel(channel.sync_state) }}</td>
-            <td>{{ listenStateLabel(channel.listen_state) }}</td>
+            <td>
+              <span class="status-pill" :class="syncStateClass(channel.sync_state)">
+                {{ syncStateLabel(channel.sync_state) }}
+              </span>
+            </td>
+            <td>
+              <span class="status-pill" :class="listenStateClass(channel.listen_state)">
+                {{ listenStateLabel(channel.listen_state) }}
+              </span>
+            </td>
             <td>{{ channel.indexed_message_count }}</td>
             <td :title="channel.web_access_error || undefined">
               <a
@@ -488,8 +538,13 @@ async function useGlobalRule() {
               </n-button>
             </td>
           </tr>
-          <tr v-if="filteredChannels.length === 0">
-            <td colspan="10" class="empty-cell">暂无频道</td>
+          <tr v-if="!channels.loading && filteredChannels.length === 0">
+            <td colspan="9">
+              <div class="empty-state">
+                <strong>暂无频道</strong>
+                <span>调整筛选条件，或刷新 Telegram 元数据。</span>
+              </div>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -555,71 +610,28 @@ async function useGlobalRule() {
 </template>
 
 <style scoped>
-.page-header {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
-.table-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  overflow-x: auto;
-}
-
 .channel-toolbar {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto auto;
-  margin-bottom: 12px;
+  grid-template-columns:
+    auto minmax(220px, 1.3fr)
+    auto minmax(130px, 0.8fr)
+    auto minmax(130px, 0.8fr)
+    auto minmax(130px, 0.8fr)
+    auto minmax(130px, 0.8fr)
+    auto auto;
 }
 
 table {
-  border-collapse: collapse;
-  min-width: 1120px;
-  width: 100%;
+  min-width: 980px;
 }
 
-th,
-td {
-  border-bottom: 1px solid #edf0f5;
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: top;
+.title-cell {
+  max-width: 220px;
 }
 
-th {
-  color: #667085;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.sort-header {
-  appearance: none;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-  text-align: left;
-}
-
-.sort-header:hover {
-  color: #2563eb;
+.title-with-description {
+  cursor: help;
+  text-decoration: underline dotted var(--app-border-strong);
+  text-underline-offset: 3px;
 }
 
 .actions {
@@ -630,13 +642,8 @@ th {
   min-width: 120px;
 }
 
-.description-cell {
-  max-width: 260px;
-  white-space: normal;
-}
-
 .channel-username-link {
-  color: #2563eb;
+  color: var(--app-accent);
   text-decoration: none;
 }
 
@@ -657,6 +664,7 @@ th {
 
 .sync-modal-title,
 .rule-modal-title {
+  color: var(--app-heading);
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 14px;
@@ -680,9 +688,14 @@ th {
   margin-top: 16px;
 }
 
-.empty-cell {
-  color: #667085;
-  text-align: center;
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.loading-stack .short {
+  width: 58%;
 }
 
 @media (max-width: 1120px) {

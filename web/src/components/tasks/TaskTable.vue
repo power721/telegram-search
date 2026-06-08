@@ -44,6 +44,14 @@ function statusLabel(status: string) {
   return labels[status] ?? status
 }
 
+function statusClass(status: string) {
+  if (['succeeded', 'completed'].includes(status)) return 'status-success'
+  if (['running', 'reconnecting'].includes(status)) return 'status-info'
+  if (['pending', 'paused', 'flood_wait'].includes(status)) return 'status-warning'
+  if (['failed', 'cancelled'].includes(status)) return 'status-danger'
+  return 'status-muted'
+}
+
 function canRetry(task: Task) {
   return ['failed', 'flood_wait', 'reconnecting'].includes(task.status)
 }
@@ -63,7 +71,7 @@ function canResume(task: Task) {
 
 <template>
   <div class="table-panel">
-    <table>
+    <table class="data-table">
       <thead>
         <tr>
           <th>ID</th>
@@ -77,10 +85,19 @@ function canResume(task: Task) {
         </tr>
       </thead>
       <tbody>
+        <tr v-if="loading">
+          <td colspan="8">
+            <div class="loading-stack" aria-label="正在加载任务">
+              <span class="skeleton-line" />
+              <span class="skeleton-line" />
+              <span class="skeleton-line short" />
+            </div>
+          </td>
+        </tr>
         <tr v-for="task in tasks" :key="task.id">
           <td>{{ task.id }}</td>
           <td>{{ taskTypeLabel(task.type) }}</td>
-          <td><n-tag size="small">{{ statusLabel(task.status) }}</n-tag></td>
+          <td><span class="status-pill" :class="statusClass(task.status)">{{ statusLabel(task.status) }}</span></td>
           <td>{{ progressLabel(task) }}</td>
           <td>{{ task.retry_count }}</td>
           <td>{{ task.next_run_at || '-' }}</td>
@@ -93,8 +110,13 @@ function canResume(task: Task) {
             <n-button v-if="canResume(task)" size="small" @click="emit('resume', task)">恢复</n-button>
           </td>
         </tr>
-        <tr v-if="tasks.length === 0">
-          <td colspan="8" class="empty-cell">暂无任务</td>
+        <tr v-if="!loading && tasks.length === 0">
+          <td colspan="8">
+            <div class="empty-state">
+              <strong>暂无任务</strong>
+              <span>同步、检测、清理等后台任务会显示在这里。</span>
+            </div>
+          </td>
         </tr>
       </tbody>
     </table>
@@ -103,30 +125,11 @@ function canResume(task: Task) {
 
 <style scoped>
 .table-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
   overflow-x: auto;
 }
 
 table {
-  border-collapse: collapse;
   min-width: 980px;
-  width: 100%;
-}
-
-th,
-td {
-  border-bottom: 1px solid #edf0f5;
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: top;
-}
-
-th {
-  color: #667085;
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .message-cell {
@@ -142,7 +145,16 @@ th {
 }
 
 .empty-cell {
-  color: #667085;
   text-align: center;
+}
+
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.loading-stack .short {
+  width: 58%;
 }
 </style>

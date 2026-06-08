@@ -8,16 +8,20 @@ const emit = defineEmits<{
 
 <template>
   <form class="search-filters" @submit.prevent="emit('submit')">
-    <n-input v-model:value="query" clearable placeholder="搜索消息、链接、文件、频道" />
+    <label class="filter-label" for="global-search-query">查询</label>
+    <n-input
+      id="global-search-query"
+      v-model:value="query"
+      clearable
+      placeholder="搜索消息、链接、文件、频道"
+    />
     <n-button attr-type="submit" type="primary">搜索</n-button>
   </form>
 </template>
 
 <style scoped>
 .search-filters {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
 @media (max-width: 640px) {

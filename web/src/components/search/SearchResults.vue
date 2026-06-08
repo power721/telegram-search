@@ -4,6 +4,7 @@ import type { GlobalSearchResult, RemoteSearchItem } from '@/api/types'
 defineProps<{
   result: GlobalSearchResult | null
   remoteItems?: RemoteSearchItem[]
+  loading?: boolean
 }>()
 
 function sourceLabel(source?: string) {
@@ -23,16 +24,28 @@ function sourceLabel(source?: string) {
         <h2>消息</h2>
         <span>{{ result?.messages.total ?? 0 }}</span>
       </header>
+      <div v-if="loading" class="loading-stack" aria-label="正在加载消息结果">
+        <span class="skeleton-line" />
+        <span class="skeleton-line" />
+        <span class="skeleton-line short" />
+      </div>
       <article v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`" class="result-row">
         <strong>{{ item.channel_title || 'Telegram' }}</strong>
         <p>{{ item.text }}</p>
-        <small>{{ sourceLabel(item.source) }}</small>
+        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
       <article v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`" class="result-row">
         <strong>{{ item.channel_title || '远程结果' }}</strong>
         <p>{{ item.text }}</p>
-        <small>{{ sourceLabel(item.source) }}</small>
+        <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
       </article>
+      <div
+        v-if="!loading && (result?.messages.items.length ?? 0) === 0 && (remoteItems?.length ?? 0) === 0"
+        class="empty-state"
+      >
+        <strong>暂无消息结果</strong>
+        <span>尝试更具体的关键词，或先同步相关频道。</span>
+      </div>
     </section>
 
     <section class="result-section">
@@ -40,13 +53,21 @@ function sourceLabel(source?: string) {
         <h2>链接</h2>
         <span>{{ result?.links.total ?? 0 }}</span>
       </header>
+      <div v-if="loading" class="loading-stack" aria-label="正在加载链接结果">
+        <span class="skeleton-line" />
+        <span class="skeleton-line short" />
+      </div>
       <article v-for="item in result?.links.items ?? []" :key="`l-${item.id}`" class="result-row">
         <strong>{{ item.note || item.url }}</strong>
         <p>
           <a :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
         </p>
-        <small>{{ sourceLabel(item.source) }}</small>
+        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
+      <div v-if="!loading && (result?.links.items.length ?? 0) === 0" class="empty-state">
+        <strong>暂无链接结果</strong>
+        <span>资源链接会在本地索引后出现在这里。</span>
+      </div>
     </section>
 
     <section class="result-section">
@@ -54,11 +75,19 @@ function sourceLabel(source?: string) {
         <h2>文件</h2>
         <span>{{ result?.files.total ?? 0 }}</span>
       </header>
+      <div v-if="loading" class="loading-stack" aria-label="正在加载文件结果">
+        <span class="skeleton-line" />
+        <span class="skeleton-line short" />
+      </div>
       <article v-for="item in result?.files.items ?? []" :key="`f-${item.id}`" class="result-row">
         <strong>{{ item.file_name }}</strong>
         <p>{{ item.extension }} {{ item.mime_type }}</p>
-        <small>{{ sourceLabel(item.source) }}</small>
+        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
+      <div v-if="!loading && (result?.files.items.length ?? 0) === 0" class="empty-state">
+        <strong>暂无文件结果</strong>
+        <span>文件元数据会在历史同步后进入搜索。</span>
+      </div>
     </section>
 
     <section class="result-section">
@@ -66,11 +95,19 @@ function sourceLabel(source?: string) {
         <h2>频道</h2>
         <span>{{ result?.channels.total ?? 0 }}</span>
       </header>
+      <div v-if="loading" class="loading-stack" aria-label="正在加载频道结果">
+        <span class="skeleton-line" />
+        <span class="skeleton-line short" />
+      </div>
       <article v-for="item in result?.channels.items ?? []" :key="`c-${item.id}`" class="result-row">
         <strong>{{ item.title }}</strong>
         <p>@{{ item.username || '私有频道' }}</p>
-        <small>{{ sourceLabel(item.source) }}</small>
+        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
+      <div v-if="!loading && (result?.channels.items.length ?? 0) === 0" class="empty-state">
+        <strong>暂无频道结果</strong>
+        <span>频道元数据同步完成后可以被搜索。</span>
+      </div>
     </section>
   </div>
 </template>
@@ -83,11 +120,8 @@ function sourceLabel(source?: string) {
 }
 
 .result-section {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
   min-height: 148px;
-  padding: 14px;
+  padding: 12px;
 }
 
 header {
@@ -104,11 +138,11 @@ h2 {
 
 header span,
 small {
-  color: #667085;
+  color: var(--app-text-muted);
 }
 
 .result-row {
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid var(--app-border-subtle);
   padding: 10px 0;
 }
 
@@ -123,13 +157,23 @@ small {
 }
 
 .result-row p {
-  color: #475467;
+  color: var(--app-text-muted);
   margin: 4px 0;
 }
 
 .result-row a {
-  color: #175cd3;
+  color: var(--app-accent);
   text-decoration: underline;
+}
+
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.loading-stack .short {
+  width: 62%;
 }
 
 @media (max-width: 900px) {

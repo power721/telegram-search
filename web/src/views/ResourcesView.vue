@@ -83,14 +83,17 @@ onMounted(() => {
       <div>
         <p class="page-kicker">Telegram 资源库</p>
         <h1 class="page-title">资源</h1>
+        <p class="page-subtitle">按类型、关键词和来源浏览已索引的链接与文件资源。</p>
       </div>
     </div>
 
-    <div class="resource-types">
+    <div class="resource-types" role="tablist" aria-label="资源类型">
       <button
         v-for="type in resourceTypes"
         :key="type.key || 'all'"
+        :aria-selected="category === type.key"
         :class="{ active: category === type.key }"
+        role="tab"
         type="button"
         @click="selectCategory(type.key)"
       >
@@ -106,6 +109,11 @@ onMounted(() => {
       @submit="resetAndLoad"
     />
     <p v-if="resources.error" class="error-text">{{ resources.error }}</p>
+    <div v-if="resources.loading" class="table-panel resource-loading" aria-label="正在加载资源">
+      <span class="skeleton-line" />
+      <span class="skeleton-line" />
+      <span class="skeleton-line short" />
+    </div>
     <ResourceTable class="table" :items="resources.items" />
     <div class="pagination">
       <label>
@@ -138,31 +146,17 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.page-header {
-  margin-bottom: 18px;
-}
-
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
 .resource-types {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  margin-bottom: 14px;
 }
 
 .resource-types button {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  color: var(--app-text);
   display: flex;
   justify-content: space-between;
   min-height: 48px;
@@ -170,55 +164,29 @@ onMounted(() => {
 }
 
 .resource-types button.active {
-  border-color: #18a058;
+  background: var(--app-accent-subtle);
+  border-color: color-mix(in srgb, var(--app-accent) 35%, var(--app-border));
+  color: var(--app-heading);
 }
 
-.filters,
-.table {
-  margin-top: 14px;
+.resource-types button:hover {
+  border-color: var(--app-border-strong);
 }
 
-.error-text {
-  color: #b42318;
-}
-
-.pagination {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
+.resource-loading {
+  display: grid;
   gap: 10px;
-  justify-content: flex-end;
-  margin-top: 14px;
+  padding: 14px;
+}
+
+.resource-loading .short {
+  width: 58%;
 }
 
 .pagination label {
   align-items: center;
-  color: #667085;
   display: inline-flex;
   gap: 6px;
-}
-
-.pagination select {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 8px;
-}
-
-.pagination button {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
-  padding: 7px 10px;
-}
-
-.pagination button:disabled {
-  color: #98a2b3;
-  cursor: not-allowed;
-}
-
-.pagination span {
-  color: #667085;
 }
 
 @media (max-width: 900px) {

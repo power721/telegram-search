@@ -34,8 +34,13 @@ function formatTime(value?: string) {
 
 <template>
   <section class="page-section">
-    <p class="page-kicker">配置</p>
-    <h1 class="page-title">设置</h1>
+    <div class="page-header">
+      <div>
+        <p class="page-kicker">配置</p>
+        <h1 class="page-title">设置</h1>
+        <p class="page-subtitle">管理存储限额和浏览器 API 密钥。</p>
+      </div>
+    </div>
     <div class="settings-grid">
       <section class="panel">
         <h2>存储</h2>
@@ -85,46 +90,20 @@ function formatTime(value?: string) {
             {{ showAPIKey ? '隐藏' : '显示' }}
           </n-button>
         </div>
-        <p v-else>正在加载 API 密钥</p>
+        <div v-else class="loading-stack" aria-label="正在加载 API 密钥">
+          <span class="skeleton-line" />
+          <span class="skeleton-line short" />
+        </div>
       </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
-}
-
-.page-title {
-  font-size: 24px;
-  margin: 0 0 18px;
-}
-
 .settings-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  padding: 14px;
-}
-
-h2 {
-  font-size: 16px;
-  margin: 0 0 12px;
-}
-
-.panel-header {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
 }
 
 .panel-header h2 {
@@ -151,16 +130,11 @@ dd {
   margin: 0;
 }
 
-p {
-  color: #667085;
-  margin: 0;
-}
-
 .api-key-field {
   align-items: center;
-  background: #f6f8fb;
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -170,13 +144,22 @@ p {
 .api-key-input {
   background: transparent;
   border: 0;
-  color: #101828;
+  color: var(--app-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
-  font-size: 13px;
+  font-size: 14px;
   min-width: 0;
   overflow-wrap: anywhere;
   outline: 0;
   width: 100%;
+}
+
+.loading-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.loading-stack .short {
+  width: 58%;
 }
 
 @media (max-width: 840px) {

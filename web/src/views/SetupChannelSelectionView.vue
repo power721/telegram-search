@@ -49,8 +49,8 @@ function channelStatus(channel: TelegramChannel) {
 }
 
 function channelStatusClass(channel: TelegramChannel) {
-  if (channel.web_access_error) return 'status-bad'
-  if (channel.web_access === true) return 'status-good'
+  if (channel.web_access_error) return 'status-danger'
+  if (channel.web_access === true) return 'status-success'
   if (channel.username) return 'status-info'
   return 'status-muted'
 }
@@ -86,11 +86,12 @@ async function finish() {
 
 <template>
   <main class="setup-page">
-    <section class="setup-panel">
+    <section class="setup-panel setup-wide">
       <div class="page-header">
         <div>
           <p class="eyebrow">首次运行设置</p>
           <h1>选择频道</h1>
+          <p class="page-subtitle">选择首次启用索引和实时监听的频道。</p>
         </div>
         <n-button :loading="channels.loading" @click="loadChannels">刷新</n-button>
       </div>
@@ -101,7 +102,7 @@ async function finish() {
       </div>
 
       <div class="table-panel">
-        <table>
+        <table class="data-table">
           <thead>
             <tr>
               <th>监听</th>
@@ -113,6 +114,15 @@ async function finish() {
             </tr>
           </thead>
           <tbody>
+            <tr v-if="channels.loading && channels.items.length === 0">
+              <td colspan="6">
+                <div class="loading-stack" aria-label="正在加载频道">
+                  <span class="skeleton-line" />
+                  <span class="skeleton-line" />
+                  <span class="skeleton-line short" />
+                </div>
+              </td>
+            </tr>
             <tr v-for="channel in visibleChannels" :key="channel.id">
               <td>
                 <n-checkbox v-model:checked="selected[channel.id]" />
@@ -120,15 +130,20 @@ async function finish() {
               <td class="title-cell">{{ channel.title }}</td>
               <td>{{ username(channel) }}</td>
               <td>
-                <span class="status-badge" :class="channelStatusClass(channel)">
+                <span class="status-pill" :class="channelStatusClass(channel)">
                   {{ channelStatus(channel) }}
                 </span>
               </td>
               <td>{{ channel.member_count }}</td>
               <td class="description-cell" :title="channel.description">{{ channel.description || '-' }}</td>
             </tr>
-            <tr v-if="channels.items.length === 0">
-              <td colspan="6" class="empty-cell">未找到频道</td>
+            <tr v-if="!channels.loading && channels.items.length === 0">
+              <td colspan="6">
+                <div class="empty-state">
+                  <strong>未找到频道</strong>
+                  <span>刷新元数据后，当前账号可访问的频道会显示在这里。</span>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -149,54 +164,25 @@ async function finish() {
 </template>
 
 <style scoped>
-.setup-page {
-  min-height: 100vh;
-  padding: 24px;
-}
-
-.setup-panel {
-  margin: 0 auto;
+.setup-wide {
   max-width: 1440px;
 }
 
-.page-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.eyebrow {
-  color: #667085;
-  font-size: 13px;
-  margin: 0 0 8px;
-}
-
 h1 {
-  font-size: 24px;
   margin: 0;
 }
 
 .summary {
-  color: #475467;
+  color: var(--app-text-muted);
   display: flex;
   flex-wrap: wrap;
-  font-size: 13px;
+  font-size: 14px;
   gap: 16px;
-  margin-bottom: 12px;
-}
-
-.table-panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  overflow: hidden;
+  margin: 16px 0 12px;
 }
 
 table {
-  border-collapse: collapse;
   table-layout: fixed;
-  width: 100%;
 }
 
 th:nth-child(1),
@@ -224,63 +210,11 @@ td:nth-child(5) {
   width: 100px;
 }
 
-th,
-td {
-  border-bottom: 1px solid #edf0f5;
-  padding: 10px 12px;
-  text-align: left;
-  vertical-align: top;
-}
-
 .title-cell,
 .description-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-th {
-  color: #667085;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.status-badge {
-  border: 1px solid #d0d5dd;
-  border-radius: 999px;
-  display: inline-block;
-  font-size: 12px;
-  line-height: 20px;
-  padding: 0 8px;
-  white-space: nowrap;
-}
-
-.status-good {
-  background: #ecfdf3;
-  border-color: #abefc6;
-  color: #067647;
-}
-
-.status-info {
-  background: #eff8ff;
-  border-color: #b2ddff;
-  color: #175cd3;
-}
-
-.status-bad {
-  background: #fef3f2;
-  border-color: #fecdca;
-  color: #b42318;
-}
-
-.status-muted {
-  background: #f9fafb;
-  color: #475467;
-}
-
-.empty-cell {
-  color: #667085;
-  text-align: center;
 }
 
 .pagination {
@@ -294,5 +228,15 @@ th {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.loading-stack {
+  display: grid;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.loading-stack .short {
+  width: 58%;
 }
 </style>

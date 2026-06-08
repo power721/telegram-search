@@ -85,8 +85,15 @@ function linkTypeLabel(type: string) {
       <div>
         <p class="page-kicker">概览</p>
         <h1 class="page-title">本地 Telegram 索引</h1>
+        <p class="page-subtitle">查看索引健康、资源增长、任务错误和存储使用情况。</p>
       </div>
     </div>
+
+    <form class="home-search filter-bar" action="/search" method="get">
+      <label class="filter-label" for="home-search-input">全局搜索</label>
+      <input id="home-search-input" name="q" type="search" placeholder="搜索消息、链接、文件、频道" />
+      <button type="submit">搜索</button>
+    </form>
 
     <div class="metric-grid">
       <div v-for="card in cards" :key="card.label" class="metric-card">
@@ -141,7 +148,10 @@ function linkTypeLabel(type: string) {
 
       <section class="panel">
         <h2>最近任务错误</h2>
-        <div v-if="failedTasks.length === 0" class="muted">暂无最近任务错误</div>
+        <div v-if="failedTasks.length === 0" class="empty-state">
+          <strong>暂无任务错误</strong>
+          <span>失败、限流和重连问题会显示在这里。</span>
+        </div>
         <ul v-else class="task-errors">
           <li v-for="task in failedTasks" :key="task.id">
             <span>{{ taskTypeLabel(task.type) }}</span>
@@ -154,59 +164,33 @@ function linkTypeLabel(type: string) {
 </template>
 
 <style scoped>
-.page-header {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  margin-bottom: 18px;
+.home-search {
+  grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
-.page-kicker {
-  color: #667085;
-  margin: 0 0 4px;
+.home-search input {
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  color: var(--app-text);
+  min-height: 34px;
+  min-width: 0;
+  padding: 6px 10px;
 }
 
-.page-title {
-  font-size: 24px;
-  margin: 0;
-}
-
-.metric-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  margin-bottom: 16px;
-}
-
-.metric-card,
-.panel {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
-  padding: 14px;
-}
-
-.metric-card span {
-  color: #667085;
-  display: block;
-}
-
-.metric-card strong {
-  display: block;
-  font-size: 24px;
-  margin-top: 6px;
+.home-search button {
+  background: var(--app-accent);
+  border: 1px solid var(--app-accent);
+  border-radius: var(--app-radius);
+  color: #ffffff;
+  min-height: 34px;
+  padding: 6px 12px;
 }
 
 .dashboard-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: 1fr 1fr;
-}
-
-h2 {
-  font-size: 16px;
-  margin: 0 0 12px;
 }
 
 dl {
@@ -231,15 +215,11 @@ dd {
 }
 
 .resource-types span {
-  border: 1px solid #d9dee7;
-  border-radius: 6px;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
   display: inline-flex;
   gap: 8px;
   padding: 6px 8px;
-}
-
-.muted {
-  color: #667085;
 }
 
 .task-errors {
@@ -251,15 +231,15 @@ dd {
 }
 
 .task-errors li {
-  border: 1px solid #edf0f5;
-  border-radius: 6px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: var(--app-radius);
   padding: 8px;
 }
 
 .task-errors span {
-  color: #667085;
+  color: var(--app-text-muted);
   display: block;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .task-errors strong {
@@ -269,12 +249,7 @@ dd {
 }
 
 @media (max-width: 840px) {
-  .page-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .metric-grid,
+  .home-search,
   .dashboard-grid {
     grid-template-columns: 1fr;
   }

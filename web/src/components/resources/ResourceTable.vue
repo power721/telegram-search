@@ -32,12 +32,16 @@ function formatDate(value?: string) {
 </script>
 
 <template>
-  <div class="resource-table">
-    <div class="table-head">
+  <div class="resource-table data-table">
+    <div class="table-head sticky-head">
       <span>资源</span>
       <span>类型</span>
       <span>来源</span>
       <span>发布时间</span>
+    </div>
+    <div v-if="items.length === 0" class="empty-state">
+      <strong>暂无资源</strong>
+      <span>调整筛选条件或同步频道后，资源会显示在这里。</span>
     </div>
     <article v-for="item in items" :key="item.id" class="table-row">
       <div>
@@ -56,9 +60,6 @@ function formatDate(value?: string) {
 
 <style scoped>
 .resource-table {
-  background: #ffffff;
-  border: 1px solid #d9dee7;
-  border-radius: 8px;
   overflow: hidden;
   width: 100%;
 }
@@ -68,18 +69,11 @@ function formatDate(value?: string) {
   display: grid;
   gap: 12px;
   grid-template-columns: minmax(0, 1fr) 120px 150px 180px;
-  padding: 12px 14px;
-}
-
-.table-head {
-  background: #f8fafc;
-  color: #667085;
-  font-size: 13px;
-  font-weight: 600;
+  padding: 8px 10px;
 }
 
 .table-row {
-  border-top: 1px solid #eef1f5;
+  border-top: 1px solid var(--app-border-subtle);
 }
 
 .table-row strong,
@@ -90,17 +84,17 @@ function formatDate(value?: string) {
 }
 
 .table-row p {
-  color: #667085;
+  color: var(--app-text-muted);
   margin: 4px 0 0;
 }
 
 .table-row a {
-  color: #175cd3;
+  color: var(--app-accent);
   text-decoration: underline;
 }
 
 .table-row time {
-  color: #475467;
+  color: var(--app-text-muted);
 }
 
 @media (max-width: 760px) {

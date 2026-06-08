@@ -5,6 +5,14 @@ import { useTelegramStore } from './telegram'
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn((path: string) => {
+    if (path === '/api/telegram/login/qr/login-1') {
+      return Promise.resolve({
+        login_id: 'login-1',
+        status: 'online',
+        account: { id: 1, phone: '+10000000000', status: 'ONLINE', last_error: '' },
+        metadata_sync: { status: 'succeeded', channel_count: 0 }
+      })
+    }
     if (path === '/api/accounts') {
       return Promise.resolve({
         items: [
@@ -27,6 +35,14 @@ vi.mock('@/api/client', () => ({
     return Promise.reject(new Error(`unexpected get ${path}`))
   }),
   apiPost: vi.fn((path: string) => {
+    if (path === '/api/telegram/login/qr/start') {
+      return Promise.resolve({
+        login_id: 'login-1',
+        status: 'pending',
+        qr_url: 'tg://login?token=one',
+        expires_at: '2026-06-08T12:00:00Z'
+      })
+    }
     if (path === '/api/accounts/1/logout') {
       return Promise.resolve({ id: 1, phone: '+10000000000', status: 'LOGIN_REQUIRED', last_error: '' })
     }
@@ -106,6 +122,19 @@ describe('telegram store', () => {
     await store.deleteAccount(1)
 
     expect(apiDelete).toHaveBeenCalledWith('/api/accounts/1')
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
+  })
+
+  it('uses qr login API paths and loads accounts after qr success', async () => {
+    const store = useTelegramStore()
+
+    const started = await store.startQRLogin()
+    const polled = await store.pollQRLogin(started.login_id)
+
+    expect(started.qr_url).toContain('tg://login')
+    expect(polled.account?.status).toBe('ONLINE')
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/qr/start', {})
+    expect(apiGet).toHaveBeenCalledWith('/api/telegram/login/qr/login-1')
     expect(apiGet).toHaveBeenCalledWith('/api/accounts')
   })
 })

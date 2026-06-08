@@ -4,7 +4,9 @@ import type {
   TelegramAccountsResponse,
   TelegramAccount,
   TelegramAPISettingsResponse,
-  TelegramLoginResponse
+  TelegramLoginResponse,
+  TelegramQRLoginStartResponse,
+  TelegramQRLoginStatusResponse
 } from '@/api/types'
 
 export const useTelegramStore = defineStore('telegram', {
@@ -15,7 +17,8 @@ export const useTelegramStore = defineStore('telegram', {
     passwordRequired: false,
     loading: false,
     error: '',
-    loginResult: null as TelegramLoginResponse | null
+    loginResult: null as TelegramLoginResponse | null,
+    qrLogin: null as TelegramQRLoginStartResponse | TelegramQRLoginStatusResponse | null
   }),
   actions: {
     async loadSettings() {
@@ -68,6 +71,26 @@ export const useTelegramStore = defineStore('telegram', {
         }
         return this.loginResult
       })
+    },
+    async startQRLogin() {
+      return this.withLoading(async () => {
+        this.passwordRequired = false
+        this.qrLogin = await apiPost<TelegramQRLoginStartResponse>('/api/telegram/login/qr/start', {})
+        return this.qrLogin
+      })
+    },
+    async pollQRLogin(loginID: string) {
+      const response = await apiGet<TelegramQRLoginStatusResponse>(`/api/telegram/login/qr/${loginID}`)
+      this.qrLogin = response
+      this.loginResult = response
+      if (response.account) {
+        await this.loadAccounts()
+      }
+      return response
+    },
+    async cancelQRLogin(loginID: string) {
+      await apiDelete<{ canceled: boolean }>(`/api/telegram/login/qr/${loginID}`)
+      this.qrLogin = null
     },
     async loadAccounts() {
       return this.withLoading(async () => {

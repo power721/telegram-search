@@ -37,6 +37,7 @@ func (NopListener) Run(context.Context, model.Account, func(Event) error) error 
 
 type ServiceOptions struct {
 	Accounts      *repository.AccountRepository
+	Channels      *repository.ChannelRepository
 	Processor     EventProcessor
 	Listener      Listener
 	QueueSize     int
@@ -47,6 +48,7 @@ type ServiceOptions struct {
 
 type Service struct {
 	accounts      *repository.AccountRepository
+	channels      *repository.ChannelRepository
 	processor     EventProcessor
 	listener      Listener
 	retryInterval time.Duration
@@ -90,6 +92,7 @@ func NewService(opts ServiceOptions) *Service {
 	}
 	return &Service{
 		accounts:        opts.Accounts,
+		channels:        opts.Channels,
 		processor:       opts.Processor,
 		listener:        opts.Listener,
 		retryInterval:   opts.RetryInterval,
@@ -112,6 +115,9 @@ func (s *Service) Start(ctx context.Context) {
 
 func (s *Service) StartAccount(ctx context.Context, account model.Account) error {
 	s.Start(ctx)
+	if ok, err := s.hasListenEnabledChannels(ctx, account.ID); err != nil || !ok {
+		return err
+	}
 	s.mu.Lock()
 	if s.stopped {
 		s.mu.Unlock()
@@ -210,6 +216,7 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 		s.mu.Unlock()
 		s.listenerWG.Done()
 	}()
+	hadFailure := false
 	for {
 		err := s.listener.Run(ctx, account, func(event Event) error {
 			return s.Enqueue(ctx, event)
@@ -218,6 +225,11 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 			return
 		}
 		if err == nil {
+			if hadFailure && s.accounts != nil {
+				if updateErr := s.accounts.UpdateStatus(ctx, account.ID, model.AccountStatusOnline); updateErr != nil {
+					s.logger.Error("mark account online after listener reconnect", zap.Int64("account_id", account.ID), zap.Error(updateErr))
+				}
+			}
 			return
 		}
 		s.logger.Warn("telegram update listener stopped", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -235,6 +247,7 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 				s.logger.Error("mark account after listener failure", zap.Int64("account_id", account.ID), zap.String("status", status), zap.Error(updateErr))
 			}
 		}
+		hadFailure = true
 		delay := s.retryPolicy.Delay(1, classification)
 		sleep := s.retryPolicy.Sleep
 		if sleep == nil {
@@ -244,6 +257,22 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 			return
 		}
 	}
+}
+
+func (s *Service) hasListenEnabledChannels(ctx context.Context, accountID int64) (bool, error) {
+	if s.channels == nil {
+		return true, nil
+	}
+	channels, err := s.channels.FindByAccountID(ctx, accountID)
+	if err != nil {
+		return false, err
+	}
+	for _, channel := range channels {
+		if channel.ListenEnabled {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func wait(ctx context.Context, wg *sync.WaitGroup) error {

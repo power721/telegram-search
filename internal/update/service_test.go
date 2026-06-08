@@ -136,6 +136,112 @@ func TestServiceRetriesListenerAndMarksAccountReconnecting(t *testing.T) {
 	}
 }
 
+func TestServiceStartsListenerOnlyWhenAccountHasListenEnabledChannel(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	disabledAccountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	enabledAccountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusOnline})
+	_, _ = channels.Save(ctx, model.Channel{AccountID: disabledAccountID, TelegramChannelID: 10, Title: "Disabled", Type: model.ChannelTypeChannel, ListenEnabled: false})
+	_, _ = channels.Save(ctx, model.Channel{AccountID: enabledAccountID, TelegramChannelID: 20, Title: "Enabled", Type: model.ChannelTypeChannel, ListenEnabled: true})
+	disabledAccount, _ := accounts.FindByID(ctx, disabledAccountID)
+	enabledAccount, _ := accounts.FindByID(ctx, enabledAccountID)
+
+	listener := &blockingStartedListener{started: make(chan int64, 1)}
+	service := NewService(ServiceOptions{
+		Accounts:  accounts,
+		Channels:  channels,
+		Processor: &recordingProcessor{},
+		Listener:  listener,
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, disabledAccount); err != nil {
+		t.Fatalf("StartAccount disabled returned error: %v", err)
+	}
+	select {
+	case accountID := <-listener.started:
+		t.Fatalf("listener started for account %d, want no start for disabled account", accountID)
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	if err := service.StartAccount(ctx, enabledAccount); err != nil {
+		t.Fatalf("StartAccount enabled returned error: %v", err)
+	}
+	select {
+	case accountID := <-listener.started:
+		if accountID != enabledAccountID {
+			t.Fatalf("listener account id = %d, want %d", accountID, enabledAccountID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for enabled listener start")
+	}
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
+func TestServiceMarksAccountOnlineAfterReconnectSucceeds(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	account, _ := accounts.FindByID(ctx, accountID)
+
+	listener := &reconnectThenSuccessListener{started: make(chan struct{}, 2)}
+	service := NewService(ServiceOptions{
+		Accounts:  accounts,
+		Processor: &recordingProcessor{},
+		Listener:  listener,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  2,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, account); err != nil {
+		t.Fatalf("StartAccount returned error: %v", err)
+	}
+	waitForStarts(t, listener.started, 2)
+	deadline := time.After(time.Second)
+	for {
+		updated, err := accounts.FindByID(ctx, accountID)
+		if err != nil {
+			t.Fatalf("find account: %v", err)
+		}
+		if updated.Status == model.AccountStatusOnline {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("status = %q, want ONLINE", updated.Status)
+		case <-time.After(time.Millisecond):
+		}
+	}
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
 func TestServiceMarksFloodWaitAndRetriesListener(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
@@ -256,6 +362,34 @@ type floodWaitListener struct {
 	mu      sync.Mutex
 	runs    int
 	started chan struct{}
+}
+
+type blockingStartedListener struct {
+	started chan int64
+}
+
+func (l *blockingStartedListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	l.started <- account.ID
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type reconnectThenSuccessListener struct {
+	mu      sync.Mutex
+	runs    int
+	started chan struct{}
+}
+
+func (l *reconnectThenSuccessListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	l.mu.Lock()
+	l.runs++
+	run := l.runs
+	l.mu.Unlock()
+	l.started <- struct{}{}
+	if run == 1 {
+		return errors.New("temporary disconnect")
+	}
+	return nil
 }
 
 func (l *floodWaitListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {

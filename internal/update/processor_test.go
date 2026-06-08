@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	taskpkg "tg-search/internal/task"
 )
 
 func TestProcessorHandlesNewEditAndDeleteEvents(t *testing.T) {
@@ -214,6 +216,51 @@ func TestProcessorDeletesStoredMessageWhenRealtimeEditStopsMatching(t *testing.T
 	}
 	if len(results) != 0 {
 		t.Fatalf("search after non-matching edit = %+v, want empty", results)
+	}
+}
+
+func TestProcessorEnqueuesGapRecoveryTask(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	cursors := repository.NewSyncCursorRepository(fixture.conn)
+	taskRepo := taskpkg.NewRepository(fixture.conn)
+	tasks := taskpkg.NewService(taskRepo)
+	if err := cursors.Save(ctx, model.SyncCursor{
+		AccountID: fixture.accountID, ChannelID: fixture.channelID, CursorType: "history", LastMessageID: 10, Date: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("save cursor: %v", err)
+	}
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Extractor: link.NewExtractor(),
+		Cursors:   cursors,
+		Tasks:     tasks,
+	})
+
+	err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         15,
+		Text:              "gap https://pan.quark.cn/s/abc",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("Process returned error: %v", err)
+	}
+	items, err := taskRepo.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeGapRecovery, Limit: 10})
+	if err != nil {
+		t.Fatalf("list gap recovery tasks: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("gap recovery tasks = %+v, want one", items)
+	}
+	if !strings.Contains(items[0].PayloadJSON, `"from_message_id":11`) || !strings.Contains(items[0].PayloadJSON, `"to_message_id":14`) {
+		t.Fatalf("payload = %s, want missing range 11..14", items[0].PayloadJSON)
 	}
 }
 

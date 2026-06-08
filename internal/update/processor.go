@@ -12,6 +12,7 @@ import (
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
+	taskpkg "tg-search/internal/task"
 )
 
 type ProcessorOptions struct {
@@ -19,6 +20,8 @@ type ProcessorOptions struct {
 	Channels  *repository.ChannelRepository
 	Messages  *repository.MessageRepository
 	Links     *repository.LinkRepository
+	Cursors   *repository.SyncCursorRepository
+	Tasks     *taskpkg.Service
 	Extractor *link.Extractor
 	Filter    *messagefilter.Filter
 }
@@ -28,6 +31,8 @@ type Processor struct {
 	channels  *repository.ChannelRepository
 	messages  *repository.MessageRepository
 	links     *repository.LinkRepository
+	cursors   *repository.SyncCursorRepository
+	tasks     *taskpkg.Service
 	extractor *link.Extractor
 	filter    *messagefilter.Filter
 }
@@ -41,6 +46,8 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		channels:  opts.Channels,
 		messages:  opts.Messages,
 		links:     opts.Links,
+		cursors:   opts.Cursors,
+		tasks:     opts.Tasks,
 		extractor: opts.Extractor,
 		filter:    opts.Filter,
 	}
@@ -54,12 +61,43 @@ func (p *Processor) Process(ctx context.Context, event Event) error {
 
 	switch event.Type {
 	case EventNewMessage, EventEditMessage:
+		if err := p.enqueueGapRecovery(ctx, channel, event); err != nil {
+			return err
+		}
 		return p.storeMessage(ctx, channel, event)
 	case EventDeleteMessage:
 		return p.deleteMessage(ctx, channel, event)
 	default:
 		return fmt.Errorf("unsupported update event type %q", event.Type)
 	}
+}
+
+func (p *Processor) enqueueGapRecovery(ctx context.Context, channel model.Channel, event Event) error {
+	if p.cursors == nil || p.tasks == nil || event.Type != EventNewMessage || event.MessageID <= 0 {
+		return nil
+	}
+	cursor, err := p.cursors.Find(ctx, event.AccountID, channel.ID, "history")
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("load history cursor for gap detection: %w", err)
+	}
+	if cursor.LastMessageID <= 0 || event.MessageID <= cursor.LastMessageID+1 {
+		return nil
+	}
+	_, err = p.tasks.Enqueue(ctx, model.TaskTypeGapRecovery, map[string]any{
+		"account_id":       event.AccountID,
+		"channel_id":       channel.ID,
+		"from_message_id":  cursor.LastMessageID + 1,
+		"to_message_id":    event.MessageID - 1,
+		"trigger_message":  event.MessageID,
+		"telegram_channel": event.TelegramChannelID,
+	})
+	if err != nil {
+		return fmt.Errorf("enqueue gap recovery task: %w", err)
+	}
+	return nil
 }
 
 func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, event Event) error {

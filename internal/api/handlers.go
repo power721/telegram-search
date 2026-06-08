@@ -18,6 +18,7 @@ import (
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
+	channelpkg "tg-search/internal/channel"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	searchsvc "tg-search/internal/search"
@@ -415,6 +416,57 @@ func (h handlers) channel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) updateChannelControl(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	var req model.ChannelControl
+	if !bindJSON(c, &req) {
+		return
+	}
+	profile, err := channelpkg.ParseProfile(req.SyncProfile)
+	if err != nil {
+		errorText(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	req.SyncProfile = profile
+	if profile == channelpkg.SyncProfileDeep || profile == channelpkg.SyncProfileFull {
+		if !h.checkStorageQuota(c) {
+			return
+		}
+	}
+	if err := h.deps.Channels.UpdateControl(c.Request.Context(), id, req); err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	item, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, item)
+}
+
+func (h handlers) checkStorageQuota(c *gin.Context) bool {
+	if h.deps.StorageUsage == nil {
+		return true
+	}
+	usage, err := h.deps.StorageUsage.Usage()
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return false
+	}
+	if usage.MaxDBBytes > 0 && usage.DBBytes >= usage.MaxDBBytes {
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":    "storage_quota_exceeded",
+			"message": "database storage quota exceeded",
+		}})
+		return false
+	}
+	return true
 }
 
 func (h handlers) syncChannel(c *gin.Context) {

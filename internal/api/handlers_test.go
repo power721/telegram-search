@@ -1070,6 +1070,117 @@ func TestChannelWebAccessCheckAPIRejectsMissingWithoutPartialUpdates(t *testing.
 	}
 }
 
+func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 51,
+		Title:             "Control",
+		Type:              model.ChannelTypeChannel,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/control", bytes.NewBufferString(`{
+		"history_sync_enabled": true,
+		"sync_profile": "Quick",
+		"listen_enabled": true,
+		"remote_search_allowed": false
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.Channel
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if !body.HistorySyncEnabled || body.SyncProfile != "Quick" || !body.ListenEnabled || body.RemoteSearchAllowed {
+		t.Fatalf("response control = %+v", body)
+	}
+
+	stored, err := deps.Channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if !stored.HistorySyncEnabled || stored.SyncProfile != "Quick" || !stored.ListenEnabled || stored.RemoteSearchAllowed {
+		t.Fatalf("stored control = %+v", stored)
+	}
+}
+
+func TestChannelControlAPIRejectsInvalidProfile(t *testing.T) {
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(context.Background(), model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 52,
+		Title:             "Control",
+		Type:              model.ChannelTypeChannel,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/control", bytes.NewBufferString(`{
+		"history_sync_enabled": true,
+		"sync_profile": "raw-1000",
+		"listen_enabled": false,
+		"remote_search_allowed": true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+}
+
+func TestChannelControlAPIDeepProfileChecksStorageQuota(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	root := t.TempDir()
+	writeSizedFile(t, filepath.Join(root, "tg-search.db"), 10)
+	deps.StorageUsage = storage.NewUsageService(config.Config{
+		Storage: config.StorageConfig{
+			Path:      root,
+			MaxDBSize: config.Size(10),
+		},
+	})
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 53,
+		Title:             "Control",
+		Type:              model.ChannelTypeChannel,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/control", bytes.NewBufferString(`{
+		"history_sync_enabled": true,
+		"sync_profile": "Deep",
+		"listen_enabled": false,
+		"remote_search_allowed": true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d body=%s, want 409", w.Code, w.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Error.Code != "storage_quota_exceeded" {
+		t.Fatalf("error code = %q, want storage_quota_exceeded body=%s", body.Error.Code, w.Body.String())
+	}
+}
+
 func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)

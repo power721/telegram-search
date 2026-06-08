@@ -77,6 +77,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.POST("/channels/sync", h.syncChannels)
 	api.POST("/channels/web-access/check", h.checkChannelWebAccess)
 	api.GET("/channels/:id", h.channel)
+	api.PATCH("/channels/:id/control", h.updateChannelControl)
 	api.POST("/channels/:id/sync", h.syncChannel)
 	api.GET("/watch-rules", h.watchRules)
 	api.POST("/watch-rules", h.createWatchRule)

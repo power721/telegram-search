@@ -158,6 +158,32 @@ CREATE TABLE IF NOT EXISTS remote_search_tasks (
   FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS sync_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  progress INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  message TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  next_run_at DATETIME,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  started_at DATETIME,
+  finished_at DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS recent_activities (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  message TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  created_at DATETIME NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
@@ -200,6 +226,9 @@ CREATE INDEX IF NOT EXISTS idx_telegram_message_contents_updated_at ON telegram_
 CREATE INDEX IF NOT EXISTS idx_telegram_sync_cursors_channel_type ON telegram_sync_cursors(channel_id, cursor_type);
 CREATE INDEX IF NOT EXISTS idx_telegram_links_type_message_id ON telegram_links(type, message_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_status_updated_at ON sync_tasks(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_tasks_next_run_at ON sync_tasks(next_run_at);
+CREATE INDEX IF NOT EXISTS idx_recent_activities_created_at ON recent_activities(created_at DESC);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS telegram_messages_fts
 USING fts5(text, content='telegram_message_contents', content_rowid='message_id');

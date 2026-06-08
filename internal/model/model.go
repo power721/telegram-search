@@ -145,6 +145,29 @@ type ChannelAnalysis struct {
 
 const RemoteSearchStatusQueued = "queued"
 
+const (
+	TaskStatusQueued       = "queued"
+	TaskStatusRunning      = "running"
+	TaskStatusSucceeded    = "succeeded"
+	TaskStatusFailed       = "failed"
+	TaskStatusCanceling    = "canceling"
+	TaskStatusCanceled     = "canceled"
+	TaskStatusPaused       = "paused"
+	TaskStatusFloodWait    = "flood_wait"
+	TaskStatusReconnecting = "reconnecting"
+)
+
+const (
+	TaskTypeMetadataSync       = "metadata_sync"
+	TaskTypeChannelAnalysis    = "channel_analysis"
+	TaskTypeWebAccessDetection = "web_access_detection"
+	TaskTypeHistorySync        = "history_sync"
+	TaskTypeListenerRecovery   = "listener_recovery"
+	TaskTypeRemoteSearch       = "remote_search"
+	TaskTypeBackup             = "backup"
+	TaskTypeGapRecovery        = "gap_recovery"
+)
+
 type RemoteSearchTask struct {
 	ID        int64     `json:"id"`
 	AccountID int64     `json:"account_id"`
@@ -155,6 +178,24 @@ type RemoteSearchTask struct {
 	ExpiresAt time.Time `json:"expires_at"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type Task struct {
+	ID           int64      `json:"id"`
+	Type         string     `json:"type"`
+	Status       string     `json:"status"`
+	Progress     int64      `json:"progress"`
+	Total        int64      `json:"total"`
+	Message      string     `json:"message"`
+	ErrorCode    string     `json:"error_code"`
+	ErrorMessage string     `json:"error_message"`
+	RetryCount   int64      `json:"retry_count"`
+	NextRunAt    *time.Time `json:"next_run_at,omitempty"`
+	PayloadJSON  string     `json:"payload_json"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 type RemoteSearchItem struct {

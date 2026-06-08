@@ -7,6 +7,7 @@
 - `storage.path` points to persistent storage mounted at `/data/tg-search`.
 - `storage.max_db_size` is set for the host disk size.
 - `storage.max_media_cache` is set for the host disk size.
+- DB quota enforcement reports usage, warns, and blocks new `Deep` or `Full` sync starts when the database quota is exceeded.
 - Telegram API credentials are configured in `config.yaml`.
 
 ## Storage
@@ -20,6 +21,14 @@
 - Restore drills stop the service before replacing `/data/tg-search/tg-search.db`.
 
 ## Runtime
+
+- Docker Compose startup is verified:
+
+```bash
+docker compose up -d
+docker compose logs -f tg-search
+curl http://127.0.0.1:6000/api/health
+```
 
 - `tg-search` starts with `go run ./cmd/tg-search -config config.yaml` or the packaged binary.
 - `GET /api/health` returns process health.

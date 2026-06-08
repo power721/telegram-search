@@ -615,6 +615,8 @@ Deletes the in-memory session and clears the browser cookie.
 
 Returns local storage usage and quota state.
 
+`storage.max_db_size` controls the SQLite database budget. `storage.max_media_cache` controls cached media-derived files such as thumbnails. Phase 1 reports usage, warns through quota flags, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded.
+
 ```json
 {
   "db_bytes": 3200000000,
@@ -625,6 +627,32 @@ Returns local storage usage and quota state.
   "max_media_bytes": 20000000000,
   "db_over_quota": false,
   "media_over_quota": false
+}
+```
+
+## Health
+
+### `GET /api/health`
+
+Returns process health without checking downstream readiness.
+
+```json
+{
+  "service": "ok"
+}
+```
+
+### `GET /api/ready`
+
+Returns `200` when SQLite responds and runtime directories are writable. Returns `503` with failed checks when the service should not receive work yet.
+
+```json
+{
+  "ready": true,
+  "checks": {
+    "database": "ok",
+    "runtime_dirs": "ok"
+  }
 }
 ```
 

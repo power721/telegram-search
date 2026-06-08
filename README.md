@@ -38,6 +38,7 @@ mkdir -p data
 cp config.yaml data/config.yaml
 docker compose up -d
 docker compose logs -f tg-search
+curl http://127.0.0.1:6000/api/health
 ```
 
 The container stores database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`, mounted as `./data` in the example Compose file.
@@ -147,6 +148,8 @@ GET    /api/resources
 GET    /api/resources/grouped
 GET    /api/resources/:id
 GET    /api/storage/usage
+GET    /api/health
+GET    /api/ready
 GET    /api/status
 GET    /api/tasks
 GET    /api/tasks/:id
@@ -158,6 +161,10 @@ GET    /api/events
 ```
 
 Global Search returns grouped Messages, Links, Files, and Channels. Resources returns the Telegram Resource Library with `cloud_drive`, `magnet`, `ed2k`, `http`, and `files` groups.
+
+## Storage Quota
+
+`storage.max_db_size` limits the local SQLite database budget, and `storage.max_media_cache` limits cached media-derived files such as thumbnails. Phase 1 reports usage, shows quota warnings, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded; existing runtime recovery and read-only search remain available.
 
 ## Storage Usage Response
 

@@ -783,6 +783,10 @@ func (h handlers) pollQRLogin(c *gin.Context) {
 }
 
 func (h handlers) cancelQRLogin(c *gin.Context) {
+	if err := h.deps.QRLogins.Cancel(c.Request.Context(), c.Param("login_id")); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"canceled": true})
 }
 

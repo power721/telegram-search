@@ -1222,6 +1222,49 @@ func TestTelegramQRLoginStartAndPendingPoll(t *testing.T) {
 	}
 }
 
+func TestTelegramQRLoginCancelStopsSession(t *testing.T) {
+	deps := testDeps(t)
+	fake := &fakeTelegram{
+		qrTokenURL: "tg://login?token=cancel",
+		qrExpires:  time.Now().UTC().Add(time.Minute),
+	}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("start status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var started struct {
+		LoginID string `json:"login_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatalf("invalid start JSON: %v body=%s", err, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/telegram/login/qr/"+started.LoginID, nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if fake.qrSession == nil || !fake.qrSession.cancelled {
+		t.Fatal("QR session was not canceled")
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("poll canceled status = %d body=%s, want 404", w.Code, w.Body.String())
+	}
+}
+
 func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

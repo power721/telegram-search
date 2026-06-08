@@ -36,11 +36,14 @@ describe('SettingsView', () => {
     vi.clearAllMocks()
   })
 
-  it('loads and displays the full api key', async () => {
+  it('loads and masks the full api key without rendering the prefix field', async () => {
     const wrapper = mount(SettingsView, {
       global: {
         stubs: {
-          'n-button': { emits: ['click'], template: `<button @click="$emit('click')"><slot /></button>` }
+          'n-button': {
+            emits: ['click'],
+            template: `<button :data-testid="$attrs['data-testid']" @click="$emit('click')"><slot /></button>`
+          }
         }
       }
     })
@@ -48,24 +51,38 @@ describe('SettingsView', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/settings/api-key')
     expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
-    expect(wrapper.text()).toContain('12345678123456781234567812345678')
-    expect(wrapper.text()).toContain('12345678')
+    expect(wrapper.text()).not.toContain('前缀')
+    expect(wrapper.text()).not.toContain('12345678123456781234567812345678')
+
+    const input = wrapper.get<HTMLInputElement>('[data-testid="api-key-input"]')
+    expect(input.element.type).toBe('password')
+    expect(input.element.value).toBe('12345678123456781234567812345678')
+
+    await wrapper.get('[data-testid="toggle-api-key-visibility"]').trigger('click')
+    expect(input.element.type).toBe('text')
   })
 
-  it('regenerates and displays the replacement key', async () => {
+  it('regenerates and keeps the replacement key masked', async () => {
     const wrapper = mount(SettingsView, {
       global: {
         stubs: {
-          'n-button': { emits: ['click'], template: `<button @click="$emit('click')"><slot /></button>` }
+          'n-button': {
+            emits: ['click'],
+            template: `<button :data-testid="$attrs['data-testid']" @click="$emit('click')"><slot /></button>`
+          }
         }
       }
     })
     await flushPromises()
-    await wrapper.find('button').trigger('click')
+    await wrapper.get('[data-testid="regenerate-api-key"]').trigger('click')
     await flushPromises()
 
     expect(apiPost).toHaveBeenCalledWith('/api/settings/api-key/regenerate')
     expect(setAPIKey).toHaveBeenCalledWith('87654321876543218765432187654321')
-    expect(wrapper.text()).toContain('87654321876543218765432187654321')
+    expect(wrapper.text()).not.toContain('87654321876543218765432187654321')
+
+    const input = wrapper.get<HTMLInputElement>('[data-testid="api-key-input"]')
+    expect(input.element.type).toBe('password')
+    expect(input.element.value).toBe('87654321876543218765432187654321')
   })
 })

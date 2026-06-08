@@ -2,7 +2,7 @@
 
 Self-hosted personal Telegram search foundation.
 
-`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and will grow into a Vue admin console in later phases. Phase 1A provides the backend foundation: config, storage quota settings, setup/admin auth APIs, API key creation, and storage usage reporting.
+`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, and dashboard navigation. Later phases add Telegram onboarding, channel control, Global Search, and the Telegram Resource Library.
 
 ## Quickstart
 
@@ -30,6 +30,22 @@ Build and run:
 go build ./...
 go run ./cmd/tg-search -config config.yaml
 ```
+
+Start the web admin shell:
+
+```bash
+npm install --prefix web
+npm run web:dev
+```
+
+Development URLs:
+
+```text
+Backend:  http://127.0.0.1:6000
+Frontend: http://127.0.0.1:5173
+```
+
+The Vite development server proxies `/api` requests to the backend at `http://127.0.0.1:6000`.
 
 ## Foundation APIs
 
@@ -66,6 +82,9 @@ Telegram account, channel, search, maintenance, and backup APIs from the existin
 
 ```bash
 GOCACHE=/tmp/go-build-cache go test ./...
+npm run web:typecheck
+npm run web:test
+npm run web:build
 ```
 
 Operational docs:

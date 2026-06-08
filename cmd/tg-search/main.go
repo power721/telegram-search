@@ -29,6 +29,7 @@ import (
 	"tg-search/internal/search"
 	"tg-search/internal/session"
 	"tg-search/internal/storage"
+	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 	updatepkg "tg-search/internal/update"
 )
@@ -84,6 +85,9 @@ func run(configPath string) error {
 	users := repository.NewUserRepository(conn)
 	apiKeys := repository.NewAPIKeyRepository(conn)
 	settings := repository.NewSettingsRepository(conn)
+	taskRepository := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepository)
+	eventBroker := taskpkg.NewEventBroker()
 	adminAuth := adminauth.NewService(users)
 	storageUsage := storage.NewUsageService(cfg)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
@@ -95,11 +99,14 @@ func run(configPath string) error {
 		Channels:  channels,
 		Messages:  messages,
 		Links:     links,
+		Cursors:   cursors,
+		Tasks:     taskService,
 		Extractor: link.NewExtractor(),
 		Filter:    watchFilter,
 	})
 	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
 		Accounts:    accounts,
+		Channels:    channels,
 		Processor:   updateProcessor,
 		Listener:    updatepkg.NewGotdListener(cfg.Telegram.APIID, cfg.Telegram.APIHash, sessions, logs.Telegram),
 		RetryPolicy: retryPolicy,
@@ -125,6 +132,9 @@ func run(configPath string) error {
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
+	if err := taskService.RestoreUnfinished(ctx, time.Now().UTC()); err != nil {
+		return err
+	}
 	accountManager := account.NewManager(account.ManagerOptions{
 		Accounts: accounts,
 		Updates:  updateService,
@@ -147,6 +157,7 @@ func run(configPath string) error {
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
+		Tasks: taskService, TaskRepository: taskRepository, Events: eventBroker,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{

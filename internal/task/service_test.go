@@ -120,6 +120,41 @@ func TestTaskStateTransitionsRejectInvalid(t *testing.T) {
 	}
 }
 
+func TestRestoreUnfinishedTasks(t *testing.T) {
+	ctx := context.Background()
+	repo := openTaskRepository(t)
+	service := NewService(repo)
+	now := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	running := createTaskForRestart(t, ctx, repo, model.TaskStatusRunning, nil)
+	canceling := createTaskForRestart(t, ctx, repo, model.TaskStatusCanceling, nil)
+	paused := createTaskForRestart(t, ctx, repo, model.TaskStatusPaused, nil)
+	reconnecting := createTaskForRestart(t, ctx, repo, model.TaskStatusReconnecting, nil)
+	floodPast := createTaskForRestart(t, ctx, repo, model.TaskStatusFloodWait, ptrTime(now.Add(-time.Minute)))
+	floodFuture := createTaskForRestart(t, ctx, repo, model.TaskStatusFloodWait, ptrTime(now.Add(time.Hour)))
+	succeeded := createTaskForRestart(t, ctx, repo, model.TaskStatusSucceeded, nil)
+	canceled := createTaskForRestart(t, ctx, repo, model.TaskStatusCanceled, nil)
+
+	if err := service.RestoreUnfinished(ctx, now); err != nil {
+		t.Fatalf("RestoreUnfinished returned error: %v", err)
+	}
+
+	for _, item := range []model.Task{running, canceling, paused, reconnecting, floodPast} {
+		restored := mustFindTask(t, ctx, repo, item.ID)
+		if restored.Status != model.TaskStatusQueued || restored.NextRunAt != nil {
+			t.Fatalf("restored task %d = %+v, want queued with no next_run_at", item.ID, restored)
+		}
+	}
+	if got := mustFindTask(t, ctx, repo, floodFuture.ID); got.Status != model.TaskStatusFloodWait || got.NextRunAt == nil {
+		t.Fatalf("future flood task = %+v, want unchanged flood_wait", got)
+	}
+	if got := mustFindTask(t, ctx, repo, succeeded.ID); got.Status != model.TaskStatusSucceeded {
+		t.Fatalf("succeeded task = %+v, want unchanged succeeded", got)
+	}
+	if got := mustFindTask(t, ctx, repo, canceled.ID); got.Status != model.TaskStatusCanceled {
+		t.Fatalf("canceled task = %+v, want unchanged canceled", got)
+	}
+}
+
 func openTaskRepository(t *testing.T) *Repository {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

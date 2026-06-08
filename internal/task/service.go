@@ -107,6 +107,19 @@ func (s *Service) MarkCanceled(ctx context.Context, id int64, message string) er
 	}, model.TaskStatusCanceling)
 }
 
+func (s *Service) RestoreUnfinished(ctx context.Context, now time.Time) error {
+	items, err := s.repo.ListRestartable(ctx, now.UTC())
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if err := s.repo.UpdateStatus(ctx, item.ID, model.TaskStatusQueued, StatusUpdate{}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) transition(ctx context.Context, id int64, nextStatus string, update StatusUpdate, allowedFrom ...string) error {
 	current, err := s.repo.FindByID(ctx, id)
 	if err != nil {

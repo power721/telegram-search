@@ -242,6 +242,7 @@ func TestLinksGroupedReturnsCountsByLinkType(t *testing.T) {
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/links/grouped", nil)
+	withAPIKey(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())

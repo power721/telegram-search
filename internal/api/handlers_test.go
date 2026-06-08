@@ -1516,6 +1516,64 @@ func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	}
 }
 
+func TestBatchSyncAPIValidatesMaxMessages(t *testing.T) {
+	router := NewRouter(testDeps(t))
+	for _, body := range []string{
+		`{"channel_ids":[1],"max_messages":0}`,
+		`{"channel_ids":[1],"max_messages":-1}`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %s status = %d body=%s, want 400", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestChannelsAPIIncludesIndexedMessageCount(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 30,
+		Title:             "Public Channel",
+		Username:          "public_channel",
+		Type:              model.ChannelTypeChannel,
+	})
+	now := time.Now().UTC()
+	_, _ = deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "indexed 1", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "indexed 2", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "deleted", RawJSON: "{}", Date: now, Deleted: true},
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ID                  int64 `json:"id"`
+			IndexedMessageCount int64 `json:"indexed_message_count"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items len = %d, want 1", len(body.Items))
+	}
+	if body.Items[0].IndexedMessageCount != 2 {
+		t.Fatalf("indexed_message_count = %d, want 2", body.Items[0].IndexedMessageCount)
+	}
+}
+
 func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

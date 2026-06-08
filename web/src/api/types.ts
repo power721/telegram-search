@@ -122,6 +122,7 @@ export interface TelegramChannel {
   web_access?: boolean
   web_access_checked_at?: string
   web_access_error: string
+  indexed_message_count: number
 }
 
 export interface ChannelControlPayload {

@@ -92,6 +92,44 @@ func TestSyncChannelUsesSyncProfile(t *testing.T) {
 	}
 }
 
+func TestSyncChannelWithMaxMessagesOverridesProfile(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 200,
+		AccessHash:        300,
+		Title:             "VIP",
+		Type:              model.ChannelTypeChannel,
+		SyncProfile:       "Full",
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+
+	fake := &profileLimitHistoryClient{available: 251, startID: 50000}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 600,
+	})
+
+	result, err := service.SyncChannelWithMaxMessages(ctx, channelID, 250)
+	if err != nil {
+		t.Fatalf("SyncChannelWithMaxMessages returned error: %v", err)
+	}
+	if result.Messages != 250 {
+		t.Fatalf("messages = %d, want 250", result.Messages)
+	}
+	if fake.fetched != 250 {
+		t.Fatalf("fetched = %d, want 250", fake.fetched)
+	}
+}
+
 func TestSyncChannelFullProfileFetchesUntilEmptyBatch(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)

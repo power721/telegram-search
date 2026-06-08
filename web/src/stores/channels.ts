@@ -44,9 +44,12 @@ export const useChannelsStore = defineStore('channels', {
         return response.items
       })
     },
-    async syncChannels(channelIds: number[]) {
+    async syncChannels(channelIds: number[], maxMessages?: number) {
       return this.withLoading(async () => {
-        return apiPost('/api/channels/sync', { channel_ids: channelIds })
+        return apiPost('/api/channels/sync', {
+          channel_ids: channelIds,
+          ...(maxMessages ? { max_messages: maxMessages } : {})
+        })
       })
     },
     async createWatchRule(payload: WatchRulePayload) {

@@ -115,18 +115,30 @@ func (s *Service) SyncChannel(ctx context.Context, channelID int64) (SyncResult,
 }
 
 func (s *Service) SyncChannelWithProfile(ctx context.Context, channelID int64, profile string) (SyncResult, error) {
-	return s.SyncChannelWithProgress(ctx, channelID, profile, nil)
+	return s.syncChannel(ctx, channelID, profile, 0, nil)
+}
+
+func (s *Service) SyncChannelWithMaxMessages(ctx context.Context, channelID int64, maxMessages int) (SyncResult, error) {
+	return s.syncChannel(ctx, channelID, "", maxMessages, nil)
 }
 
 func (s *Service) SyncChannelWithProgress(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
+	return s.syncChannel(ctx, channelID, profile, 0, progress)
+}
+
+func (s *Service) syncChannel(ctx context.Context, channelID int64, profile string, maxMessages int, progress taskpkg.ProgressSink) (SyncResult, error) {
 	if !s.tryAcquireChannel(channelID) {
 		return SyncResult{}, ErrChannelSyncInProgress
 	}
 	defer s.releaseChannel(channelID)
-	return s.syncChannelWithRetry(ctx, channelID, profile, progress)
+	return s.syncChannelWithRetry(ctx, channelID, profile, maxMessages, progress)
 }
 
 func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResult {
+	return s.SyncManyWithMaxMessages(ctx, channelIDs, 0)
+}
+
+func (s *Service) SyncManyWithMaxMessages(ctx context.Context, channelIDs []int64, maxMessages int) SyncManyResult {
 	result := SyncManyResult{
 		Results:  map[int64]SyncResult{},
 		Failures: map[int64]string{},
@@ -171,7 +183,7 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 					mu.Unlock()
 					continue
 				}
-				syncResult, err := s.syncChannelWithRetry(ctx, channelID, "", nil)
+				syncResult, err := s.syncChannelWithRetry(ctx, channelID, "", maxMessages, nil)
 				s.releaseChannel(channelID)
 				mu.Lock()
 				if err != nil {
@@ -198,10 +210,10 @@ func (s *Service) SyncMany(ctx context.Context, channelIDs []int64) SyncManyResu
 	return result
 }
 
-func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
+func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, profile string, maxMessages int, progress taskpkg.ProgressSink) (SyncResult, error) {
 	var result SyncResult
 	err := s.retryPolicy.Run(ctx, func() error {
-		next, err := s.syncChannelOnce(ctx, channelID, profile, progress)
+		next, err := s.syncChannelOnce(ctx, channelID, profile, maxMessages, progress)
 		result = next
 		return err
 	}, func(ctx context.Context, attempt retry.Attempt) {
@@ -223,7 +235,7 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 	return result, nil
 }
 
-func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string, progress taskpkg.ProgressSink) (SyncResult, error) {
+func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requestedProfile string, maxMessages int, progress taskpkg.ProgressSink) (SyncResult, error) {
 	channel, err := s.channels.FindByID(ctx, channelID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load channel: %w", err)
@@ -257,6 +269,9 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 	profileLimit, err := channelpkg.ProfileLimit(profile)
 	if err != nil {
 		return SyncResult{}, err
+	}
+	if maxMessages > 0 {
+		profileLimit = maxMessages
 	}
 
 	var result SyncResult

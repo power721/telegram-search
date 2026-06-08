@@ -110,6 +110,7 @@ func run(configPath string) error {
 		Channels:  channels,
 		Messages:  messages,
 		Links:     links,
+		Files:     files,
 		Resources: resourceService,
 		Cursors:   cursors,
 		Tasks:     taskService,
@@ -135,7 +136,7 @@ func run(configPath string) error {
 		Logger:   logs.App,
 	})
 	historyService := history.NewService(history.Options{
-		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, Cursors: cursors,
 		Resources: resourceService,
 		Telegram:  tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
 		Filter:           watchFilter,

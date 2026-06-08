@@ -1,6 +1,10 @@
 package update
 
-import "time"
+import (
+	"time"
+
+	"tg-search/internal/model"
+)
 
 type EventType string
 
@@ -20,4 +24,5 @@ type Event struct {
 	RawJSON           string
 	Date              time.Time
 	EditDate          *time.Time
+	Files             []model.File
 }

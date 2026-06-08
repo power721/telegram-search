@@ -21,6 +21,7 @@ type ProcessorOptions struct {
 	Channels  *repository.ChannelRepository
 	Messages  *repository.MessageRepository
 	Links     *repository.LinkRepository
+	Files     *repository.FileRepository
 	Resources *resource.Service
 	Cursors   *repository.SyncCursorRepository
 	Tasks     *taskpkg.Service
@@ -33,6 +34,7 @@ type Processor struct {
 	channels  *repository.ChannelRepository
 	messages  *repository.MessageRepository
 	links     *repository.LinkRepository
+	files     *repository.FileRepository
 	resources *resource.Service
 	cursors   *repository.SyncCursorRepository
 	tasks     *taskpkg.Service
@@ -49,6 +51,7 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		channels:  opts.Channels,
 		messages:  opts.Messages,
 		links:     opts.Links,
+		files:     opts.Files,
 		resources: opts.Resources,
 		cursors:   opts.Cursors,
 		tasks:     opts.Tasks,
@@ -141,11 +144,18 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 			RawJSON:           event.RawJSON,
 			Date:              date,
 			EditDate:          event.EditDate,
+			Files:             event.Files,
 		}})
 		if err != nil {
 			return err
 		}
-		_, err = p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted)
+		if _, err := p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted); err != nil {
+			return err
+		}
+		if p.files == nil {
+			return nil
+		}
+		_, err = p.files.ReplaceForMessageTx(ctx, tx, stored[0].ID, stored[0].Files)
 		return err
 	}); err != nil {
 		return err

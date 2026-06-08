@@ -5,6 +5,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"tg-search/internal/model"
 )
 
 var ErrUnavailable = errors.New("telegram client is unavailable")
@@ -51,6 +53,7 @@ type Message struct {
 	RawJSON           string
 	Date              time.Time
 	EditDate          *time.Time
+	Files             []model.File
 }
 
 type Client interface {

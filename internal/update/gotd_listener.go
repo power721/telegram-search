@@ -139,6 +139,7 @@ func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Eve
 		RawJSON:           string(rawJSON),
 		Date:              time.Unix(int64(message.Date), 0).UTC(),
 		EditDate:          editDate,
+		Files:             telegram.FilesFromMessage(message),
 	}, true
 }
 

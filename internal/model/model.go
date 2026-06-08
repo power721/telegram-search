@@ -246,6 +246,7 @@ type Message struct {
 	UpdatedAt         time.Time  `json:"updated_at"`
 
 	OriginalLinkInputs []Link `json:"-"`
+	Files              []File `json:"-"`
 }
 
 type SyncCursor struct {

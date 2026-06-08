@@ -29,6 +29,7 @@ type Options struct {
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
 	Links            *repository.LinkRepository
+	Files            *repository.FileRepository
 	Resources        *resource.Service
 	Cursors          *repository.SyncCursorRepository
 	Telegram         telegram.Client
@@ -47,6 +48,7 @@ type Service struct {
 	channels         *repository.ChannelRepository
 	messages         *repository.MessageRepository
 	links            *repository.LinkRepository
+	files            *repository.FileRepository
 	resources        *resource.Service
 	cursors          *repository.SyncCursorRepository
 	telegram         telegram.Client
@@ -104,6 +106,7 @@ func NewService(opts Options) *Service {
 		channels:         opts.Channels,
 		messages:         opts.Messages,
 		links:            opts.Links,
+		files:            opts.Files,
 		resources:        opts.Resources,
 		cursors:          opts.Cursors,
 		telegram:         opts.Telegram,
@@ -370,6 +373,7 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 				RawJSON:           item.RawJSON,
 				Date:              item.Date,
 				EditDate:          item.EditDate,
+				Files:             item.Files,
 			})
 		}
 		if len(modelMessages) > 0 {
@@ -491,6 +495,11 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 				_, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
 				if err != nil {
 					return err
+				}
+				if s.files != nil {
+					if _, err := s.files.ReplaceForMessageTx(ctx, tx, msg.ID, msg.Files); err != nil {
+						return err
+					}
 				}
 				linkCount += len(extracted)
 			}

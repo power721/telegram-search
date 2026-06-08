@@ -2,7 +2,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '@/layouts/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSetupStore } from '@/stores/setup'
+import LoginView from '@/views/LoginView.vue'
 import { placeholderView } from '@/views/placeholders'
+import SetupAdminView from '@/views/SetupAdminView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -10,10 +12,10 @@ export const router = createRouter({
     {
       path: '/setup/admin',
       name: 'setup-admin',
-      component: placeholderView('Create Admin'),
+      component: SetupAdminView,
       meta: { public: true }
     },
-    { path: '/login', name: 'login', component: placeholderView('Login'), meta: { public: true } },
+    { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     {
       path: '/',
       component: AppLayout,

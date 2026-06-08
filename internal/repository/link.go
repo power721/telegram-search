@@ -118,8 +118,9 @@ WHERE ` + strings.Join(where, " AND ")
 	return total, nil
 }
 
-func (r *LinkRepository) CountByResourceCategory(ctx context.Context) (map[string]int, error) {
-	rows, err := r.db.QueryContext(ctx, `
+func (r *LinkRepository) CountByResourceCategory(ctx context.Context, params LinkSearchParams) (map[string]int, error) {
+	where, args := linkSearchWhere(params)
+	query := `
 SELECT category, count(*)
 FROM (
   SELECT
@@ -134,10 +135,12 @@ FROM (
     row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
   FROM telegram_links l
   JOIN telegram_messages m ON m.id = l.message_id
-  WHERE m.deleted = 0
+  JOIN telegram_message_contents mc ON mc.message_id = m.id
+  WHERE ` + strings.Join(where, " AND ") + `
 )
 WHERE rn = 1
-GROUP BY category`)
+GROUP BY category`
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("count resource links by category: %w", err)
 	}

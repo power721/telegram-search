@@ -62,7 +62,7 @@ func NewService(links *repository.LinkRepository, files *repository.FileReposito
 
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	items := []Item{}
-	if s.links != nil && query.Type != "files" {
+	if s.links != nil && includeLinks(query) {
 		links, err := s.links.Search(ctx, repository.LinkSearchParams{
 			Type:      query.Type,
 			Category:  query.Category,
@@ -103,10 +103,10 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			items = append(items, item)
 		}
 	}
-	if s.files != nil && (query.Type == "" || query.Type == "files") {
+	if s.files != nil && includeFiles(query) {
 		files, err := s.files.Search(ctx, repository.FileSearchParams{
 			Query:     query.Keyword,
-			Category:  query.Category,
+			Category:  fileCategoryFilter(query),
 			Extension: query.Extension,
 			AccountID: query.AccountID,
 			ChannelID: query.ChannelID,
@@ -140,16 +140,9 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		return resourceKindRank(items[i].Kind) < resourceKindRank(items[j].Kind)
 	})
 
-	grouped := defaultGrouped()
-	for _, item := range items {
-		group := item.Category
-		if item.Kind == "file" {
-			group = "files"
-		}
-		if _, ok := grouped[group]; !ok {
-			grouped[group] = 0
-		}
-		grouped[group]++
+	grouped, err := s.groupedForQuery(ctx, query)
+	if err != nil {
+		return ListResult{}, err
 	}
 	total := len(items)
 	offset := query.Offset
@@ -168,6 +161,39 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		end = total
 	}
 	return ListResult{Items: items[offset:end], Total: total, Grouped: grouped}, nil
+}
+
+func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]int, error) {
+	grouped := defaultGrouped()
+	if s.links != nil && includeLinks(query) {
+		linkCounts, err := s.links.CountByResourceCategory(ctx, repository.LinkSearchParams{
+			Type:      query.Type,
+			Category:  query.Category,
+			AccountID: query.AccountID,
+			ChannelID: query.ChannelID,
+			Keyword:   query.Keyword,
+		})
+		if err != nil {
+			return nil, err
+		}
+		for category, count := range linkCounts {
+			grouped[category] += count
+		}
+	}
+	if s.files != nil && includeFiles(query) {
+		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{
+			Query:     query.Keyword,
+			Category:  fileCategoryFilter(query),
+			Extension: query.Extension,
+			AccountID: query.AccountID,
+			ChannelID: query.ChannelID,
+		})
+		if err != nil {
+			return nil, err
+		}
+		grouped["files"] = fileCount
+	}
+	return grouped, nil
 }
 
 func (s *Service) GlobalGrouped(ctx context.Context) (map[string]int, error) {
@@ -205,7 +231,7 @@ func (s *Service) RefreshGlobalGrouped(ctx context.Context) error {
 func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, error) {
 	grouped := defaultGrouped()
 	if s.links != nil {
-		linkCounts, err := s.links.CountByResourceCategory(ctx)
+		linkCounts, err := s.links.CountByResourceCategory(ctx, repository.LinkSearchParams{})
 		if err != nil {
 			return nil, err
 		}
@@ -214,7 +240,7 @@ func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, err
 		}
 	}
 	if s.files != nil {
-		fileCount, err := s.files.CountResources(ctx)
+		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{})
 		if err != nil {
 			return nil, err
 		}
@@ -233,6 +259,21 @@ func normalizeGrouped(grouped map[string]int) map[string]int {
 
 func defaultGrouped() map[string]int {
 	return map[string]int{"cloud_drive": 0, "magnet": 0, "ed2k": 0, "http": 0, "files": 0}
+}
+
+func includeLinks(query Query) bool {
+	return query.Type != "files" && query.Category != "files"
+}
+
+func includeFiles(query Query) bool {
+	return (query.Type == "" || query.Type == "files") && (query.Category == "" || query.Category == "files")
+}
+
+func fileCategoryFilter(query Query) string {
+	if query.Category == "files" {
+		return ""
+	}
+	return query.Category
 }
 
 func firstNonEmpty(values ...string) string {

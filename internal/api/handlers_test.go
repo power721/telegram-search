@@ -202,6 +202,114 @@ func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
 	}
 }
 
+func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+
+	messages := make([]model.Message, 0, 202)
+	for i := 0; i < 201; i++ {
+		messages = append(messages, model.Message{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: int64(i + 1),
+			Text: "http resource", RawJSON: "{}", Date: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	messages = append(messages, model.Message{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1000,
+		Text: "cloud resource", RawJSON: "{}", Date: now.Add(-time.Hour),
+	})
+	stored, err := deps.Messages.SaveBatch(ctx, messages)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for i := 0; i < 201; i++ {
+		if _, err := deps.Links.SaveBatch(ctx, stored[i].ID, []model.Link{{
+			Type: "url", Category: "http", URL: "https://example.com/" + strconv.Itoa(i),
+		}}); err != nil {
+			t.Fatalf("save http link %d: %v", i, err)
+		}
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[201].ID, []model.Link{{
+		Type: "aliyun", Category: "cloud_drive", URL: "https://www.alipan.com/s/older",
+	}}); err != nil {
+		t.Fatalf("save cloud link: %v", err)
+	}
+
+	router := NewRouter(deps)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?limit=50", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 50 {
+		t.Fatalf("items len = %d, want 50", len(body.Items))
+	}
+	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
+		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
+	}
+}
+
+func TestResourcesAPIUsesCompleteGroupedCountsWithKeyword(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+
+	messages := make([]model.Message, 0, 202)
+	for i := 0; i < 201; i++ {
+		messages = append(messages, model.Message{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: int64(i + 1),
+			Text: "ubuntu http resource", RawJSON: "{}", Date: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	messages = append(messages, model.Message{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1000,
+		Text: "ubuntu cloud resource", RawJSON: "{}", Date: now.Add(-time.Hour),
+	})
+	stored, err := deps.Messages.SaveBatch(ctx, messages)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for i := 0; i < 201; i++ {
+		if _, err := deps.Links.SaveBatch(ctx, stored[i].ID, []model.Link{{
+			Type: "url", Category: "http", URL: "https://example.com/" + strconv.Itoa(i),
+		}}); err != nil {
+			t.Fatalf("save http link %d: %v", i, err)
+		}
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[201].ID, []model.Link{{
+		Type: "aliyun", Category: "cloud_drive", URL: "https://www.alipan.com/s/older",
+	}}); err != nil {
+		t.Fatalf("save cloud link: %v", err)
+	}
+
+	router := NewRouter(deps)
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu&limit=50", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 50 {
+		t.Fatalf("items len = %d, want 50", len(body.Items))
+	}
+	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
+		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
+	}
+}
+
 func TestSetupAndAuthAPIs(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

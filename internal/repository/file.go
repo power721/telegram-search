@@ -141,14 +141,16 @@ WHERE ` + strings.Join(where, " AND ")
 	return total, nil
 }
 
-func (r *FileRepository) CountResources(ctx context.Context) (int, error) {
+func (r *FileRepository) CountResources(ctx context.Context, params FileSearchParams) (int, error) {
+	where, args := fileSearchWhere(params)
 	query := `
 SELECT count(*)
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
-WHERE m.deleted = 0`
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+WHERE ` + strings.Join(where, " AND ")
 	var total int
-	if err := r.db.QueryRowContext(ctx, query).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("count resource files: %w", err)
 	}
 	return total, nil

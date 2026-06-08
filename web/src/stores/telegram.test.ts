@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost } from '@/api/client'
 import { useTelegramStore } from './telegram'
 
 vi.mock('@/api/client', () => ({
@@ -27,6 +27,9 @@ vi.mock('@/api/client', () => ({
     return Promise.reject(new Error(`unexpected get ${path}`))
   }),
   apiPost: vi.fn((path: string) => {
+    if (path === '/api/accounts/1/logout') {
+      return Promise.resolve({ id: 1, phone: '+10000000000', status: 'LOGIN_REQUIRED', last_error: '' })
+    }
     if (path === '/api/telegram/login/sign-in') {
       return Promise.resolve({ status: 'LOGIN_REQUIRED', password_required: true })
     }
@@ -38,7 +41,8 @@ vi.mock('@/api/client', () => ({
       })
     }
     return Promise.resolve({ status: 'LOGIN_REQUIRED' })
-  })
+  }),
+  apiDelete: vi.fn(() => Promise.resolve({ deleted: true }))
 }))
 
 describe('telegram store', () => {
@@ -84,5 +88,24 @@ describe('telegram store', () => {
     expect(response.password_required).toBe(true)
     expect(store.passwordRequired).toBe(true)
     expect(store.loginResult?.status).toBe('LOGIN_REQUIRED')
+  })
+
+  it('logs out an account and reloads accounts', async () => {
+    const store = useTelegramStore()
+
+    const account = await store.logoutAccount(1)
+
+    expect(apiPost).toHaveBeenCalledWith('/api/accounts/1/logout')
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
+    expect(account.status).toBe('LOGIN_REQUIRED')
+  })
+
+  it('deletes an account and reloads accounts', async () => {
+    const store = useTelegramStore()
+
+    await store.deleteAccount(1)
+
+    expect(apiDelete).toHaveBeenCalledWith('/api/accounts/1')
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
   })
 })

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, apiGet, apiPost } from './client'
+import { ApiError, apiDelete, apiGet, apiPost } from './client'
 
 describe('api client', () => {
   const originalFetch = globalThis.fetch
@@ -37,6 +37,20 @@ describe('api client', () => {
       code: 'bad_request',
       message: 'invalid',
       status: 400
+    })
+  })
+
+  it('sends DELETE requests with credentials', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ deleted: true })
+    } as Response)
+
+    await expect(apiDelete('/api/accounts/1')).resolves.toEqual({ deleted: true })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/accounts/1', {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { Accept: 'application/json' }
     })
   })
 })

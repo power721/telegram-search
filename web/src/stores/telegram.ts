@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost } from '@/api/client'
 import type {
   TelegramAccountsResponse,
   TelegramAccount,
@@ -74,6 +74,19 @@ export const useTelegramStore = defineStore('telegram', {
         const response = await apiGet<TelegramAccountsResponse>('/api/accounts')
         this.accounts = response.items
         return this.accounts
+      })
+    },
+    async logoutAccount(id: number) {
+      return this.withLoading(async () => {
+        const account = await apiPost<TelegramAccount>(`/api/accounts/${id}/logout`)
+        await this.loadAccounts()
+        return account
+      })
+    },
+    async deleteAccount(id: number) {
+      return this.withLoading(async () => {
+        await apiDelete<{ deleted: boolean }>(`/api/accounts/${id}`)
+        await this.loadAccounts()
       })
     },
     async withLoading<T>(fn: () => Promise<T>): Promise<T> {

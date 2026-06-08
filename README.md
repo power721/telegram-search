@@ -183,6 +183,10 @@ npm run web:test
 npm run web:build
 ```
 
+## Release
+
+Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and validates Docker image metadata/build output for `tg-search`.
+
 Operational docs:
 
 - Detailed API documentation: `docs/api.md`

@@ -10,6 +10,7 @@ import SettingsView from '@/views/SettingsView.vue'
 import SetupAdminView from '@/views/SetupAdminView.vue'
 import SetupTelegramApiView from '@/views/SetupTelegramApiView.vue'
 import SetupTelegramLoginView from '@/views/SetupTelegramLoginView.vue'
+import ChannelsView from '@/views/ChannelsView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -37,7 +38,7 @@ export const router = createRouter({
       children: [
         { path: '', name: 'home', component: HomeView },
         { path: 'search', name: 'search', component: placeholderView('Search') },
-        { path: 'channels', name: 'channels', component: placeholderView('Channels') },
+        { path: 'channels', name: 'channels', component: ChannelsView },
         { path: 'resources', name: 'resources', component: placeholderView('Resources') },
         { path: 'accounts', name: 'accounts', component: AccountsView },
         { path: 'tasks', name: 'tasks', component: placeholderView('Tasks') },

@@ -33,6 +33,19 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return readResponse<T>(response)
 }
 
+export async function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+  return readResponse<T>(response)
+}
+
 async function readResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => undefined)
   if (!response.ok) {

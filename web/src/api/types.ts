@@ -74,3 +74,78 @@ export interface TelegramLoginResponse {
 export interface TelegramAccountsResponse {
   items: TelegramAccount[]
 }
+
+export type SyncProfile = 'Quick' | 'Normal' | 'Deep' | 'Full'
+
+export interface TelegramChannel {
+  id: number
+  account_id: number
+  telegram_channel_id: number
+  access_hash: number
+  title: string
+  username: string
+  type: string
+  member_count: number
+  description: string
+  avatar_state: string
+  sync_state: string
+  listen_state: string
+  history_sync_enabled: boolean
+  sync_profile: SyncProfile
+  listen_enabled: boolean
+  remote_search_allowed: boolean
+  last_message_id: number
+  last_sync_time?: string
+  web_access?: boolean
+  web_access_checked_at?: string
+  web_access_error: string
+}
+
+export interface ChannelControlPayload {
+  history_sync_enabled: boolean
+  sync_profile: SyncProfile
+  listen_enabled: boolean
+  remote_search_allowed: boolean
+}
+
+export interface ChannelsResponse {
+  items: TelegramChannel[]
+}
+
+export interface WebAccessCheckResponse {
+  items: Array<{
+    channel_id: number
+    web_access: boolean
+    checked_at: string
+    web_access_error: string
+  }>
+}
+
+export interface ChannelAnalysis {
+  channel: TelegramChannel
+  control: ChannelControlPayload
+  watch_rule?: {
+    id: number
+    channel_id: number
+    enabled: boolean
+    includes: string[]
+    excludes: string[]
+    message_types: string[]
+    link_types: string[]
+  }
+  indexed_counts: {
+    messages: number
+    links: number
+    files: number
+  }
+}
+
+export interface RemoteSearchTask {
+  id: number
+  account_id: number
+  channel_id: number
+  query: string
+  status: string
+  source: string
+  expires_at: string
+}

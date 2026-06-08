@@ -9,7 +9,8 @@ import (
 )
 
 func TestFrontendFallback(t *testing.T) {
-	router := NewRouter(testDeps(t))
+	deps := testDeps(t)
+	router := NewRouter(deps)
 
 	for _, path := range []string{"/", "/channels"} {
 		t.Run(path, func(t *testing.T) {
@@ -30,6 +31,7 @@ func TestFrontendFallback(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	withAPIKey(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("/api/status status = %d body=%s, want 200", w.Code, w.Body.String())

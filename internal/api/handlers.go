@@ -15,8 +15,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
@@ -153,30 +151,7 @@ func (h handlers) setupAdmin(c *gin.Context) {
 }
 
 func (h handlers) setupAPIKey(c *gin.Context) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if !bindJSON(c, &req) {
-		return
-	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		errorText(c, http.StatusBadRequest, "name is required")
-		return
-	}
-	plaintext := strings.ReplaceAll(uuid.NewString(), "-", "")
-	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
-	if err != nil {
-		errorJSON(c, http.StatusInternalServerError, err)
-		return
-	}
-	prefix := plaintext[:8]
-	id, err := h.deps.APIKeys.Create(c.Request.Context(), model.APIKey{
-		Name:    name,
-		KeyHash: string(hash),
-		Prefix:  prefix,
-		Enabled: true,
-	})
+	resp, err := h.deps.APIKeyService.EnsureActive(c.Request.Context())
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
@@ -185,20 +160,33 @@ func (h handlers) setupAPIKey(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"id": id, "name": name, "prefix": prefix, "key": plaintext})
+	c.JSON(http.StatusCreated, resp)
 }
 
-func (h handlers) skipSetupAPIKey(c *gin.Context) {
-	if err := h.deps.Settings.Set(c.Request.Context(), setupAPIKeyDoneKey, `true`); err != nil {
-		errorJSON(c, http.StatusInternalServerError, err)
+func (h handlers) getAPIKeySettings(c *gin.Context) {
+	if !h.hasAdminSession(c) {
+		errorText(c, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	status, err := h.loadSetupStatus(c.Request.Context())
+	resp, err := h.deps.APIKeyService.Active(c.Request.Context())
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, status)
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h handlers) regenerateAPIKey(c *gin.Context) {
+	if !h.hasAdminSession(c) {
+		errorText(c, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	resp, err := h.deps.APIKeyService.Regenerate(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusCreated, resp)
 }
 
 func (h handlers) setupListenRules(c *gin.Context) {
@@ -386,6 +374,46 @@ func (h handlers) authMe(c *gin.Context) {
 	}
 	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
+}
+
+func (h handlers) requireAPIKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := apiKeyFromRequest(c.Request)
+		if key == "" {
+			errorText(c, http.StatusUnauthorized, "api key is required")
+			c.Abort()
+			return
+		}
+		_, ok, err := h.deps.APIKeyService.Verify(c.Request.Context(), key)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			c.Abort()
+			return
+		}
+		if !ok {
+			errorText(c, http.StatusUnauthorized, "invalid api key")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func (h handlers) hasAdminSession(c *gin.Context) bool {
+	cookie, err := c.Cookie(adminSessionCookie)
+	if err != nil {
+		return false
+	}
+	_, ok := h.deps.AdminAuth.UserForSession(cookie)
+	return ok
+}
+
+func apiKeyFromRequest(r *http.Request) string {
+	auth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
+		return strings.TrimSpace(auth[7:])
+	}
+	return strings.TrimSpace(r.Header.Get("X-API-Key"))
 }
 
 func (h handlers) storageUsage(c *gin.Context) {

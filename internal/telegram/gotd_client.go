@@ -199,6 +199,30 @@ func (g *GotdClient) FetchHistory(ctx context.Context, account AccountSession, c
 	return out, err
 }
 
+func (g *GotdClient) SearchMessages(ctx context.Context, account AccountSession, channel ChannelRef, query string, limit int) ([]Message, error) {
+	var out []Message
+	err := g.withClient(ctx, account.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		result, err := client.API().MessagesSearch(ctx, &tg.MessagesSearchRequest{
+			Peer:   inputPeer(channel),
+			Q:      query,
+			Filter: &tg.InputMessagesFilterEmpty{},
+			Limit:  limit,
+		})
+		if err != nil {
+			return err
+		}
+		for _, item := range historyMessages(result) {
+			message, ok := item.(*tg.Message)
+			if !ok {
+				continue
+			}
+			out = append(out, convertMessage(message))
+		}
+		return nil
+	})
+	return out, err
+}
+
 func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func(context.Context, *gotdtelegram.Client) error) error {
 	client := gotdtelegram.NewClient(g.apiID, g.apiHash, gotdtelegram.Options{
 		SessionStorage: &session.FileStorage{Path: sessionPath},

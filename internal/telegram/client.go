@@ -59,6 +59,7 @@ type Client interface {
 	Password(ctx context.Context, password string, sessionPath string) (Profile, error)
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
+	SearchMessages(ctx context.Context, session AccountSession, channel ChannelRef, query string, limit int) ([]Message, error)
 }
 
 type CodeStore struct {
@@ -105,5 +106,9 @@ func (NopClient) ListChannels(context.Context, AccountSession) ([]Channel, error
 }
 
 func (NopClient) FetchHistory(context.Context, AccountSession, ChannelRef, int64, int) ([]Message, error) {
+	return nil, ErrUnavailable
+}
+
+func (NopClient) SearchMessages(context.Context, AccountSession, ChannelRef, string, int) ([]Message, error) {
 	return nil, ErrUnavailable
 }

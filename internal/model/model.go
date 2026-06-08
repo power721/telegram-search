@@ -157,6 +157,25 @@ type RemoteSearchTask struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type RemoteSearchItem struct {
+	Source            string     `json:"source"`
+	AccountID         int64      `json:"account_id"`
+	ChannelID         int64      `json:"channel_id"`
+	ChannelTitle      string     `json:"channel_title"`
+	ChannelUsername   string     `json:"channel_username"`
+	TelegramMessageID int64      `json:"telegram_message_id"`
+	SenderID          int64      `json:"sender_id"`
+	Text              string     `json:"text"`
+	RawJSON           string     `json:"raw_json"`
+	Date              time.Time  `json:"date"`
+	EditDate          *time.Time `json:"edit_date,omitempty"`
+}
+
+type RemoteSearchResults struct {
+	Task  RemoteSearchTask   `json:"task"`
+	Items []RemoteSearchItem `json:"items"`
+}
+
 type Message struct {
 	ID                int64      `json:"id"`
 	AccountID         int64      `json:"account_id"`

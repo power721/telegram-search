@@ -1387,6 +1387,59 @@ func TestRemoteSearchEntry(t *testing.T) {
 	}
 }
 
+func TestRemoteSearchResultAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   71,
+		Title:               "Allowed",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: true,
+	})
+	deps.RemoteSearchExec = search.NewRemoteService(search.RemoteOptions{
+		Accounts: deps.Accounts,
+		Channels: deps.Channels,
+		Tasks:    deps.RemoteSearch,
+		Cursors:  repository.NewSyncCursorRepository(deps.BackupDB),
+		Telegram: &apiRemoteSearchClient{items: []telegram.Message{{
+			TelegramMessageID: 99,
+			Text:              "ubuntu remote result",
+			RawJSON:           "{}",
+			Date:              time.Now().UTC(),
+		}}},
+		Sessions: deps.Sessions,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"query":"ubuntu"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("create status = %d body=%s, want 202", w.Code, w.Body.String())
+	}
+	var task model.RemoteSearchTask
+	if err := json.Unmarshal(w.Body.Bytes(), &task); err != nil {
+		t.Fatalf("invalid task JSON: %v", err)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/search/remote/"+strconv.FormatInt(task.ID, 10), nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("result status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var result model.RemoteSearchResults
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("invalid result JSON: %v", err)
+	}
+	if result.Task.ID != task.ID || len(result.Items) != 1 || result.Items[0].Source != "remote" || result.Items[0].Text != "ubuntu remote result" {
+		t.Fatalf("remote result = %+v", result)
+	}
+}
+
 func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)
@@ -1494,6 +1547,15 @@ func (f *apiHistoryClient) FetchHistory(ctx context.Context, account telegram.Ac
 		return nil, nil
 	}
 	return []telegram.Message{{TelegramMessageID: 1, SenderID: 1, Text: "api sync", RawJSON: "{}", Date: f.date}}, nil
+}
+
+type apiRemoteSearchClient struct {
+	telegram.NopClient
+	items []telegram.Message
+}
+
+func (f *apiRemoteSearchClient) SearchMessages(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, query string, limit int) ([]telegram.Message, error) {
+	return f.items, nil
 }
 
 func testDeps(t *testing.T) Dependencies {

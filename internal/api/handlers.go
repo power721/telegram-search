@@ -505,6 +505,15 @@ func (h handlers) createRemoteSearchTask(c *gin.Context) {
 		errorText(c, http.StatusServiceUnavailable, "remote search is unavailable")
 		return
 	}
+	if h.deps.RemoteSearchExec != nil {
+		task, err := h.deps.RemoteSearchExec.Search(c.Request.Context(), req.ChannelID, query, 50)
+		if err != nil {
+			h.remoteSearchError(c, err)
+			return
+		}
+		c.JSON(http.StatusAccepted, task)
+		return
+	}
 	item, err := h.deps.Channels.FindByID(c.Request.Context(), req.ChannelID)
 	if err != nil {
 		errorJSON(c, http.StatusNotFound, err)
@@ -543,6 +552,42 @@ func (h handlers) createRemoteSearchTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusAccepted, task)
+}
+
+func (h handlers) getRemoteSearchTask(c *gin.Context) {
+	id, ok := pathPositiveInt64(c, "task_id")
+	if !ok {
+		return
+	}
+	if h.deps.RemoteSearchExec == nil {
+		errorText(c, http.StatusServiceUnavailable, "remote search execution is unavailable")
+		return
+	}
+	result, err := h.deps.RemoteSearchExec.Results(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) remoteSearchError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, searchsvc.ErrEmptyQuery):
+		errorText(c, http.StatusBadRequest, "query is required")
+	case errors.Is(err, searchsvc.ErrRemoteSearchNotAllowed):
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":    "remote_search_not_allowed",
+			"message": "remote search is not allowed for this channel",
+		}})
+	case errors.Is(err, searchsvc.ErrRemoteSearchRequiresUnsynced):
+		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
+			"code":    "remote_search_requires_unsynced_channel",
+			"message": "remote search requires an unsynced channel",
+		}})
+	default:
+		errorJSON(c, http.StatusInternalServerError, err)
+	}
 }
 
 func (h handlers) checkStorageQuota(c *gin.Context) bool {
@@ -1178,7 +1223,11 @@ func bindJSON(c *gin.Context, out any) bool {
 }
 
 func pathID(c *gin.Context) (int64, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	return pathPositiveInt64(c, "id")
+}
+
+func pathPositiveInt64(c *gin.Context, key string) (int64, bool) {
+	id, err := strconv.ParseInt(c.Param(key), 10, 64)
 	if err != nil || id <= 0 {
 		errorText(c, http.StatusBadRequest, "invalid id")
 		return 0, false

@@ -74,6 +74,7 @@ func run(configPath string) error {
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
 	files := repository.NewFileRepository(conn)
+	cursors := repository.NewSyncCursorRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	watchFilter := messagefilter.New(watchRules)
@@ -104,8 +105,16 @@ func run(configPath string) error {
 		Logger:      logs.Telegram,
 	})
 	searchService := search.NewService(messages, links, files, channels)
+	remoteSearchService := search.NewRemoteService(search.RemoteOptions{
+		Accounts: accounts,
+		Channels: channels,
+		Tasks:    remoteSearch,
+		Cursors:  cursors,
+		Telegram: tgClient,
+		Sessions: sessions,
+	})
 	historyService := history.NewService(history.Options{
-		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
 		Telegram: tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
 		Filter:           watchFilter,
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
@@ -133,7 +142,7 @@ func run(configPath string) error {
 
 	router := api.NewRouter(api.Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, StorageUsage: storageUsage,
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),

@@ -60,6 +60,17 @@ type SetupStatus struct {
 	TelegramConfigured bool `json:"telegram_configured"`
 }
 
+type TelegramAPISettings struct {
+	AppID   int    `json:"app_id"`
+	AppHash string `json:"-"`
+}
+
+type TelegramAPISettingsResponse struct {
+	Configured bool `json:"configured"`
+	AppID      int  `json:"app_id"`
+	AppHashSet bool `json:"app_hash_set"`
+}
+
 type StorageUsage struct {
 	DBBytes         int64 `json:"db_bytes"`
 	IndexBytes      int64 `json:"index_bytes"`

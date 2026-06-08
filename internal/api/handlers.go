@@ -92,6 +92,18 @@ func (h handlers) setupAPIKey(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": id, "name": name, "prefix": prefix, "key": plaintext})
 }
 
+func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
+	settings, ok := readTelegramAPISettingsRequest(c, true)
+	if !ok {
+		return
+	}
+	if err := h.deps.Settings.SaveTelegramAPI(c.Request.Context(), settings); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, repository.RedactTelegramAPI(settings))
+}
+
 func (h handlers) setupComplete(c *gin.Context) {
 	if err := h.deps.Settings.Set(c.Request.Context(), "setup.complete", `true`); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -103,6 +115,47 @@ func (h handlers) setupComplete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) getTelegramAPISettings(c *gin.Context) {
+	settings, err := h.deps.Settings.LoadTelegramAPI(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, repository.RedactTelegramAPI(settings))
+}
+
+func (h handlers) updateTelegramAPISettings(c *gin.Context) {
+	settings, ok := readTelegramAPISettingsRequest(c, true)
+	if !ok {
+		return
+	}
+	if err := h.deps.Settings.SaveTelegramAPI(c.Request.Context(), settings); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, repository.RedactTelegramAPI(settings))
+}
+
+func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {
+	var req struct {
+		AppID   int    `json:"app_id"`
+		AppHash string `json:"app_hash"`
+	}
+	if !bindJSON(c, &req) {
+		return model.TelegramAPISettings{}, false
+	}
+	if req.AppID <= 0 {
+		errorText(c, http.StatusBadRequest, "app_id must be greater than zero")
+		return model.TelegramAPISettings{}, false
+	}
+	req.AppHash = strings.TrimSpace(req.AppHash)
+	if requireHash && req.AppHash == "" {
+		errorText(c, http.StatusBadRequest, "app_hash is required")
+		return model.TelegramAPISettings{}, false
+	}
+	return model.TelegramAPISettings{AppID: req.AppID, AppHash: req.AppHash}, true
 }
 
 func (h handlers) authLogin(c *gin.Context) {
@@ -178,9 +231,13 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	if err != nil {
 		return model.SetupStatus{}, err
 	}
+	telegramAPI, err := h.deps.Settings.LoadTelegramAPI(ctx)
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
 	status.AdminConfigured = adminCount > 0
 	status.APIKeyConfigured = keyCount > 0
-	status.TelegramConfigured = false
+	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured
 	status.Complete = ok && completeRaw == `true`
 	return status, nil
 }

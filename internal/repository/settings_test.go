@@ -2,10 +2,13 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tg-search/internal/db"
+	"tg-search/internal/model"
 )
 
 func TestSettingsRepositoryUpsertsValues(t *testing.T) {
@@ -28,5 +31,51 @@ func TestSettingsRepositoryUpsertsValues(t *testing.T) {
 	}
 	if !ok || value != `true` {
 		t.Fatalf("value=%q ok=%v, want true", value, ok)
+	}
+}
+
+func TestTelegramAPISettingsRoundTripAndRedaction(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+
+	settings := model.TelegramAPISettings{AppID: 123456, AppHash: "hash-secret"}
+	if err := repo.SaveTelegramAPI(ctx, settings); err != nil {
+		t.Fatalf("save telegram api: %v", err)
+	}
+
+	raw, ok, err := repo.Get(ctx, "telegram_api")
+	if err != nil {
+		t.Fatalf("get raw telegram api: %v", err)
+	}
+	if !ok || !strings.Contains(raw, "hash-secret") {
+		t.Fatalf("raw setting = %q ok=%v, want stored secret", raw, ok)
+	}
+
+	loaded, err := repo.LoadTelegramAPI(ctx)
+	if err != nil {
+		t.Fatalf("load telegram api: %v", err)
+	}
+	if loaded.AppID != settings.AppID || loaded.AppHash != settings.AppHash {
+		t.Fatalf("loaded = %+v, want %+v", loaded, settings)
+	}
+
+	redacted := RedactTelegramAPI(loaded)
+	if !redacted.Configured || redacted.AppID != 123456 || !redacted.AppHashSet {
+		t.Fatalf("redacted = %+v, want configured app id with app_hash_set", redacted)
+	}
+	redactedJSON, err := json.Marshal(redacted)
+	if err != nil {
+		t.Fatalf("marshal redacted: %v", err)
+	}
+	if strings.Contains(string(redactedJSON), "hash-secret") {
+		t.Fatalf("redacted response leaked app hash: %+v", redacted)
 	}
 }

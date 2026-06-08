@@ -3,13 +3,23 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
+
+	"tg-search/internal/model"
 )
 
 type SettingsRepository struct {
 	db *sql.DB
+}
+
+const telegramAPISettingKey = "telegram_api"
+
+type telegramAPISettingsJSON struct {
+	AppID   int    `json:"app_id"`
+	AppHash string `json:"app_hash"`
 }
 
 func NewSettingsRepository(db *sql.DB) *SettingsRepository {
@@ -41,4 +51,44 @@ func (r *SettingsRepository) Get(ctx context.Context, key string) (string, bool,
 		return "", false, fmt.Errorf("get setting: %w", err)
 	}
 	return value, true, nil
+}
+
+func (r *SettingsRepository) SaveTelegramAPI(ctx context.Context, settings model.TelegramAPISettings) error {
+	data, err := json.Marshal(telegramAPISettingsJSON{
+		AppID:   settings.AppID,
+		AppHash: settings.AppHash,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal telegram api settings: %w", err)
+	}
+	if err := r.Set(ctx, telegramAPISettingKey, string(data)); err != nil {
+		return fmt.Errorf("save telegram api settings: %w", err)
+	}
+	return nil
+}
+
+func (r *SettingsRepository) LoadTelegramAPI(ctx context.Context) (model.TelegramAPISettings, error) {
+	raw, ok, err := r.Get(ctx, telegramAPISettingKey)
+	if err != nil {
+		return model.TelegramAPISettings{}, fmt.Errorf("load telegram api settings: %w", err)
+	}
+	if !ok {
+		return model.TelegramAPISettings{}, nil
+	}
+	var settings model.TelegramAPISettings
+	var stored telegramAPISettingsJSON
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return model.TelegramAPISettings{}, fmt.Errorf("decode telegram api settings: %w", err)
+	}
+	settings.AppID = stored.AppID
+	settings.AppHash = stored.AppHash
+	return settings, nil
+}
+
+func RedactTelegramAPI(settings model.TelegramAPISettings) model.TelegramAPISettingsResponse {
+	return model.TelegramAPISettingsResponse{
+		Configured: settings.AppID > 0 && settings.AppHash != "",
+		AppID:      settings.AppID,
+		AppHashSet: settings.AppHash != "",
+	}
 }

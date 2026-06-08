@@ -170,6 +170,46 @@ func TestSetupAPIKeyCreatesKeyOnce(t *testing.T) {
 	}
 }
 
+func TestTelegramAPISettings(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":"hash-secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, 123456)
+	if bytes.Contains(w.Body.Bytes(), []byte("hash-secret")) {
+		t.Fatalf("setup telegram api response leaked app hash: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/settings/telegram-api", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, 123456)
+	if bytes.Contains(w.Body.Bytes(), []byte("hash-secret")) {
+		t.Fatalf("get telegram api response leaked app hash: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-api", bytes.NewBufferString(`{"app_id":654321,"app_hash":"new-hash-secret"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, 654321)
+	if bytes.Contains(w.Body.Bytes(), []byte("new-hash-secret")) {
+		t.Fatalf("put telegram api response leaked app hash: %s", w.Body.String())
+	}
+}
+
 func TestStorageUsageAPI(t *testing.T) {
 	deps := testDeps(t)
 	root := t.TempDir()
@@ -197,6 +237,17 @@ func TestStorageUsageAPI(t *testing.T) {
 	}
 	if usage.DBBytes != 10 || usage.IndexBytes != 20 || usage.MediaCacheBytes != 30 || usage.TotalBytes != 60 {
 		t.Fatalf("usage = %+v", usage)
+	}
+}
+
+func assertTelegramAPISettingsResponse(t *testing.T, data []byte, configured bool, appID int) {
+	t.Helper()
+	var body model.TelegramAPISettingsResponse
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("decode telegram api settings: %v", err)
+	}
+	if body.Configured != configured || body.AppID != appID || body.AppHashSet != configured {
+		t.Fatalf("telegram api settings = %+v, want configured=%v app_id=%d", body, configured, appID)
 	}
 }
 

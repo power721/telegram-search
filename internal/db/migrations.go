@@ -279,6 +279,13 @@ CREATE TABLE IF NOT EXISTS resource_group_counts (
 );
 `,
 	},
+	{
+		version: 3,
+		name:    "api_key_ciphertext",
+		sql: `
+ALTER TABLE api_keys ADD COLUMN key_ciphertext TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

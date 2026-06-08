@@ -46,11 +46,22 @@ type User struct {
 }
 
 type APIKey struct {
+	ID            int64      `json:"id"`
+	Name          string     `json:"name"`
+	KeyHash       string     `json:"-"`
+	KeyCiphertext string     `json:"-"`
+	Prefix        string     `json:"prefix"`
+	Enabled       bool       `json:"enabled"`
+	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type APIKeyResponse struct {
 	ID         int64      `json:"id"`
 	Name       string     `json:"name"`
-	KeyHash    string     `json:"-"`
 	Prefix     string     `json:"prefix"`
-	Enabled    bool       `json:"enabled"`
+	Key        string     `json:"key"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`

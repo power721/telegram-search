@@ -141,8 +141,9 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('@movies')
     expect(wrapper.text()).toContain('频道')
     expect(wrapper.text()).toContain('保存的消息')
-    expect(wrapper.text()).toContain('仅元数据')
-    expect(wrapper.text()).toContain('未启用')
+    expect(wrapper.text()).toContain('无')
+    expect(wrapper.text()).toContain('未监听')
+    expect(wrapper.text()).toContain('监听中')
     for (const label of ['标题', '用户名', '类型', '同步状态', '监听状态', '已索引消息', '网页访问', '操作']) {
       expect(wrapper.text()).toContain(label)
     }
@@ -156,6 +157,9 @@ describe('ChannelsView', () => {
     const usernameLink = usernameCell?.find('a')
     expect(usernameLink?.attributes('href')).toBe('https://t.me/s/movies')
     expect(usernameLink?.attributes('target')).toBe('_blank')
+    const inaccessibleUsernameCell = channelRow(wrapper, 'Anime').findAll('td').at(1)
+    expect(inaccessibleUsernameCell?.text()).toBe('@animehub')
+    expect(inaccessibleUsernameCell?.find('a').exists()).toBe(false)
     const webAccessCell = channelRow(wrapper, 'Movies').findAll('td').at(6)
     expect(webAccessCell?.text()).toBe('可访问')
     const webAccessLink = webAccessCell?.find('a')
@@ -168,7 +172,7 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.sync-state-filter').exists()).toBe(true)
     expect(wrapper.find('.listen-state-filter').exists()).toBe(true)
     expect(wrapper.find('.web-access-filter').exists()).toBe(true)
-    expect(wrapper.find('.sort-select').exists()).toBe(true)
+    expect(wrapper.find('.sort-select').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('频道类')
     expect(wrapper.text()).not.toContain('Channels')
     expect(wrapper.text()).not.toContain('Refresh')
@@ -183,12 +187,16 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.remote-input').exists()).toBe(false)
   })
 
-  it('searches filters and sorts channel rows', async () => {
+  it('searches filters and sorts channel rows from table headers', async () => {
     const wrapper = mountChannelsView()
     await flushPromises()
 
-    await wrapper.find('.sort-select').setValue('indexed_desc')
+    await wrapper.find('[data-sort-key="indexed"]').trigger('click')
+    expect(channelTitles(wrapper)).toEqual(['Saved', 'Anime', 'Movies', 'Docs'])
+    await wrapper.find('[data-sort-key="indexed"]').trigger('click')
     expect(channelTitles(wrapper)).toEqual(['Docs', 'Movies', 'Anime', 'Saved'])
+    await wrapper.find('[data-sort-key="username"]').trigger('click')
+    expect(channelTitles(wrapper)).toEqual(['Saved', 'Anime', 'Docs', 'Movies'])
 
     await wrapper.find('.channel-search').setValue('anime')
     expect(channelTitles(wrapper)).toEqual(['Anime'])
@@ -213,7 +221,7 @@ describe('ChannelsView', () => {
     await wrapper.find('.web-access-filter').setValue('inaccessible')
     expect(channelTitles(wrapper)).toEqual(['Anime'])
     await wrapper.find('.web-access-filter').setValue('unknown')
-    expect(channelTitles(wrapper)).toEqual(['Docs', 'Saved'])
+    expect(channelTitles(wrapper)).toEqual(['Saved', 'Docs'])
   })
 
   it('checks public channel web access from row and batch actions', async () => {

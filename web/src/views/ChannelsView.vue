@@ -13,7 +13,8 @@ const typeFilter = ref('')
 const syncStateFilter = ref('')
 const listenStateFilter = ref('')
 const webAccessFilter = ref('')
-const sortKey = ref('title_asc')
+const sortKey = ref<'title' | 'username' | 'indexed'>('title')
+const sortDirection = ref<'asc' | 'desc'>('asc')
 const canConfirmSync = computed(() => Number.isInteger(syncMaxMessages.value) && Number(syncMaxMessages.value) > 0)
 
 const typeOptions = [
@@ -26,7 +27,7 @@ const typeOptions = [
 
 const syncStateOptions = [
   { label: '全部同步状态', value: '' },
-  { label: '仅元数据', value: 'metadata_only' },
+  { label: '无', value: 'metadata_only' },
   { label: '待同步', value: 'pending' },
   { label: '同步中', value: 'syncing' },
   { label: '已同步', value: 'synced' },
@@ -36,8 +37,8 @@ const syncStateOptions = [
 
 const listenStateOptions = [
   { label: '全部监听状态', value: '' },
-  { label: '已启用', value: 'enabled' },
-  { label: '未启用', value: 'disabled' },
+  { label: '监听中', value: 'enabled' },
+  { label: '未监听', value: 'disabled' },
   { label: '监听异常', value: 'error' }
 ]
 
@@ -47,14 +48,6 @@ const webAccessOptions = [
   { label: '不可访问', value: 'inaccessible' },
   { label: '未检测', value: 'unknown' },
   { label: '检测失败', value: 'error' }
-]
-
-const sortOptions = [
-  { label: '标题 A-Z', value: 'title_asc' },
-  { label: '标题 Z-A', value: 'title_desc' },
-  { label: '用户名 A-Z', value: 'username_asc' },
-  { label: '已索引消息多到少', value: 'indexed_desc' },
-  { label: '已索引消息少到多', value: 'indexed_asc' }
 ]
 
 const filteredChannels = computed(() => {
@@ -105,7 +98,7 @@ function channelTypeLabel(type: string) {
 
 function syncStateLabel(state: string) {
   const labels: Record<string, string> = {
-    metadata_only: '仅元数据',
+    metadata_only: '无',
     pending: '待同步',
     syncing: '同步中',
     synced: '已同步',
@@ -117,8 +110,8 @@ function syncStateLabel(state: string) {
 
 function listenStateLabel(state: string) {
   const labels: Record<string, string> = {
-    enabled: '已启用',
-    disabled: '未启用',
+    enabled: '监听中',
+    disabled: '未监听',
     error: '监听异常'
   }
   return labels[state] ?? state
@@ -141,23 +134,39 @@ function canCheckWebAccess(channel: TelegramChannel) {
 }
 
 function compareChannels(left: TelegramChannel, right: TelegramChannel) {
+  const direction = sortDirection.value === 'asc' ? 1 : -1
+  let result = 0
   switch (sortKey.value) {
-    case 'title_desc':
-      return compareText(right.title, left.title)
-    case 'username_asc':
-      return compareText(left.username, right.username)
-    case 'indexed_desc':
-      return right.indexed_message_count - left.indexed_message_count || compareText(left.title, right.title)
-    case 'indexed_asc':
-      return left.indexed_message_count - right.indexed_message_count || compareText(left.title, right.title)
-    case 'title_asc':
+    case 'username':
+      result = compareText(left.username, right.username)
+      break
+    case 'indexed':
+      result = left.indexed_message_count - right.indexed_message_count
+      break
+    case 'title':
     default:
-      return compareText(left.title, right.title)
+      result = compareText(left.title, right.title)
+      break
   }
+  return result * direction || compareText(left.title, right.title)
 }
 
 function compareText(left: string, right: string) {
   return left.localeCompare(right, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
+}
+
+function sortBy(key: 'title' | 'username' | 'indexed') {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+    return
+  }
+  sortKey.value = key
+  sortDirection.value = 'asc'
+}
+
+function sortIndicator(key: 'title' | 'username' | 'indexed') {
+  if (sortKey.value !== key) return ''
+  return sortDirection.value === 'asc' ? ' ↑' : ' ↓'
 }
 
 function syncHistory(channel: TelegramChannel) {
@@ -213,7 +222,6 @@ async function enableListening(channel: TelegramChannel) {
       <n-select v-model:value="syncStateFilter" class="sync-state-filter" :options="syncStateOptions" />
       <n-select v-model:value="listenStateFilter" class="listen-state-filter" :options="listenStateOptions" />
       <n-select v-model:value="webAccessFilter" class="web-access-filter" :options="webAccessOptions" />
-      <n-select v-model:value="sortKey" class="sort-select" :options="sortOptions" />
       <n-button
         class="batch-web-access-check"
         :disabled="visibleWebCheckChannelIds.length === 0"
@@ -228,12 +236,24 @@ async function enableListening(channel: TelegramChannel) {
       <table>
         <thead>
           <tr>
-            <th>标题</th>
-            <th>用户名</th>
+            <th>
+              <button class="sort-header" type="button" data-sort-key="title" @click="sortBy('title')">
+                标题{{ sortIndicator('title') }}
+              </button>
+            </th>
+            <th>
+              <button class="sort-header" type="button" data-sort-key="username" @click="sortBy('username')">
+                用户名{{ sortIndicator('username') }}
+              </button>
+            </th>
             <th>类型</th>
             <th>同步状态</th>
             <th>监听状态</th>
-            <th>已索引消息</th>
+            <th>
+              <button class="sort-header" type="button" data-sort-key="indexed" @click="sortBy('indexed')">
+                已索引消息{{ sortIndicator('indexed') }}
+              </button>
+            </th>
             <th>网页访问</th>
             <th>操作</th>
           </tr>
@@ -243,9 +263,9 @@ async function enableListening(channel: TelegramChannel) {
             <td>{{ channel.title }}</td>
             <td>
               <a
-                v-if="channelWebUrl(channel)"
+                v-if="webAccessUrl(channel)"
                 class="channel-username-link"
-                :href="channelWebUrl(channel)"
+                :href="webAccessUrl(channel)"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -333,7 +353,7 @@ async function enableListening(channel: TelegramChannel) {
 .channel-toolbar {
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1.4fr) repeat(5, minmax(130px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
   margin-bottom: 12px;
 }
 
@@ -355,6 +375,21 @@ th {
   color: #667085;
   font-size: 13px;
   font-weight: 600;
+}
+
+.sort-header {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.sort-header:hover {
+  color: #2563eb;
 }
 
 .actions {

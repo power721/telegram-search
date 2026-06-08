@@ -55,6 +55,8 @@ Admin Account -> API Key -> Telegram API -> Telegram Login -> Home
 
 Telegram Login starts a metadata-only channel sync after the account is online. It collects account and channel metadata such as title, username, member count, description, avatar state, sync state, and listen state. It does not fetch message history during onboarding.
 
+Channel Control adds Sync Profiles (`Quick`, `Normal`, `Deep`, `Full`), per-channel history/listen/remote-search toggles, Telegram Web Access Detection for `https://t.me/s/{username}`, listen rule filters, and display-only remote search task records. Web Access Detection is not a search-engine indexing signal.
+
 ## Foundation APIs
 
 ```text
@@ -75,6 +77,14 @@ GET    /api/accounts
 DELETE /api/accounts/:id
 POST   /api/accounts/:id/channels/sync-metadata
 GET    /api/channels
+PATCH  /api/channels/:id/control
+POST   /api/channels/:id/analyze
+POST   /api/channels/web-access/check
+GET    /api/watch-rules
+POST   /api/watch-rules
+PUT    /api/watch-rules/:id
+DELETE /api/watch-rules/:id
+POST   /api/search/remote
 GET    /api/storage/usage
 GET    /api/status
 ```

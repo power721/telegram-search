@@ -239,6 +239,123 @@ Runs metadata-only channel sync for an account. The sync stores channel title, u
 
 Returns channels for an account. Omit `account_id` to list all channels.
 
+### `PATCH /api/channels/:id/control`
+
+Updates per-channel control settings.
+
+Sync Profiles:
+
+```text
+Quick  -> latest 100 messages
+Normal -> latest 1000 messages
+Deep   -> latest 10000 messages
+Full   -> all available history
+```
+
+Request:
+
+```json
+{
+  "history_sync_enabled": true,
+  "sync_profile": "Normal",
+  "listen_enabled": false,
+  "remote_search_allowed": true
+}
+```
+
+Deep and Full changes check DB storage quota before saving. If DB usage is at or above `storage.max_db_size`, the API returns `409` with `storage_quota_exceeded`.
+
+### `POST /api/channels/web-access/check`
+
+Runs Telegram Web Access Detection for selected channels.
+
+This check only determines whether a public username channel can be viewed through:
+
+```text
+https://t.me/s/{username}
+```
+
+The detector parses the page for `tgme_widget_message_wrap`. It does not mean Google/Bing indexing, PanSou indexing, Telegram public searchability, or complete content access.
+
+Request:
+
+```json
+{
+  "channel_ids": [1, 2]
+}
+```
+
+### `POST /api/channels/:id/analyze`
+
+Returns lightweight channel analysis from stored metadata and existing local counts only. It does not fetch Telegram history.
+
+Response includes:
+
+```json
+{
+  "channel": {},
+  "control": {},
+  "watch_rule": null,
+  "indexed_counts": {
+    "messages": 0,
+    "links": 0,
+    "files": 0
+  }
+}
+```
+
+## Listen Rules
+
+### `POST /api/watch-rules`
+
+Creates a listen rule.
+
+```json
+{
+  "channel_id": 1,
+  "enabled": true,
+  "includes": ["电影", "课程"],
+  "excludes": ["广告"],
+  "message_types": ["text", "file"],
+  "link_types": ["cloud_drive", "magnet", "ed2k", "http"]
+}
+```
+
+`PUT /api/watch-rules/:id` uses the same payload. `GET /api/watch-rules` and `GET /api/watch-rules/:id` return these fields.
+
+## Remote Search Entry
+
+### `POST /api/search/remote`
+
+Creates display-only remote search task metadata for Phase 1E execution.
+
+Constraints:
+
+- `query` must be non-empty.
+- `channel_id` must reference an unsynced channel.
+- `remote_search_allowed` must be `true`.
+- This endpoint does not write local index rows.
+
+Request:
+
+```json
+{
+  "channel_id": 1,
+  "query": "ubuntu iso"
+}
+```
+
+Response `202`:
+
+```json
+{
+  "id": 1,
+  "status": "queued",
+  "source": "remote",
+  "expires_at": "2026-06-08T10:30:00Z"
+}
+```
+
 ## Auth
 
 ### `POST /api/auth/login`

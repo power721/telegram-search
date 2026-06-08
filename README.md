@@ -31,6 +31,17 @@ go build ./...
 go run ./cmd/tg-search -config config.yaml
 ```
 
+Run with Docker Compose:
+
+```bash
+mkdir -p data
+cp config.yaml data/config.yaml
+docker compose up -d
+docker compose logs -f tg-search
+```
+
+The container stores database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`, mounted as `./data` in the example Compose file.
+
 Start the web admin shell:
 
 ```bash

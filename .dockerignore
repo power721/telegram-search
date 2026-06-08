@@ -1,0 +1,15 @@
+.git
+.github
+.idea
+.superpowers
+.worktrees
+web/node_modules
+web/dist
+web/.vite
+web/*.tsbuildinfo
+internal/web/dist
+tmp
+data
+*.db
+*.db-*
+*.log

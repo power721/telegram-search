@@ -1,0 +1,12 @@
+services:
+  tg-search:
+    build: .
+    image: tg-search:local
+    container_name: tg-search
+    restart: unless-stopped
+    ports:
+      - "6000:6000"
+    volumes:
+      - ./data:/data/tg-search
+    environment:
+      - TZ=Asia/Shanghai

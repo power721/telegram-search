@@ -134,6 +134,32 @@ describe('AccountsView', () => {
     expect(messageSuccess).toHaveBeenCalledWith('Telegram 账号已连接')
   })
 
+  it('uses the phone and code typed in the account login dialog', async () => {
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    const loginButton = wrapper.findAll('button').find((button) => button.text() === '登录')
+    expect(loginButton).toBeTruthy()
+    await loginButton!.trigger('click')
+
+    const phoneInput = wrapper.find('input[autocomplete="tel"]')
+    await phoneInput.setValue('+19999999999')
+    await wrapper.findAll('button').find((button) => button.text() === '发送验证码')!.trigger('click')
+    await flushPromises()
+
+    await phoneInput.setValue('+18888888888')
+    await wrapper.find('input[autocomplete="one-time-code"]').setValue('12345')
+    const dialogLoginButtons = wrapper.findAll('button').filter((button) => button.text() === '登录')
+    await dialogLoginButtons.at(-1)!.trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+19999999999' })
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/sign-in', {
+      phone: '+18888888888',
+      code: '12345'
+    })
+  })
+
   it('logs out an account from the action column', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()
@@ -191,6 +217,9 @@ function mountAccountsView() {
         NModal: {
           props: ['show'],
           template: '<div v-if="show"><slot /></div>'
+        },
+        NCard: {
+          template: '<section><slot /></section>'
         },
         NTag: {
           template: '<span><slot /></span>'

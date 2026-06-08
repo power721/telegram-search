@@ -78,6 +78,7 @@ async function sendCode() {
 
 async function signIn() {
   try {
+    telegram.phone = loginPhone.value
     const response = await telegram.signIn(loginCode.value)
     if (response.account) {
       finishLogin()
@@ -89,6 +90,7 @@ async function signIn() {
 
 async function submitPassword() {
   try {
+    telegram.phone = loginPhone.value
     const response = await telegram.submitPassword(loginPassword.value)
     if (response.account) {
       finishLogin()
@@ -182,8 +184,8 @@ function confirmDeleteAccount(account: TelegramAccount) {
       </table>
     </div>
 
-    <n-modal v-model:show="loginDialogVisible">
-      <section class="login-dialog">
+    <n-modal v-model:show="loginDialogVisible" :mask-closable="false">
+      <n-card class="login-dialog" :bordered="false">
         <p class="page-kicker">Telegram</p>
         <h2>Telegram 登录</h2>
         <n-form @submit.prevent>
@@ -216,7 +218,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
           </div>
         </n-form>
         <p v-if="metadataText" class="sync-result">{{ metadataText }}</p>
-      </section>
+      </n-card>
     </n-modal>
   </section>
 </template>

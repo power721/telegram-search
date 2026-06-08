@@ -1,0 +1,12 @@
+FROM alpine:3.22
+
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /app
+
+COPY --chmod=755 dist/linux/${TARGETARCH}/tg-search /usr/local/bin/tg-search
+
+EXPOSE 6000
+VOLUME ["/data/tg-search"]
+ENTRYPOINT ["tg-search"]

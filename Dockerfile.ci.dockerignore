@@ -1,0 +1,8 @@
+**
+!Dockerfile.ci
+!dist/
+!dist/linux/
+!dist/linux/amd64/
+!dist/linux/amd64/tg-search
+!dist/linux/arm64/
+!dist/linux/arm64/tg-search

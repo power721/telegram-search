@@ -58,9 +58,11 @@ jobs:
       - name: Build Linux release assets
         run: |
           set -euo pipefail
-          mkdir -p dist
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/tg-search-linux-amd64 ./cmd/tg-search
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/tg-search-linux-arm64 ./cmd/tg-search
+          mkdir -p dist/linux/amd64 dist/linux/arm64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/linux/amd64/tg-search ./cmd/tg-search
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o dist/linux/arm64/tg-search ./cmd/tg-search
+          cp dist/linux/amd64/tg-search dist/tg-search-linux-amd64
+          cp dist/linux/arm64/tg-search dist/tg-search-linux-arm64
           cd dist
           sha256sum tg-search-linux-amd64 tg-search-linux-arm64 > checksums.txt
           cat checksums.txt
@@ -116,6 +118,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.ci
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |

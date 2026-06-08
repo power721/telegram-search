@@ -1,10 +1,12 @@
-# tg-provider
+# tg-search
 
-Local Telegram resource provider for AList-TVBox.
+Self-hosted personal Telegram search foundation.
+
+`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and will grow into a Vue admin console in later phases. Phase 1A provides the backend foundation: config, storage quota settings, setup/admin auth APIs, API key creation, and storage usage reporting.
 
 ## Quickstart
 
-Create `config.yaml` locally for development, or `/data/tg-provider/config.yaml` in the container:
+Create `config.yaml` locally for development, or `/data/tg-search/config.yaml` in production:
 
 ```yaml
 telegram:
@@ -17,105 +19,58 @@ sync:
   workers: 5
   history_batch_size: 100
 storage:
-  path: /data/tg-provider
+  path: /data/tg-search
+  max_db_size: 10GB
+  max_media_cache: 20GB
 ```
 
 Build and run:
 
 ```bash
 go build ./...
-go run ./cmd/tg-provider -config config.yaml
+go run ./cmd/tg-search -config config.yaml
 ```
 
-Core APIs:
+## Foundation APIs
 
 ```text
-POST   /api/login/send-code
-POST   /api/login/sign-in
-POST   /api/login/password
-GET    /api/accounts
-DELETE /api/accounts/{id}
-POST   /api/accounts/{id}/channels/sync
-GET    /api/channels
-GET    /api/channels/{id}
-POST   /api/channels/sync
-POST   /api/channels/web-access/check
-POST   /api/channels/{id}/sync
-GET    /api/watch-rules
-POST   /api/watch-rules
-GET    /api/watch-rules/{id}
-PUT    /api/watch-rules/{id}
-DELETE /api/watch-rules/{id}
-GET    /api/search?q=keyword
-GET    /api/messages/latest
-GET    /api/links
-GET    /api/links/merged
+GET    /api/setup/status
+POST   /api/setup/admin
+POST   /api/setup/api-key
+POST   /api/setup/complete
+POST   /api/auth/login
+POST   /api/auth/logout
+GET    /api/auth/me
+GET    /api/storage/usage
 GET    /api/status
-POST   /api/maintenance/sqlite
-POST   /api/maintenance/backup
 ```
 
-## First login and search flow
+Telegram account, channel, search, maintenance, and backup APIs from the existing backend remain available while the product is redesigned in later phases.
 
-1. Start the provider:
+## Storage Usage Response
+
+```json
+{
+  "db_bytes": 3200000000,
+  "index_bytes": 1100000000,
+  "media_cache_bytes": 0,
+  "total_bytes": 4300000000,
+  "max_db_bytes": 10000000000,
+  "max_media_bytes": 20000000000,
+  "db_over_quota": false,
+  "media_over_quota": false
+}
+```
+
+## Development
 
 ```bash
-go run ./cmd/tg-provider -config config.yaml
+GOCACHE=/tmp/go-build-cache go test ./...
 ```
 
-2. Send a Telegram code:
-
-```bash
-curl -s -X POST http://127.0.0.1:6000/api/login/send-code \
-  -H 'content-type: application/json' \
-  -d '{"phone":"+123456789"}'
-```
-
-3. Sign in with the received code:
-
-```bash
-curl -s -X POST http://127.0.0.1:6000/api/login/sign-in \
-  -H 'content-type: application/json' \
-  -d '{"phone":"+123456789","code":"12345"}'
-```
-
-If 2FA is required, call `/api/login/password` with the same phone and the account password.
-
-4. Sync the account channel list:
-
-```bash
-curl -s -X POST http://127.0.0.1:6000/api/accounts/1/channels/sync
-```
-
-5. Sync one channel:
-
-```bash
-curl -s -X POST http://127.0.0.1:6000/api/channels/1/sync
-```
-
-6. Search messages and links:
-
-```bash
-curl -s 'http://127.0.0.1:6000/api/search?q=keyword&limit=20'
-curl -s 'http://127.0.0.1:6000/api/links?limit=20'
-```
-
-The manual sync APIs return a queued job response when the runtime retry queue is enabled.
-
-## Operational docs
+Operational docs:
 
 - Detailed API documentation: `docs/api.md`
 - API response contract: `docs/api-response-contract.md`
 - Smoke test guide: `docs/smoke-test-guide.md`
 - Production deployment checklist: `docs/production-deployment-checklist.md`
-
-## Known limitations
-
-- Automated tests use fake Telegram clients. Real Telegram login and history sync require valid API credentials and network access.
-- The service binds to `127.0.0.1:6000` by default and should not be exposed publicly.
-- The retry queue is in-memory. Queued job status does not survive process restart.
-- Million-message performance benchmarks are opt-in:
-
-```bash
-TG_PROVIDER_MILLION_BENCH=1 go test ./internal/repository -bench BenchmarkMessageRepositorySearchMillion -run '^$'
-```

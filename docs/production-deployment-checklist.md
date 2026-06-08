@@ -2,72 +2,38 @@
 
 ## Configuration
 
-- `telegram.api_id` is set.
-- `telegram.api_hash` is set through a private config file or protected environment workflow.
-- `server.host` remains `127.0.0.1` unless there is a deliberate local-network deployment.
-- `server.port` does not conflict with AList-TVBox or other sidecar processes.
-- `sync.workers` is appropriate for the host CPU and Telegram account limits.
-- `sync.history_batch_size` is small enough to avoid long transactions.
-- `storage.path` points to persistent storage mounted at `/data/tg-provider`.
+- `server.host` is bound to a private interface unless a reverse proxy adds authentication and TLS.
+- `server.port` does not conflict with other local services.
+- `storage.path` points to persistent storage mounted at `/data/tg-search`.
+- `storage.max_db_size` is set for the host disk size.
+- `storage.max_media_cache` is set for the host disk size.
+- Telegram API credentials are configured in `config.yaml`.
 
-## Data Directory
+## Storage
 
-- `/data/tg-provider` exists and is writable.
-- `/data/tg-provider/sessions` exists and is not world-readable.
-- `/data/tg-provider/logs` exists and has enough disk space.
-- `/data/tg-provider/backup` exists and is included in operational backup retention.
-- `telegram.db` is on reliable local storage.
+- `/data/tg-search` exists and is writable.
+- `/data/tg-search/sessions` exists and is not world-readable.
+- `/data/tg-search/logs` exists and has enough disk space.
+- `/data/tg-search/backup` is included in operational backup retention.
+- `/data/tg-search/index` and `/data/tg-search/thumbnails` exist.
 
-## Logs
+## Runtime
 
-- `app.log`, `sync.log`, `telegram.log`, and `error.log` are created under `/data/tg-provider/logs`.
-- Log rotation is enabled.
-- Logs are not shipped to public services without redaction.
-- Login codes, passwords, API hashes, and session file contents are not logged.
+- `tg-search` starts with `go run ./cmd/tg-search -config config.yaml` or the packaged binary.
+- `GET /api/status` returns `{"service":"ok"}`.
+- `GET /api/storage/usage` reports DB, index, media cache, total bytes, and quota flags.
+- Logs are reviewed for startup errors.
 
-## Backup
+## Setup
 
-- Trigger a backup after first successful login and channel sync:
-
-  ```bash
-  curl -s -X POST http://127.0.0.1:6000/api/maintenance/backup
-  ```
-
-- Verify the returned backup file exists under `/data/tg-provider/backup`.
-- Keep backup retention bounded by external cleanup policy.
-- Do not run filesystem copies of `telegram.db` without SQLite backup or `VACUUM INTO` while the service is running.
-
-## Startup
-
-- Startup order is config load, runtime directory creation, logger creation, SQLite open, migrations, account/session restore, scheduler start, API start.
-- Failure at any startup step exits the process.
-- AList-TVBox container startup supervises both the Java/native app and `tg-provider`.
-
-## Shutdown
-
-- Stop HTTP acceptance first through process termination.
-- Stop scheduler jobs.
-- Wait for queued sync jobs to finish or hit shutdown timeout.
-- Stop account/update runtime.
-- Close SQLite after runtime components have stopped using it.
-- Keep shutdown timeout long enough for small active batches to finish.
-
-## Health Check
-
-- Use:
-
-  ```bash
-  curl -fsS http://127.0.0.1:6000/api/status
-  ```
-
-- Alert if the API is unavailable.
-- Alert if account states remain `RECONNECTING`, `FLOOD_WAIT`, or `DISCONNECTED` unexpectedly.
-- Check `error.log` after restart loops.
+- `GET /api/setup/status` returns setup state.
+- `POST /api/setup/admin` creates the first admin.
+- `POST /api/setup/api-key` is used only when a script/client key is needed.
+- `POST /api/setup/complete` is called after first-run setup.
 
 ## Security
 
-- Do not publish port `6000`.
-- Restrict filesystem permissions for config and sessions.
-- Keep Telegram credentials out of shell history and public logs.
-- Delete accounts through `DELETE /api/accounts/{id}` so runtime state and session files are cleaned together.
-- Review backup files before moving them outside the host.
+- Protect `/data/tg-search/config.yaml` and `/data/tg-search/sessions` permissions.
+- Do not expose the service directly to the public internet.
+- Rotate optional API keys when scripts or clients are retired.
+- Confirm `password_hash`, API key hashes, Telegram login codes, and Telegram session contents do not appear in API responses.

@@ -8,6 +8,7 @@ import (
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/channel"
+	"tg-search/internal/config"
 	"tg-search/internal/history"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
@@ -28,6 +29,7 @@ type Dependencies struct {
 	APIKeys          *repository.APIKeyRepository
 	Settings         *repository.SettingsRepository
 	AdminAuth        *adminauth.Service
+	RuntimeConfig    config.Config
 	StorageUsage     *storage.UsageService
 	Accounts         *repository.AccountRepository
 	Channels         *repository.ChannelRepository
@@ -62,6 +64,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	h := handlers{deps: deps}
 	api := router.Group("/api")
+	api.GET("/health", h.health)
+	api.GET("/ready", h.ready)
 	api.GET("/setup/status", h.setupStatus)
 	api.POST("/setup/admin", h.setupAdmin)
 	api.POST("/setup/api-key", h.setupAPIKey)

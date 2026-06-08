@@ -68,20 +68,60 @@ func EnsureRuntimeDirs(cfg Config) error {
 	if cfg.Storage.Path == "" {
 		return errors.New("storage.path is required")
 	}
-	for _, path := range []string{
-		cfg.Storage.Path,
-		filepath.Join(cfg.Storage.Path, "sessions"),
-		filepath.Join(cfg.Storage.Path, "logs"),
-		filepath.Join(cfg.Storage.Path, "backup"),
-		filepath.Join(cfg.Storage.Path, "uploads"),
-		filepath.Join(cfg.Storage.Path, "index"),
-		filepath.Join(cfg.Storage.Path, "thumbnails"),
-	} {
+	for _, path := range RuntimeDirs(cfg) {
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			return fmt.Errorf("create runtime directory %s: %w", path, err)
 		}
 	}
+	return ValidateRuntimeDirs(cfg)
+}
+
+func ValidateRuntimeDirs(cfg Config) error {
+	if cfg.Storage.Path == "" {
+		return errors.New("storage.path is required")
+	}
+	for _, path := range RuntimeDirs(cfg) {
+		info, err := os.Stat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("runtime directory %s is missing", path)
+		}
+		if err != nil {
+			return fmt.Errorf("stat runtime directory %s: %w", path, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("runtime path %s is not a directory", path)
+		}
+		if err := probeWritable(path); err != nil {
+			return fmt.Errorf("runtime directory %s is not writable: %w", path, err)
+		}
+	}
 	return nil
+}
+
+func RuntimeDirs(cfg Config) []string {
+	root := cfg.Storage.Path
+	return []string{
+		root,
+		filepath.Join(root, "sessions"),
+		filepath.Join(root, "logs"),
+		filepath.Join(root, "backup"),
+		filepath.Join(root, "uploads"),
+		filepath.Join(root, "index"),
+		filepath.Join(root, "thumbnails"),
+	}
+}
+
+func probeWritable(dir string) error {
+	file, err := os.CreateTemp(dir, ".tg-search-write-test-*")
+	if err != nil {
+		return err
+	}
+	name := file.Name()
+	if err := file.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
 }
 
 func defaultConfig() Config {

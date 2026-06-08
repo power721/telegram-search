@@ -19,6 +19,10 @@ func NewUsageService(cfg config.Config) *UsageService {
 	return &UsageService{cfg: cfg}
 }
 
+func (s *UsageService) Config() config.Config {
+	return s.cfg
+}
+
 func (s *UsageService) Usage() (model.StorageUsage, error) {
 	root := s.cfg.Storage.Path
 	dbBytes, err := fileSize(filepath.Join(root, "tg-search.db"))

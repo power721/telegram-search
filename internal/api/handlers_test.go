@@ -316,6 +316,60 @@ func TestStorageUsageAPI(t *testing.T) {
 	}
 }
 
+func TestHealthAndReadyEndpoints(t *testing.T) {
+	deps := testDeps(t)
+	runtimeRoot := t.TempDir()
+	deps.RuntimeConfig = config.Config{Storage: config.StorageConfig{Path: runtimeRoot}}
+	if err := config.EnsureRuntimeDirs(deps.RuntimeConfig); err != nil {
+		t.Fatalf("EnsureRuntimeDirs returned error: %v", err)
+	}
+	router := NewRouter(deps)
+
+	for _, tc := range []struct {
+		path string
+		key  string
+	}{
+		{"/api/health", "service"},
+		{"/api/ready", "ready"},
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s, want 200", tc.path, w.Code, w.Body.String())
+		}
+		var body map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s invalid JSON: %v", tc.path, err)
+		}
+		if _, ok := body[tc.key]; !ok {
+			t.Fatalf("%s response missing key %q: %s", tc.path, tc.key, w.Body.String())
+		}
+	}
+}
+
+func TestReadyEndpointFailsWhenRuntimeDirsAreInvalid(t *testing.T) {
+	deps := testDeps(t)
+	deps.RuntimeConfig = config.Config{Storage: config.StorageConfig{Path: t.TempDir()}}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/ready", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("ready status = %d body=%s, want 503", w.Code, w.Body.String())
+	}
+	var body struct {
+		Ready bool `json:"ready"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Ready {
+		t.Fatal("ready = true, want false")
+	}
+}
+
 func TestTaskAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -1706,6 +1760,10 @@ func testDeps(t *testing.T) Dependencies {
 func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	t.Helper()
 	root := t.TempDir()
+	runtimeConfig := config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}
+	if err := config.EnsureRuntimeDirs(runtimeConfig); err != nil {
+		t.Fatalf("EnsureRuntimeDirs returned error: %v", err)
+	}
 	conn, err := db.Open(filepath.Join(root, "tg-search.db"))
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
@@ -1743,8 +1801,9 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
-		StorageUsage: storage.NewUsageService(config.Config{Storage: config.StorageConfig{Path: root, MaxDBSize: config.Size(10), MaxMediaCache: config.Size(20)}}),
-		Search:       searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
+		RuntimeConfig: runtimeConfig,
+		StorageUsage:  storage.NewUsageService(runtimeConfig),
+		Search:        searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Tasks: taskService, TaskRepository: taskRepository, Events: taskpkg.NewEventBroker(),
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	}, conn

@@ -153,7 +153,7 @@ func run(configPath string) error {
 	cleanupScheduler.Start(ctx)
 
 	router := api.NewRouter(api.Dependencies{
-		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, StorageUsage: storageUsage,
+		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, RuntimeConfig: cfg, StorageUsage: storageUsage,
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,

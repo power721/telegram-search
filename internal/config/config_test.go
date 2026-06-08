@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,5 +87,52 @@ func TestEnsureRuntimeDirsCreatesStorageLayout(t *testing.T) {
 		if !info.IsDir() {
 			t.Fatalf("%s is not a directory", path)
 		}
+	}
+}
+
+func TestRuntimeDirectoryValidation(t *testing.T) {
+	cfg := Config{}
+	cfg.Storage.Path = t.TempDir()
+
+	if err := ValidateRuntimeDirs(cfg); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("ValidateRuntimeDirs returned %v, want missing directory error", err)
+	}
+
+	if err := EnsureRuntimeDirs(cfg); err != nil {
+		t.Fatalf("EnsureRuntimeDirs returned error: %v", err)
+	}
+	if err := ValidateRuntimeDirs(cfg); err != nil {
+		t.Fatalf("ValidateRuntimeDirs returned error after ensure: %v", err)
+	}
+
+	logs := filepath.Join(cfg.Storage.Path, "logs")
+	if err := os.Remove(logs); err != nil {
+		t.Fatalf("remove logs dir: %v", err)
+	}
+	if err := os.WriteFile(logs, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write logs file: %v", err)
+	}
+	if err := ValidateRuntimeDirs(cfg); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("ValidateRuntimeDirs returned %v, want not a directory error", err)
+	}
+}
+
+func TestRuntimeDirectoryValidationDetectsUnwritableDirectory(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write to read-only directories")
+	}
+	cfg := Config{}
+	cfg.Storage.Path = t.TempDir()
+	if err := EnsureRuntimeDirs(cfg); err != nil {
+		t.Fatalf("EnsureRuntimeDirs returned error: %v", err)
+	}
+	index := filepath.Join(cfg.Storage.Path, "index")
+	if err := os.Chmod(index, 0o555); err != nil {
+		t.Fatalf("chmod index: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(index, 0o755) })
+
+	if err := ValidateRuntimeDirs(cfg); err == nil || !strings.Contains(err.Error(), "not writable") {
+		t.Fatalf("ValidateRuntimeDirs returned %v, want not writable error", err)
 	}
 }

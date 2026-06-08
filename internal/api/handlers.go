@@ -22,6 +22,7 @@ import (
 	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
 	channelpkg "tg-search/internal/channel"
+	"tg-search/internal/config"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
@@ -36,6 +37,50 @@ type handlers struct {
 }
 
 const adminSessionCookie = "tg_search_session"
+
+func (h handlers) health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"service": "ok",
+	})
+}
+
+func (h handlers) ready(c *gin.Context) {
+	checks := gin.H{}
+	ready := true
+
+	if h.deps.BackupDB == nil {
+		ready = false
+		checks["database"] = "missing"
+	} else if err := h.deps.BackupDB.PingContext(c.Request.Context()); err != nil {
+		ready = false
+		checks["database"] = err.Error()
+	} else {
+		checks["database"] = "ok"
+	}
+
+	runtimeConfig := h.deps.RuntimeConfig
+	if runtimeConfig.Storage.Path == "" && h.deps.StorageUsage != nil {
+		runtimeConfig = h.deps.StorageUsage.Config()
+	}
+	if runtimeConfig.Storage.Path == "" {
+		ready = false
+		checks["runtime_dirs"] = "storage.path is required"
+	} else if err := config.ValidateRuntimeDirs(runtimeConfig); err != nil {
+		ready = false
+		checks["runtime_dirs"] = err.Error()
+	} else {
+		checks["runtime_dirs"] = "ok"
+	}
+
+	status := http.StatusOK
+	if !ready {
+		status = http.StatusServiceUnavailable
+	}
+	c.JSON(status, gin.H{
+		"ready":  ready,
+		"checks": checks,
+	})
+}
 
 func (h handlers) setupStatus(c *gin.Context) {
 	status, err := h.loadSetupStatus(c.Request.Context())

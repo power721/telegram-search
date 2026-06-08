@@ -11,6 +11,59 @@ import (
 	"tg-search/internal/repository"
 )
 
+func TestGlobalSearchGroupsResults(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Ubuntu Channel", Username: "ubuntu_resources", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, err := messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu release mirror", RawJSON: "{}", Date: now,
+	}})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu", Note: "ubuntu download"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", MimeType: "application/x-iso9660-image", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+
+	service := NewService(messages, links, files, channels)
+	result, err := service.Global(ctx, SearchQuery{Query: "ubuntu", Limit: 5})
+	if err != nil {
+		t.Fatalf("Global returned error: %v", err)
+	}
+	if result.Messages.Total != 1 || len(result.Messages.Items) != 1 {
+		t.Fatalf("messages group = %+v, want one item", result.Messages)
+	}
+	if result.Links.Total != 1 || len(result.Links.Items) != 1 {
+		t.Fatalf("links group = %+v, want one item", result.Links)
+	}
+	if result.Files.Total != 1 || len(result.Files.Items) != 1 {
+		t.Fatalf("files group = %+v, want one item", result.Files)
+	}
+	if result.Channels.Total != 1 || len(result.Channels.Items) != 1 {
+		t.Fatalf("channels group = %+v, want one item", result.Channels)
+	}
+}
+
 func TestServiceSearchLatestAndLinks(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

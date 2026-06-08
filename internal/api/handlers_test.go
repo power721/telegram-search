@@ -75,6 +75,42 @@ func TestCoreReadAPIs(t *testing.T) {
 	}
 }
 
+func TestGlobalSearchAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Ubuntu Channel", Username: "ubuntu_resources", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu release mirror", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu", Note: "ubuntu download"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", MimeType: "application/x-iso9660-image", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=ubuntu", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.GlobalSearchResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Messages.Total != 1 || body.Links.Total != 1 || body.Files.Total != 1 || body.Channels.Total != 1 {
+		t.Fatalf("global search body = %+v, want one item per group", body)
+	}
+}
+
 func TestSetupAndAuthAPIs(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
@@ -1481,6 +1517,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
@@ -1491,7 +1528,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
 	client := telegram.NopClient{}
 	watchFilter := messagefilter.New(watchRules)
-	searchService := search.NewService(messages, links)
+	searchService := search.NewService(messages, links, files, channels)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
 		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,

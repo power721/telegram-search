@@ -223,6 +223,11 @@ type SearchResult struct {
 	Links            []Link `json:"links"`
 }
 
+type ListResult[T any] struct {
+	Items []T `json:"items"`
+	Total int `json:"total"`
+}
+
 type LinkResult struct {
 	Link
 	MessageText       string    `json:"message_text"`
@@ -231,6 +236,29 @@ type LinkResult struct {
 	ChannelID         int64     `json:"channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
 	TelegramMessageID int64     `json:"telegram_message_id"`
+}
+
+type FileResult struct {
+	File
+	MessageText       string    `json:"message_text"`
+	MessageDate       time.Time `json:"message_date"`
+	AccountID         int64     `json:"account_id"`
+	ChannelID         int64     `json:"channel_id"`
+	ChannelTitle      string    `json:"channel_title"`
+	TelegramMessageID int64     `json:"telegram_message_id"`
+}
+
+type ChannelSearchResult struct {
+	Channel
+	AccountPhone    string `json:"account_phone"`
+	AccountUsername string `json:"account_username"`
+}
+
+type GlobalSearchResult struct {
+	Messages ListResult[SearchResult]        `json:"messages"`
+	Links    ListResult[LinkResult]          `json:"links"`
+	Files    ListResult[FileResult]          `json:"files"`
+	Channels ListResult[ChannelSearchResult] `json:"channels"`
 }
 
 type MergedLink struct {

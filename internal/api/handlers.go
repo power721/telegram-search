@@ -873,6 +873,111 @@ func (h handlers) search(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h handlers) searchGlobal(c *gin.Context) {
+	query, ok := h.readSearchQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Search.Global(c.Request.Context(), query)
+	if err != nil {
+		h.searchError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) searchMessages(c *gin.Context) {
+	query, ok := h.readSearchQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Search.Messages(c.Request.Context(), query)
+	if err != nil {
+		h.searchError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) searchLinks(c *gin.Context) {
+	query, ok := h.readSearchQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Search.ScopedLinks(c.Request.Context(), query)
+	if err != nil {
+		h.searchError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) searchFiles(c *gin.Context) {
+	query, ok := h.readSearchQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Search.Files(c.Request.Context(), query)
+	if err != nil {
+		h.searchError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) searchChannels(c *gin.Context) {
+	query, ok := h.readSearchQuery(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Search.Channels(c.Request.Context(), query)
+	if err != nil {
+		h.searchError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) readSearchQuery(c *gin.Context) (searchsvc.SearchQuery, bool) {
+	accountID, channelID, limit, offset, ok := readFilters(c)
+	if !ok {
+		return searchsvc.SearchQuery{}, false
+	}
+	dateFrom, dateTo, ok := parseDateRange(c)
+	if !ok {
+		return searchsvc.SearchQuery{}, false
+	}
+	return searchsvc.SearchQuery{
+		Query:       c.Query("q"),
+		AccountID:   accountID,
+		ChannelID:   channelID,
+		MessageType: c.Query("message_type"),
+		LinkType:    firstQuery(c, "link_type", "type"),
+		FileType:    firstQuery(c, "file_type", "category"),
+		DateFrom:    dateFrom,
+		DateTo:      dateTo,
+		Limit:       limit,
+		Offset:      offset,
+	}, true
+}
+
+func (h handlers) searchError(c *gin.Context, err error) {
+	status := http.StatusInternalServerError
+	if errors.Is(err, searchsvc.ErrEmptyQuery) {
+		status = http.StatusBadRequest
+	}
+	errorJSON(c, status, err)
+}
+
+func firstQuery(c *gin.Context, keys ...string) string {
+	for _, key := range keys {
+		if value := c.Query(key); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func (h handlers) latest(c *gin.Context) {
 	accountID, channelID, limit, _, ok := readFilters(c)
 	if !ok {

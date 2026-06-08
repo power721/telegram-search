@@ -94,6 +94,69 @@ ORDER BY id`, messageID)
 	return out, rows.Err()
 }
 
+func (r *FileRepository) Search(ctx context.Context, params FileSearchParams) ([]model.FileResult, error) {
+	limit := clampLimit(params.Limit, 50)
+	where := []string{`m.deleted = 0`}
+	args := []any{}
+	if params.Query != "" {
+		like := "%" + params.Query + "%"
+		where = append(where, `(f.file_name LIKE ? OR f.mime_type LIKE ? OR mc.text LIKE ?)`)
+		args = append(args, like, like, like)
+	}
+	if params.Category != "" {
+		where = append(where, `f.category = ?`)
+		args = append(args, params.Category)
+	}
+	if params.Extension != "" {
+		extension := normalizeExtension(params.Extension, "")
+		where = append(where, `f.extension = ?`)
+		args = append(args, extension)
+	}
+	if params.AccountID > 0 {
+		where = append(where, `m.account_id = ?`)
+		args = append(args, params.AccountID)
+	}
+	if params.ChannelID > 0 {
+		where = append(where, `m.channel_id = ?`)
+		args = append(args, params.ChannelID)
+	}
+	if params.DateFrom != nil {
+		where = append(where, `m.date >= ?`)
+		args = append(args, *params.DateFrom)
+	}
+	if params.DateTo != nil {
+		where = append(where, `m.date < ?`)
+		args = append(args, *params.DateTo)
+	}
+	args = append(args, limit, params.Offset)
+
+	query := `
+SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+FROM telegram_files f
+JOIN telegram_messages m ON m.id = f.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+JOIN telegram_channels c ON c.id = m.channel_id
+WHERE ` + strings.Join(where, " AND ") + `
+ORDER BY m.date DESC, f.id DESC
+LIMIT ? OFFSET ?`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search files: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.FileResult
+	for rows.Next() {
+		var item model.FileResult
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func scanFile(row interface {
 	Scan(...any) error
 }) (model.File, error) {

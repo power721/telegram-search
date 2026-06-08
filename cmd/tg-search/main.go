@@ -73,6 +73,7 @@ func run(configPath string) error {
 	channels := repository.NewChannelRepository(conn)
 	messages := repository.NewMessageRepository(conn)
 	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
 	watchFilter := messagefilter.New(watchRules)
@@ -102,7 +103,7 @@ func run(configPath string) error {
 		RetryPolicy: retryPolicy,
 		Logger:      logs.Telegram,
 	})
-	searchService := search.NewService(messages, links)
+	searchService := search.NewService(messages, links, files, channels)
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
 		Telegram: tgClient, Sessions: sessions, Extractor: link.NewExtractor(),

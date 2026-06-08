@@ -30,4 +30,25 @@ describe('setup store', () => {
     await store.completeSetup()
     expect(apiPost).toHaveBeenCalledWith('/api/setup/complete')
   })
+
+  it('supports optional api key and listen rules setup steps', async () => {
+    const store = useSetupStore()
+    await store.createAPIKey('cli')
+    await store.skipAPIKey()
+    await store.saveListenRules({
+      includes: ['电影'],
+      excludes: ['预告'],
+      message_types: ['link', 'text'],
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+    })
+
+    expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key', { name: 'cli' })
+    expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key/skip')
+    expect(apiPost).toHaveBeenCalledWith('/api/setup/listen-rules', {
+      includes: ['电影'],
+      excludes: ['预告'],
+      message_types: ['link', 'text'],
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+    })
+  })
 })

@@ -57,10 +57,14 @@ type APIKey struct {
 }
 
 type SetupStatus struct {
-	Complete           bool `json:"complete"`
-	AdminConfigured    bool `json:"admin_configured"`
-	APIKeyConfigured   bool `json:"api_key_configured"`
-	TelegramConfigured bool `json:"telegram_configured"`
+	Complete              bool   `json:"complete"`
+	AdminConfigured       bool   `json:"admin_configured"`
+	APIKeyConfigured      bool   `json:"api_key_configured"`
+	APIKeyStepComplete    bool   `json:"api_key_step_complete"`
+	TelegramConfigured    bool   `json:"telegram_configured"`
+	TelegramLoginComplete bool   `json:"telegram_login_complete"`
+	ListenRulesConfigured bool   `json:"listen_rules_configured"`
+	CurrentStep           string `json:"current_step"`
 }
 
 type TelegramAPISettings struct {
@@ -128,6 +132,13 @@ type WatchRule struct {
 	LinkTypes    []string  `json:"link_types"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type ListenRules struct {
+	Includes     []string `json:"includes"`
+	Excludes     []string `json:"excludes"`
+	MessageTypes []string `json:"message_types"`
+	LinkTypes    []string `json:"link_types"`
 }
 
 type ChannelIndexedCounts struct {

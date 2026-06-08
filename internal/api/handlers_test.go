@@ -251,7 +251,7 @@ func TestSetupAPIKeyCreatesKeyOnce(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode api key: %v", err)
 	}
-	if body.Name != "cli" || len(body.Prefix) != 8 || len(body.Key) != 64 {
+	if body.Name != "cli" || len(body.Prefix) != 8 || len(body.Key) != 32 || strings.Contains(body.Key, "-") {
 		t.Fatalf("api key response = %+v", body)
 	}
 	count, err := deps.APIKeys.CountEnabled(context.Background())
@@ -260,6 +260,64 @@ func TestSetupAPIKeyCreatesKeyOnce(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("enabled key count = %d, want 1", count)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup status code = %d body=%s", w.Code, w.Body.String())
+	}
+	var status model.SetupStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if !status.APIKeyStepComplete {
+		t.Fatalf("api key step complete = false, want true")
+	}
+}
+
+func TestSetupAPIKeyCanBeSkipped(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/api-key/skip", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("skip api key code = %d body=%s", w.Code, w.Body.String())
+	}
+	var status model.SetupStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if !status.APIKeyStepComplete || status.APIKeyConfigured {
+		t.Fatalf("setup status after skip = %+v, want step complete without configured key", status)
+	}
+}
+
+func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/listen-rules", bytes.NewBufferString(`{
+		"includes":["电影","网盘"],
+		"excludes":["预告"],
+		"message_types":["link","video","audio","file","text"],
+		"link_types":["cloud_drive","magnet","ed2k","other"]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup listen rules code = %d body=%s", w.Code, w.Body.String())
+	}
+	var status model.SetupStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if !status.ListenRulesConfigured {
+		t.Fatalf("listen rules configured = false, want true")
 	}
 }
 

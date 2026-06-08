@@ -56,9 +56,9 @@ async function submitPassword() {
 }
 
 async function finish() {
-  await setup.completeSetup()
+  await setup.load()
   message.success('Telegram account connected')
-  await router.push('/')
+  await router.push('/setup/listen-rules')
 }
 </script>
 

@@ -8,8 +8,11 @@ import AccountsView from '@/views/AccountsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
 import SearchView from '@/views/SearchView.vue'
 import SetupAdminView from '@/views/SetupAdminView.vue'
+import SetupAPIKeyView from '@/views/SetupAPIKeyView.vue'
 import SetupTelegramApiView from '@/views/SetupTelegramApiView.vue'
 import SetupTelegramLoginView from '@/views/SetupTelegramLoginView.vue'
+import SetupListenRulesView from '@/views/SetupListenRulesView.vue'
+import SetupChannelSelectionView from '@/views/SetupChannelSelectionView.vue'
 import ChannelsView from '@/views/ChannelsView.vue'
 import ResourcesView from '@/views/ResourcesView.vue'
 import TasksView from '@/views/TasksView.vue'
@@ -24,6 +27,11 @@ export const router = createRouter({
       meta: { public: true }
     },
     {
+      path: '/setup/api-key',
+      name: 'setup-api-key',
+      component: SetupAPIKeyView
+    },
+    {
       path: '/setup/telegram-api',
       name: 'setup-telegram-api',
       component: SetupTelegramApiView
@@ -32,6 +40,16 @@ export const router = createRouter({
       path: '/setup/telegram-login',
       name: 'setup-telegram-login',
       component: SetupTelegramLoginView
+    },
+    {
+      path: '/setup/listen-rules',
+      name: 'setup-listen-rules',
+      component: SetupListenRulesView
+    },
+    {
+      path: '/setup/channels',
+      name: 'setup-channels',
+      component: SetupChannelSelectionView
     },
     { path: '/login', name: 'login', component: LoginView, meta: { public: true } },
     {
@@ -71,15 +89,28 @@ router.beforeEach(async (to) => {
   if (!auth.authenticated) {
     return { name: 'login' }
   }
-  if (!setup.status?.telegram_configured && to.name !== 'setup-telegram-api') {
-    return { name: 'setup-telegram-api' }
-  }
-  if (
-    setup.status?.telegram_configured &&
-    !setup.status.complete &&
-    to.name !== 'setup-telegram-login'
-  ) {
-    return { name: 'setup-telegram-login' }
+  if (!setup.status?.complete) {
+    const target = setupRouteName(setup.status?.current_step)
+    if (target && to.name !== target) {
+      return { name: target }
+    }
   }
   return true
 })
+
+function setupRouteName(step?: string) {
+  switch (step) {
+    case 'api_key':
+      return 'setup-api-key'
+    case 'telegram_api':
+      return 'setup-telegram-api'
+    case 'telegram_login':
+      return 'setup-telegram-login'
+    case 'listen_rules':
+      return 'setup-listen-rules'
+    case 'channel_selection':
+      return 'setup-channels'
+    default:
+      return ''
+  }
+}

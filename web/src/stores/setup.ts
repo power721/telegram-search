@@ -1,10 +1,17 @@
 import { defineStore } from 'pinia'
 import { apiGet, apiPost } from '@/api/client'
-import type { SetupStatus } from '@/api/types'
+import type { APIKeySetupResponse, ListenRulesPayload, SetupStatus } from '@/api/types'
 
 export const useSetupStore = defineStore('setup', {
   state: () => ({
     status: undefined as SetupStatus | undefined,
+    listenRules: {
+      includes: [],
+      excludes: [],
+      message_types: ['link', 'text'],
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+    } as ListenRulesPayload,
+    createdAPIKey: null as APIKeySetupResponse | null,
     loaded: false,
     loading: false
   }),
@@ -21,6 +28,20 @@ export const useSetupStore = defineStore('setup', {
     async createAdmin(username: string, password: string) {
       await apiPost('/api/setup/admin', { username, password })
       await this.load()
+    },
+    async createAPIKey(name: string) {
+      this.createdAPIKey = await apiPost<APIKeySetupResponse>('/api/setup/api-key', { name })
+      await this.load()
+      return this.createdAPIKey
+    },
+    async skipAPIKey() {
+      this.status = await apiPost<SetupStatus>('/api/setup/api-key/skip')
+      this.loaded = true
+    },
+    async saveListenRules(payload: ListenRulesPayload) {
+      this.status = await apiPost<SetupStatus>('/api/setup/listen-rules', payload)
+      this.listenRules = payload
+      this.loaded = true
     },
     async completeSetup() {
       this.status = await apiPost<SetupStatus>('/api/setup/complete')

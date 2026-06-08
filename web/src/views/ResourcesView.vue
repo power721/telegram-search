@@ -5,7 +5,7 @@ import ResourceTable from '@/components/resources/ResourceTable.vue'
 import { useResourcesStore } from '@/stores/resources'
 
 const resources = useResourcesStore()
-const keyword = ref('ubuntu')
+const keyword = ref('')
 const category = ref('')
 
 const labels: Record<string, string> = {

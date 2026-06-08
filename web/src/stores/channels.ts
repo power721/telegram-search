@@ -6,6 +6,7 @@ import type {
   ChannelsResponse,
   RemoteSearchTask,
   TelegramChannel,
+  WatchRulePayload,
   WebAccessCheckResponse
 } from '@/api/types'
 
@@ -41,6 +42,16 @@ export const useChannelsStore = defineStore('channels', {
         })
         await this.loadChannels()
         return response.items
+      })
+    },
+    async syncChannels(channelIds: number[]) {
+      return this.withLoading(async () => {
+        return apiPost('/api/channels/sync', { channel_ids: channelIds })
+      })
+    },
+    async createWatchRule(payload: WatchRulePayload) {
+      return this.withLoading(async () => {
+        return apiPost('/api/watch-rules', payload)
       })
     },
     async analyzeChannel(channelId: number) {

@@ -2,9 +2,7 @@ package api
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
 	"tg-search/internal/adminauth"
@@ -37,6 +36,11 @@ type handlers struct {
 }
 
 const adminSessionCookie = "tg_search_session"
+const (
+	setupAPIKeyDoneKey      = "setup.api_key_done"
+	setupListenRulesKey     = "setup.listen_rules"
+	setupListenRulesDoneKey = "setup.listen_rules_done"
+)
 
 func (h handlers) health(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
@@ -160,12 +164,7 @@ func (h handlers) setupAPIKey(c *gin.Context) {
 		errorText(c, http.StatusBadRequest, "name is required")
 		return
 	}
-	keyBytes := make([]byte, 32)
-	if _, err := rand.Read(keyBytes); err != nil {
-		errorJSON(c, http.StatusInternalServerError, err)
-		return
-	}
-	plaintext := hex.EncodeToString(keyBytes)
+	plaintext := strings.ReplaceAll(uuid.NewString(), "-", "")
 	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -182,7 +181,64 @@ func (h handlers) setupAPIKey(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	if err := h.deps.Settings.Set(c.Request.Context(), setupAPIKeyDoneKey, `true`); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusCreated, gin.H{"id": id, "name": name, "prefix": prefix, "key": plaintext})
+}
+
+func (h handlers) skipSetupAPIKey(c *gin.Context) {
+	if err := h.deps.Settings.Set(c.Request.Context(), setupAPIKeyDoneKey, `true`); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	status, err := h.loadSetupStatus(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) setupListenRules(c *gin.Context) {
+	var req model.ListenRules
+	if !bindJSON(c, &req) {
+		return
+	}
+	rules := model.ListenRules{
+		Includes:     normalizeSetupStrings(req.Includes),
+		Excludes:     normalizeSetupStrings(req.Excludes),
+		MessageTypes: normalizeSetupStrings(req.MessageTypes),
+		LinkTypes:    normalizeSetupStrings(req.LinkTypes),
+	}
+	if len(rules.MessageTypes) == 0 {
+		errorText(c, http.StatusBadRequest, "message_types is required")
+		return
+	}
+	if len(rules.LinkTypes) == 0 {
+		errorText(c, http.StatusBadRequest, "link_types is required")
+		return
+	}
+	data, err := json.Marshal(rules)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.deps.Settings.Set(c.Request.Context(), setupListenRulesKey, string(data)); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.deps.Settings.Set(c.Request.Context(), setupListenRulesDoneKey, `true`); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	status, err := h.loadSetupStatus(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, status)
 }
 
 func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
@@ -351,6 +407,14 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	if err != nil {
 		return model.SetupStatus{}, err
 	}
+	apiKeyDoneRaw, apiKeyDone, err := h.deps.Settings.Get(ctx, setupAPIKeyDoneKey)
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
+	listenRulesDoneRaw, listenRulesDone, err := h.deps.Settings.Get(ctx, setupListenRulesDoneKey)
+	if err != nil {
+		return model.SetupStatus{}, err
+	}
 	completeRaw, ok, err := h.deps.Settings.Get(ctx, "setup.complete")
 	if err != nil {
 		return model.SetupStatus{}, err
@@ -361,10 +425,39 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	}
 	status.AdminConfigured = adminCount > 0
 	status.APIKeyConfigured = keyCount > 0
+	status.APIKeyStepComplete = status.APIKeyConfigured || (apiKeyDone && apiKeyDoneRaw == `true`)
 	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured ||
 		(h.deps.RuntimeConfig.Telegram.APIID > 0 && h.deps.RuntimeConfig.Telegram.APIHash != "")
+	if h.deps.Accounts != nil {
+		accounts, err := h.deps.Accounts.FindAll(ctx)
+		if err != nil {
+			return model.SetupStatus{}, err
+		}
+		status.TelegramLoginComplete = len(accounts) > 0
+	}
+	status.ListenRulesConfigured = listenRulesDone && listenRulesDoneRaw == `true`
 	status.Complete = ok && completeRaw == `true`
+	status.CurrentStep = setupCurrentStep(status)
 	return status, nil
+}
+
+func setupCurrentStep(status model.SetupStatus) string {
+	switch {
+	case status.Complete:
+		return "complete"
+	case !status.AdminConfigured:
+		return "admin"
+	case !status.APIKeyStepComplete:
+		return "api_key"
+	case !status.TelegramConfigured:
+		return "telegram_api"
+	case !status.TelegramLoginComplete:
+		return "telegram_login"
+	case !status.ListenRulesConfigured:
+		return "listen_rules"
+	default:
+		return "channel_selection"
+	}
 }
 
 func (h handlers) status(c *gin.Context) {
@@ -1143,6 +1236,17 @@ func decodeStringArray(c *gin.Context, raw json.RawMessage, field string) ([]str
 		return nil, false
 	}
 	return out, true
+}
+
+func normalizeSetupStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func (h handlers) search(c *gin.Context) {

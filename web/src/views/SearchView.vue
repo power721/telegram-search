@@ -5,7 +5,7 @@ import SearchResults from '@/components/search/SearchResults.vue'
 import { useSearchStore } from '@/stores/search'
 
 const search = useSearchStore()
-const query = ref('ubuntu')
+const query = ref('')
 
 async function runSearch() {
   if (!query.value.trim()) return

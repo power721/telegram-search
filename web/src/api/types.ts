@@ -9,7 +9,30 @@ export interface SetupStatus {
   complete: boolean
   admin_configured: boolean
   api_key_configured: boolean
+  api_key_step_complete: boolean
   telegram_configured: boolean
+  telegram_login_complete: boolean
+  listen_rules_configured: boolean
+  current_step: 'admin' | 'api_key' | 'telegram_api' | 'telegram_login' | 'listen_rules' | 'channel_selection' | 'complete'
+}
+
+export interface ListenRulesPayload {
+  includes: string[]
+  excludes: string[]
+  message_types: string[]
+  link_types: string[]
+}
+
+export interface APIKeySetupResponse {
+  id: number
+  name: string
+  prefix: string
+  key: string
+}
+
+export interface WatchRulePayload extends ListenRulesPayload {
+  channel_id: number
+  enabled: boolean
 }
 
 export interface User {

@@ -9,7 +9,9 @@ import (
 	"io/fs"
 	"mime"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -742,7 +744,14 @@ func (h handlers) password(c *gin.Context) {
 }
 
 func (h handlers) startQRLogin(c *gin.Context) {
-	sessionPath := h.sessionPath(0)
+	sessionPath := ""
+	if h.deps.Sessions != nil {
+		sessionPath = h.deps.Sessions.PathForTemporary("qr-login-" + newQRLoginID())
+		if err := os.MkdirAll(filepath.Dir(sessionPath), 0o700); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
 	session, err := h.deps.Telegram.StartQRLogin(c.Request.Context(), sessionPath)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -768,6 +777,19 @@ func (h handlers) pollQRLogin(c *gin.Context) {
 	result, err := item.Session.Poll(c.Request.Context())
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if result.Status == telegram.QRLoginStatusOnline {
+		account, err := h.saveQRProfile(c.Request.Context(), result.Profile, item.SessionPath)
+		if err != nil {
+			if h.deps.Sessions != nil && item.SessionPath != "" {
+				_ = h.deps.Sessions.RemovePath(item.SessionPath)
+			}
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+		h.deps.QRLogins.Remove(loginID)
+		h.respondWithOnlineAccount(c, account)
 		return
 	}
 	token := result.Token
@@ -1810,6 +1832,9 @@ func (h handlers) maintenanceBackup(c *gin.Context) {
 
 func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, profile telegram.Profile) {
 	account.TelegramUserID = profile.TelegramUserID
+	if profile.Phone != "" {
+		account.Phone = profile.Phone
+	}
 	account.FirstName = profile.FirstName
 	account.LastName = profile.LastName
 	account.Username = profile.Username
@@ -1822,6 +1847,49 @@ func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, pr
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	h.respondWithOnlineAccount(c, account)
+}
+
+func (h handlers) saveQRProfile(ctx context.Context, profile telegram.Profile, tempSessionPath string) (model.Account, error) {
+	phone := profile.Phone
+	if phone == "" {
+		phone = fmt.Sprintf("tg:%d", profile.TelegramUserID)
+	}
+	now := time.Now().UTC()
+	account := model.Account{
+		Phone:          phone,
+		TelegramUserID: profile.TelegramUserID,
+		FirstName:      profile.FirstName,
+		LastName:       profile.LastName,
+		Username:       profile.Username,
+		Status:         model.AccountStatusOnline,
+		SessionPath:    tempSessionPath,
+		LastOnlineAt:   &now,
+		LastError:      "",
+	}
+	accountID, err := h.deps.Accounts.Save(ctx, account)
+	if err != nil {
+		return model.Account{}, err
+	}
+	account.ID = accountID
+	if h.deps.Sessions != nil && tempSessionPath != "" {
+		finalPath, err := h.deps.Sessions.MoveTemporaryToAccount(tempSessionPath, account.ID)
+		if err != nil {
+			return model.Account{}, err
+		}
+		account.SessionPath = finalPath
+		if err := h.deps.Accounts.Update(ctx, account); err != nil {
+			return model.Account{}, err
+		}
+	}
+	stored, err := h.deps.Accounts.FindByID(ctx, account.ID)
+	if err != nil {
+		return model.Account{}, err
+	}
+	return stored, nil
+}
+
+func (h handlers) respondWithOnlineAccount(c *gin.Context, account model.Account) {
 	metadataSync := gin.H{"status": "skipped", "channel_count": 0}
 	if h.deps.ChannelSync != nil {
 		if h.deps.SyncQueue != nil {

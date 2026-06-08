@@ -1265,6 +1265,66 @@ func TestTelegramQRLoginCancelStopsSession(t *testing.T) {
 	}
 }
 
+func TestTelegramQRLoginPollFinalizesConfirmedAccount(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	fake := &fakeTelegram{
+		qrTokenURL: "tg://login?token=ready",
+		qrExpires:  time.Now().UTC().Add(time.Minute),
+	}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	var started struct {
+		LoginID string `json:"login_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &started); err != nil {
+		t.Fatalf("invalid start JSON: %v", err)
+	}
+	if err := os.WriteFile(fake.qrSessionPath, []byte(`{"session":"qr"}`), 0o600); err != nil {
+		t.Fatalf("write qr session: %v", err)
+	}
+	fake.qrSession.result = telegram.QRLoginPollResult{
+		Status:  telegram.QRLoginStatusOnline,
+		Profile: telegram.Profile{TelegramUserID: 99, Phone: "+19990000000", FirstName: "QR", LastName: "User", Username: "qr_user"},
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("poll status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Status  string        `json:"status"`
+		Account model.Account `json:"account"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid poll JSON: %v body=%s", err, w.Body.String())
+	}
+	if body.Status != model.AccountStatusOnline || body.Account.Phone != "+19990000000" || body.Account.TelegramUserID != 99 {
+		t.Fatalf("body = %+v, want online QR account", body)
+	}
+	if _, err := os.Stat(body.Account.SessionPath); err != nil {
+		t.Fatalf("final session stat: %v", err)
+	}
+	if _, ok := deps.QRLogins.Find(started.LoginID); ok {
+		t.Fatal("completed QR login session was not removed")
+	}
+	account, err := deps.Accounts.FindByPhone(ctx, "+19990000000")
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusOnline {
+		t.Fatalf("stored status = %q, want ONLINE", account.Status)
+	}
+}
+
 func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -2756,7 +2816,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		StorageUsage:  storage.NewUsageService(runtimeConfig),
 		Search:        searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Tasks: taskService, TaskRepository: taskRepository, Events: taskpkg.NewEventBroker(),
-		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
+		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(), QRLogins: NewQRLoginStore(2 * time.Minute),
 	}, conn
 }
 
@@ -2767,6 +2827,7 @@ type fakeTelegram struct {
 	fetchHistoryCalls int
 	qrTokenURL        string
 	qrExpires         time.Time
+	qrSessionPath     string
 	qrSession         *fakeQRLoginSession
 }
 
@@ -2786,6 +2847,7 @@ func (f *fakeTelegram) StartQRLogin(ctx context.Context, sessionPath string) (te
 	session := &fakeQRLoginSession{
 		token: telegram.QRLoginToken{URL: f.qrTokenURL, ExpiresAt: f.qrExpires},
 	}
+	f.qrSessionPath = sessionPath
 	f.qrSession = session
 	return session, nil
 }

@@ -261,7 +261,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"includes":[" 庆余年 "],"excludes":["预告"]}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["text","file"],"link_types":["cloud_drive","magnet"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -271,12 +271,15 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("invalid create JSON: %v", err)
 	}
-	if created.ID == 0 || created.ChannelID != channelID || !created.Enabled || !sameStringSlices(created.Includes, []string{"庆余年"}) {
+	if created.ID == 0 || created.ChannelID != channelID || !created.Enabled ||
+		!sameStringSlices(created.Includes, []string{"庆余年"}) ||
+		!sameStringSlices(created.MessageTypes, []string{"text", "file"}) ||
+		!sameStringSlices(created.LinkTypes, []string{"cloud_drive", "magnet"}) {
 		t.Fatalf("created = %+v", created)
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPut, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"enabled":false,"includes":["三体"],"excludes":["花絮"]}`))
+	req = httptest.NewRequest(http.MethodPut, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"enabled":false,"includes":["三体"],"excludes":["花絮"],"message_types":["text"],"link_types":["http"]}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -291,7 +294,10 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 	}
 	var got model.WatchRule
 	_ = json.Unmarshal(w.Body.Bytes(), &got)
-	if got.Enabled || !sameStringSlices(got.Includes, []string{"三体"}) || !sameStringSlices(got.Excludes, []string{"花絮"}) {
+	if got.Enabled || !sameStringSlices(got.Includes, []string{"三体"}) ||
+		!sameStringSlices(got.Excludes, []string{"花絮"}) ||
+		!sameStringSlices(got.MessageTypes, []string{"text"}) ||
+		!sameStringSlices(got.LinkTypes, []string{"http"}) {
 		t.Fatalf("got = %+v", got)
 	}
 
@@ -1210,6 +1216,58 @@ func TestChannelControlAPIDeepProfileChecksStorageQuota(t *testing.T) {
 	}
 	if body.Error.Code != "storage_quota_exceeded" {
 		t.Fatalf("error code = %q, want storage_quota_exceeded body=%s", body.Error.Code, w.Body.String())
+	}
+}
+
+func TestChannelAnalyze(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   61,
+		Title:               "Analysis Channel",
+		Username:            "analysis",
+		Type:                model.ChannelTypeChannel,
+		MemberCount:         123,
+		Description:         "metadata only",
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Normal",
+		ListenEnabled:       true,
+		RemoteSearchAllowed: false,
+	})
+	_, _ = deps.WatchRules.Create(ctx, model.WatchRule{
+		ChannelID:    channelID,
+		Enabled:      true,
+		Includes:     []string{"电影", "课程"},
+		Excludes:     []string{"广告"},
+		MessageTypes: []string{"text", "file"},
+		LinkTypes:    []string{"cloud_drive", "magnet"},
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/analyze", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.ChannelAnalysis
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Channel.ID != channelID || body.Channel.Title != "Analysis Channel" || body.Channel.MemberCount != 123 {
+		t.Fatalf("channel analysis metadata = %+v", body.Channel)
+	}
+	if !body.Control.HistorySyncEnabled || body.Control.SyncProfile != "Normal" || !body.Control.ListenEnabled || body.Control.RemoteSearchAllowed {
+		t.Fatalf("control = %+v", body.Control)
+	}
+	if body.WatchRule == nil || !sameStringSlices(body.WatchRule.MessageTypes, []string{"text", "file"}) ||
+		!sameStringSlices(body.WatchRule.LinkTypes, []string{"cloud_drive", "magnet"}) {
+		t.Fatalf("watch rule = %+v", body.WatchRule)
+	}
+	if body.IndexedCounts.Messages != 0 || body.IndexedCounts.Links != 0 || body.IndexedCounts.Files != 0 {
+		t.Fatalf("indexed counts = %+v, want zero counts", body.IndexedCounts)
 	}
 }
 

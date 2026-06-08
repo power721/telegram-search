@@ -119,13 +119,28 @@ type ChannelControl struct {
 }
 
 type WatchRule struct {
-	ID        int64     `json:"id"`
-	ChannelID int64     `json:"channel_id"`
-	Enabled   bool      `json:"enabled"`
-	Includes  []string  `json:"includes"`
-	Excludes  []string  `json:"excludes"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           int64     `json:"id"`
+	ChannelID    int64     `json:"channel_id"`
+	Enabled      bool      `json:"enabled"`
+	Includes     []string  `json:"includes"`
+	Excludes     []string  `json:"excludes"`
+	MessageTypes []string  `json:"message_types"`
+	LinkTypes    []string  `json:"link_types"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type ChannelIndexedCounts struct {
+	Messages int64 `json:"messages"`
+	Links    int64 `json:"links"`
+	Files    int64 `json:"files"`
+}
+
+type ChannelAnalysis struct {
+	Channel       Channel              `json:"channel"`
+	Control       ChannelControl       `json:"control"`
+	WatchRule     *WatchRule           `json:"watch_rule,omitempty"`
+	IndexedCounts ChannelIndexedCounts `json:"indexed_counts"`
 }
 
 type Message struct {

@@ -450,6 +450,40 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h handlers) analyzeChannel(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	item, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
+	var watchRule *model.WatchRule
+	if h.deps.WatchRules != nil {
+		rule, err := h.deps.WatchRules.FindByChannelID(c.Request.Context(), id)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+		if err == nil {
+			watchRule = &rule
+		}
+	}
+	c.JSON(http.StatusOK, model.ChannelAnalysis{
+		Channel: item,
+		Control: model.ChannelControl{
+			HistorySyncEnabled:  item.HistorySyncEnabled,
+			SyncProfile:         item.SyncProfile,
+			ListenEnabled:       item.ListenEnabled,
+			RemoteSearchAllowed: item.RemoteSearchAllowed,
+		},
+		WatchRule:     watchRule,
+		IndexedCounts: model.ChannelIndexedCounts{},
+	})
+}
+
 func (h handlers) checkStorageQuota(c *gin.Context) bool {
 	if h.deps.StorageUsage == nil {
 		return true
@@ -586,10 +620,12 @@ func (h handlers) syncAccountChannels(c *gin.Context) {
 }
 
 type watchRulePayload struct {
-	ChannelID int64           `json:"channel_id"`
-	Enabled   *bool           `json:"enabled"`
-	Includes  json.RawMessage `json:"includes"`
-	Excludes  json.RawMessage `json:"excludes"`
+	ChannelID    int64           `json:"channel_id"`
+	Enabled      *bool           `json:"enabled"`
+	Includes     json.RawMessage `json:"includes"`
+	Excludes     json.RawMessage `json:"excludes"`
+	MessageTypes json.RawMessage `json:"message_types"`
+	LinkTypes    json.RawMessage `json:"link_types"`
 }
 
 func (h handlers) watchRules(c *gin.Context) {
@@ -710,7 +746,22 @@ func (h handlers) readWatchRuleRequest(c *gin.Context, create bool) (model.Watch
 	if !ok {
 		return model.WatchRule{}, false
 	}
-	return model.WatchRule{ChannelID: payload.ChannelID, Enabled: enabled, Includes: includes, Excludes: excludes}, true
+	messageTypes, ok := decodeStringArray(c, payload.MessageTypes, "message_types")
+	if !ok {
+		return model.WatchRule{}, false
+	}
+	linkTypes, ok := decodeStringArray(c, payload.LinkTypes, "link_types")
+	if !ok {
+		return model.WatchRule{}, false
+	}
+	return model.WatchRule{
+		ChannelID:    payload.ChannelID,
+		Enabled:      enabled,
+		Includes:     includes,
+		Excludes:     excludes,
+		MessageTypes: messageTypes,
+		LinkTypes:    linkTypes,
+	}, true
 }
 
 func decodeStringArray(c *gin.Context, raw json.RawMessage, field string) ([]string, bool) {

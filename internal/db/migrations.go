@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS telegram_watch_rules (
   enabled INTEGER NOT NULL DEFAULT 1,
   includes_json TEXT NOT NULL DEFAULT '[]',
   excludes_json TEXT NOT NULL DEFAULT '[]',
+  message_types_json TEXT NOT NULL DEFAULT '[]',
+  link_types_json TEXT NOT NULL DEFAULT '[]',
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   FOREIGN KEY(channel_id) REFERENCES telegram_channels(id) ON DELETE CASCADE

@@ -110,6 +110,60 @@ func TestWatchRuleRepositoryCascadesWithChannelDelete(t *testing.T) {
 	}
 }
 
+func TestWatchRuleMessageAndLinkTypes(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	rules := NewWatchRuleRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 201, Title: "VIP", Type: model.ChannelTypeChannel})
+
+	id, err := rules.Create(ctx, model.WatchRule{
+		ChannelID:    channelID,
+		Enabled:      true,
+		Includes:     []string{"电影", "课程"},
+		Excludes:     []string{"广告"},
+		MessageTypes: []string{" text ", "", "file"},
+		LinkTypes:    []string{"cloud_drive", "magnet", "ed2k", "http"},
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	got, err := rules.FindByID(ctx, id)
+	if err != nil {
+		t.Fatalf("FindByID returned error: %v", err)
+	}
+	if !sameStrings(got.MessageTypes, []string{"text", "file"}) {
+		t.Fatalf("message_types = %q", got.MessageTypes)
+	}
+	if !sameStrings(got.LinkTypes, []string{"cloud_drive", "magnet", "ed2k", "http"}) {
+		t.Fatalf("link_types = %q", got.LinkTypes)
+	}
+
+	got.MessageTypes = []string{"text"}
+	got.LinkTypes = []string{"http"}
+	if err := rules.Update(ctx, got); err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	updated, err := rules.FindByChannelID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("FindByChannelID returned error: %v", err)
+	}
+	if !sameStrings(updated.MessageTypes, []string{"text"}) || !sameStrings(updated.LinkTypes, []string{"http"}) {
+		t.Fatalf("updated types = message:%q link:%q", updated.MessageTypes, updated.LinkTypes)
+	}
+}
+
 func sameStrings(got []string, want []string) bool {
 	if len(got) != len(want) {
 		return false

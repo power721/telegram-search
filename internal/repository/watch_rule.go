@@ -26,6 +26,8 @@ func NewWatchRuleRepository(db *sql.DB) *WatchRuleRepository {
 func (r *WatchRuleRepository) Create(ctx context.Context, rule model.WatchRule) (int64, error) {
 	rule.Includes = normalizeTerms(rule.Includes)
 	rule.Excludes = normalizeTerms(rule.Excludes)
+	rule.MessageTypes = normalizeTerms(rule.MessageTypes)
+	rule.LinkTypes = normalizeTerms(rule.LinkTypes)
 	includes, err := json.Marshal(rule.Includes)
 	if err != nil {
 		return 0, fmt.Errorf("marshal includes: %w", err)
@@ -34,13 +36,21 @@ func (r *WatchRuleRepository) Create(ctx context.Context, rule model.WatchRule) 
 	if err != nil {
 		return 0, fmt.Errorf("marshal excludes: %w", err)
 	}
+	messageTypes, err := json.Marshal(rule.MessageTypes)
+	if err != nil {
+		return 0, fmt.Errorf("marshal message types: %w", err)
+	}
+	linkTypes, err := json.Marshal(rule.LinkTypes)
+	if err != nil {
+		return 0, fmt.Errorf("marshal link types: %w", err)
+	}
 	now := time.Now().UTC()
 	var id int64
 	err = r.db.QueryRowContext(ctx, `
-INSERT INTO telegram_watch_rules (channel_id, enabled, includes_json, excludes_json, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO telegram_watch_rules (channel_id, enabled, includes_json, excludes_json, message_types_json, link_types_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
-		rule.ChannelID, boolInt(rule.Enabled), string(includes), string(excludes), now, now,
+		rule.ChannelID, boolInt(rule.Enabled), string(includes), string(excludes), string(messageTypes), string(linkTypes), now, now,
 	).Scan(&id)
 	if err != nil {
 		if isWatchRuleUniqueConstraint(err) {
@@ -54,6 +64,8 @@ RETURNING id`,
 func (r *WatchRuleRepository) Update(ctx context.Context, rule model.WatchRule) error {
 	rule.Includes = normalizeTerms(rule.Includes)
 	rule.Excludes = normalizeTerms(rule.Excludes)
+	rule.MessageTypes = normalizeTerms(rule.MessageTypes)
+	rule.LinkTypes = normalizeTerms(rule.LinkTypes)
 	includes, err := json.Marshal(rule.Includes)
 	if err != nil {
 		return fmt.Errorf("marshal includes: %w", err)
@@ -62,11 +74,19 @@ func (r *WatchRuleRepository) Update(ctx context.Context, rule model.WatchRule) 
 	if err != nil {
 		return fmt.Errorf("marshal excludes: %w", err)
 	}
+	messageTypes, err := json.Marshal(rule.MessageTypes)
+	if err != nil {
+		return fmt.Errorf("marshal message types: %w", err)
+	}
+	linkTypes, err := json.Marshal(rule.LinkTypes)
+	if err != nil {
+		return fmt.Errorf("marshal link types: %w", err)
+	}
 	res, err := r.db.ExecContext(ctx, `
 UPDATE telegram_watch_rules
-SET channel_id = ?, enabled = ?, includes_json = ?, excludes_json = ?, updated_at = ?
+SET channel_id = ?, enabled = ?, includes_json = ?, excludes_json = ?, message_types_json = ?, link_types_json = ?, updated_at = ?
 WHERE id = ?`,
-		rule.ChannelID, boolInt(rule.Enabled), string(includes), string(excludes), time.Now().UTC(), rule.ID,
+		rule.ChannelID, boolInt(rule.Enabled), string(includes), string(excludes), string(messageTypes), string(linkTypes), time.Now().UTC(), rule.ID,
 	)
 	if err != nil {
 		if isWatchRuleUniqueConstraint(err) {
@@ -87,19 +107,19 @@ func (r *WatchRuleRepository) Delete(ctx context.Context, id int64) error {
 
 func (r *WatchRuleRepository) FindByID(ctx context.Context, id int64) (model.WatchRule, error) {
 	return scanWatchRule(r.db.QueryRowContext(ctx, `
-SELECT id, channel_id, enabled, includes_json, excludes_json, created_at, updated_at
+SELECT id, channel_id, enabled, includes_json, excludes_json, message_types_json, link_types_json, created_at, updated_at
 FROM telegram_watch_rules WHERE id = ?`, id))
 }
 
 func (r *WatchRuleRepository) FindByChannelID(ctx context.Context, channelID int64) (model.WatchRule, error) {
 	return scanWatchRule(r.db.QueryRowContext(ctx, `
-SELECT id, channel_id, enabled, includes_json, excludes_json, created_at, updated_at
+SELECT id, channel_id, enabled, includes_json, excludes_json, message_types_json, link_types_json, created_at, updated_at
 FROM telegram_watch_rules WHERE channel_id = ?`, channelID))
 }
 
 func (r *WatchRuleRepository) FindAll(ctx context.Context) ([]model.WatchRule, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, channel_id, enabled, includes_json, excludes_json, created_at, updated_at
+SELECT id, channel_id, enabled, includes_json, excludes_json, message_types_json, link_types_json, created_at, updated_at
 FROM telegram_watch_rules
 ORDER BY id`)
 	if err != nil {
@@ -122,7 +142,9 @@ func scanWatchRule(row interface{ Scan(...any) error }) (model.WatchRule, error)
 	var enabled int
 	var includesRaw string
 	var excludesRaw string
-	if err := row.Scan(&rule.ID, &rule.ChannelID, &enabled, &includesRaw, &excludesRaw, &rule.CreatedAt, &rule.UpdatedAt); err != nil {
+	var messageTypesRaw string
+	var linkTypesRaw string
+	if err := row.Scan(&rule.ID, &rule.ChannelID, &enabled, &includesRaw, &excludesRaw, &messageTypesRaw, &linkTypesRaw, &rule.CreatedAt, &rule.UpdatedAt); err != nil {
 		return model.WatchRule{}, err
 	}
 	rule.Enabled = enabled != 0
@@ -131,6 +153,12 @@ func scanWatchRule(row interface{ Scan(...any) error }) (model.WatchRule, error)
 	}
 	if err := json.Unmarshal([]byte(excludesRaw), &rule.Excludes); err != nil {
 		return model.WatchRule{}, fmt.Errorf("unmarshal excludes: %w", err)
+	}
+	if err := json.Unmarshal([]byte(messageTypesRaw), &rule.MessageTypes); err != nil {
+		return model.WatchRule{}, fmt.Errorf("unmarshal message types: %w", err)
+	}
+	if err := json.Unmarshal([]byte(linkTypesRaw), &rule.LinkTypes); err != nil {
+		return model.WatchRule{}, fmt.Errorf("unmarshal link types: %w", err)
 	}
 	return rule, nil
 }

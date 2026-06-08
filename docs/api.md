@@ -1,6 +1,6 @@
 # tg-search API Documentation
 
-This document describes the active REST API surface for the Phase 1E local index, search, and resource library baseline. All responses are JSON.
+This document describes the active REST API surface for the local index, search, resource library, and runtime reliability baseline. REST responses are JSON. `/api/events` uses Server-Sent Events.
 
 ## Local Index Model
 
@@ -418,6 +418,119 @@ Returns temporary remote results:
   ]
 }
 ```
+
+## Runtime Tasks
+
+Long-running work is represented by persistent `sync_tasks` rows. Task statuses:
+
+```text
+queued
+running
+succeeded
+failed
+canceling
+canceled
+paused
+flood_wait
+reconnecting
+```
+
+Task types:
+
+```text
+metadata_sync
+channel_analysis
+web_access_detection
+history_sync
+listener_recovery
+remote_search
+backup
+gap_recovery
+```
+
+### `GET /api/tasks`
+
+Returns tasks ordered by recent update time.
+
+Optional query parameters:
+
+```text
+status
+type
+limit
+offset
+```
+
+Response:
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "type": "history_sync",
+      "status": "running",
+      "progress": 25,
+      "total": 100,
+      "message": "history sync batch stored",
+      "error_code": "",
+      "error_message": "",
+      "retry_count": 0,
+      "next_run_at": null,
+      "payload_json": "{\"channel_id\":1}",
+      "started_at": "2026-06-08T12:00:00Z",
+      "finished_at": null,
+      "created_at": "2026-06-08T12:00:00Z",
+      "updated_at": "2026-06-08T12:00:05Z"
+    }
+  ]
+}
+```
+
+### `GET /api/tasks/:id`
+
+Returns one task.
+
+### Task Actions
+
+```text
+POST /api/tasks/:id/retry
+POST /api/tasks/:id/cancel
+POST /api/tasks/:id/pause
+POST /api/tasks/:id/resume
+```
+
+Each action returns the updated task. Invalid state transitions return `409`.
+
+## Runtime Events
+
+### `GET /api/events`
+
+Streams Server-Sent Events with `Content-Type: text/event-stream`.
+
+Event names:
+
+```text
+task.updated
+account.updated
+listener.updated
+activity.created
+```
+
+Example event:
+
+```text
+event: task.updated
+data: {"type":"task.updated","payload":{"id":1,"status":"running"},"created_at":"2026-06-08T12:00:00Z"}
+```
+
+Slow event subscribers use bounded buffers. If a client cannot keep up, stale queued events may be dropped in favor of newer events.
+
+## Runtime Recovery
+
+On startup, unfinished retryable tasks in `running`, `canceling`, `paused`, `flood_wait`, or `reconnecting` are restored from SQLite. Tasks with `next_run_at` in the future remain scheduled as `flood_wait`; tasks with no `next_run_at` or a past `next_run_at` return to `queued`. `succeeded` and `canceled` tasks are not restarted.
+
+Realtime listener failures mark the account `RECONNECTING` or `FLOOD_WAIT`. If reconnect succeeds, the account returns to `ONLINE`. Realtime update gaps enqueue `gap_recovery` tasks with the missing message ID range.
 
 ## Resources
 

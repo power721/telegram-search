@@ -2,7 +2,7 @@
 
 Self-hosted personal Telegram search foundation.
 
-`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, channel control, Global Search, and the Telegram Resource Library.
+`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, channel control, task observability, Global Search, and the Telegram Resource Library.
 
 ## Quickstart
 
@@ -57,6 +57,26 @@ Telegram Login starts a metadata-only channel sync after the account is online. 
 
 Channel Control adds Sync Profiles (`Quick`, `Normal`, `Deep`, `Full`), per-channel history/listen/remote-search toggles, Telegram Web Access Detection for `https://t.me/s/{username}`, listen rule filters, and display-only remote search task records. Web Access Detection is not a search-engine indexing signal.
 
+## Runtime Reliability
+
+Long-running work is tracked in persistent `sync_tasks` rows. The admin Tasks page shows task type, status, progress, retry count, FloodWait scheduling, error messages, and retry/cancel/pause/resume actions.
+
+Task states:
+
+```text
+queued -> running -> succeeded
+queued -> running -> failed
+failed -> queued
+running -> canceling -> canceled
+running -> paused -> running
+running -> flood_wait -> queued
+running -> reconnecting -> running
+```
+
+On startup, unfinished retryable tasks are restored from SQLite. Future `flood_wait` tasks keep their `next_run_at`; past or unscheduled unfinished tasks return to `queued`; `succeeded` and `canceled` tasks stay unchanged. `/api/events` streams `task.updated`, `account.updated`, `listener.updated`, and `activity.created` events with Server-Sent Events.
+
+Realtime listeners start only when an account has at least one channel with `listen_enabled=true`. Disconnects mark the account `RECONNECTING`; FloodWait marks `FLOOD_WAIT`; successful reconnect returns the account to `ONLINE`. Detected realtime message gaps enqueue `gap_recovery` tasks.
+
 ## Local Index
 
 Message metadata and content are stored separately:
@@ -108,6 +128,13 @@ GET    /api/resources/grouped
 GET    /api/resources/:id
 GET    /api/storage/usage
 GET    /api/status
+GET    /api/tasks
+GET    /api/tasks/:id
+POST   /api/tasks/:id/retry
+POST   /api/tasks/:id/cancel
+POST   /api/tasks/:id/pause
+POST   /api/tasks/:id/resume
+GET    /api/events
 ```
 
 Global Search returns grouped Messages, Links, Files, and Channels. Resources returns the Telegram Resource Library with `cloud_drive`, `magnet`, `ed2k`, `http`, and `files` groups.

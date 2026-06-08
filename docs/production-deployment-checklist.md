@@ -22,7 +22,19 @@
 - `tg-search` starts with `go run ./cmd/tg-search -config config.yaml` or the packaged binary.
 - `GET /api/status` returns `{"service":"ok"}`.
 - `GET /api/storage/usage` reports DB, index, media cache, total bytes, and quota flags.
+- `GET /api/tasks` returns a JSON task list.
+- `GET /api/events` responds with `Content-Type: text/event-stream`.
+- Restarting the process restores unfinished tasks without changing `succeeded` or `canceled` tasks.
+- Future `flood_wait` tasks keep their `next_run_at`; expired unfinished tasks return to `queued`.
 - Logs are reviewed for startup errors.
+
+## Telegram Runtime
+
+- At least one channel has `listen_enabled=true` before expecting realtime listener startup.
+- Disconnect tests mark affected accounts `RECONNECTING`.
+- FloodWait tests mark affected accounts `FLOOD_WAIT` and create task `next_run_at` values.
+- Successful reconnect returns affected accounts to `ONLINE`.
+- Realtime update gaps enqueue `gap_recovery` tasks.
 
 ## Setup
 

@@ -13,7 +13,7 @@ export const useTasksStore = defineStore('tasks', {
     async loadTasks() {
       return this.withLoading(async () => {
         const response = await apiGet<TasksResponse>('/api/tasks')
-        this.items = response.items
+        this.items = Array.isArray(response.items) ? response.items : []
         return this.items
       })
     },

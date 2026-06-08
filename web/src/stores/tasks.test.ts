@@ -52,4 +52,13 @@ describe('tasks store', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/tasks/1/pause')
     expect(apiPost).toHaveBeenCalledWith('/api/tasks/1/resume')
   })
+
+  it('keeps task items as an empty array when the API returns null items', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: null } as never)
+    const store = useTasksStore()
+
+    await store.loadTasks()
+
+    expect(store.items).toEqual([])
+  })
 })

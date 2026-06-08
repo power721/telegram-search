@@ -464,6 +464,21 @@ func TestReadyEndpointFailsWhenRuntimeDirsAreInvalid(t *testing.T) {
 	}
 }
 
+func TestTaskAPIReturnsEmptyItemsArray(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if !bytes.Contains(w.Body.Bytes(), []byte(`"items":[]`)) {
+		t.Fatalf("list body = %s, want empty items array", w.Body.String())
+	}
+}
+
 func TestTaskAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

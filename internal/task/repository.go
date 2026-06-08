@@ -164,7 +164,7 @@ ORDER BY updated_at ASC, id ASC`,
 }
 
 func scanTasks(rows *sql.Rows) ([]model.Task, error) {
-	var out []model.Task
+	out := []model.Task{}
 	for rows.Next() {
 		item, err := scanTask(rows)
 		if err != nil {

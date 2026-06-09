@@ -162,7 +162,7 @@ LIMIT ? OFFSET ?`
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	return attachLinks(ctx, r.db, out)
+	return attachSearchResultExtras(ctx, r.db, out)
 }
 
 func (r *MessageRepository) CountSearch(ctx context.Context, params SearchParams) (int, error) {
@@ -257,7 +257,15 @@ LIMIT ?`
 	if err := rows.Close(); err != nil {
 		return nil, err
 	}
-	return attachLinks(ctx, r.db, out)
+	return attachSearchResultExtras(ctx, r.db, out)
+}
+
+func attachSearchResultExtras(ctx context.Context, db *sql.DB, items []model.SearchResult) ([]model.SearchResult, error) {
+	items, err := attachLinks(ctx, db, items)
+	if err != nil {
+		return nil, err
+	}
+	return attachFiles(ctx, db, items)
 }
 
 func (r *MessageRepository) MarkDeleted(ctx context.Context, channelID int64, telegramMessageID int64) error {
@@ -334,6 +342,43 @@ ORDER BY message_id, id`, ids...)
 	}
 	for i := range items {
 		items[i].Links = byMessageID[items[i].ID]
+	}
+	return items, nil
+}
+
+func attachFiles(ctx context.Context, db *sql.DB, items []model.SearchResult) ([]model.SearchResult, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]any, 0, len(items))
+	placeholders := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+		placeholders = append(placeholders, "?")
+	}
+	rows, err := db.QueryContext(ctx, `
+SELECT id, message_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at
+FROM telegram_files
+WHERE message_id IN (`+strings.Join(placeholders, ",")+`)
+ORDER BY message_id, id`, ids...)
+	if err != nil {
+		return nil, fmt.Errorf("load files: %w", err)
+	}
+	defer rows.Close()
+
+	byMessageID := map[int64][]model.File{}
+	for rows.Next() {
+		var file model.File
+		if err := rows.Scan(&file.ID, &file.MessageID, &file.FileName, &file.Extension, &file.MimeType, &file.SizeBytes, &file.Category, &file.CreatedAt, &file.UpdatedAt); err != nil {
+			return nil, err
+		}
+		byMessageID[file.MessageID] = append(byMessageID[file.MessageID], file)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Files = byMessageID[items[i].ID]
 	}
 	return items, nil
 }

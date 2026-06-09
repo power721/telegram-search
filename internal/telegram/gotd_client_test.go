@@ -181,3 +181,41 @@ func TestConvertMessageExtractsDocumentFileMetadata(t *testing.T) {
 		t.Fatalf("file = %+v, want guide.pdf metadata", file)
 	}
 }
+
+func TestConvertMessageClassifiesPhotoMedia(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "poster",
+	}
+	message.SetMedia(&tg.MessageMediaPhoto{
+		Photo: &tg.Photo{ID: 42},
+	})
+
+	converted := convertMessage(message)
+
+	if converted.MessageType != "photo" || converted.MediaSummary != "photo" {
+		t.Fatalf("media metadata = %q/%q, want photo/photo", converted.MessageType, converted.MediaSummary)
+	}
+}
+
+func TestConvertMessageClassifiesWebPagePhotoMedia(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	webPage := &tg.WebPage{ID: 7, URL: "https://pan.quark.cn/s/abc"}
+	webPage.SetPhoto(&tg.Photo{ID: 42})
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "https://pan.quark.cn/s/abc",
+	}
+	message.SetMedia(&tg.MessageMediaWebPage{Webpage: webPage})
+
+	converted := convertMessage(message)
+
+	if converted.MessageType != "photo" || converted.MediaSummary != "webpage_photo" {
+		t.Fatalf("media metadata = %q/%q, want photo/webpage_photo", converted.MessageType, converted.MediaSummary)
+	}
+}

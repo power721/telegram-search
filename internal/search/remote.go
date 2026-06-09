@@ -171,10 +171,13 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 			ChannelUsername:   channel.Username,
 			TelegramMessageID: item.TelegramMessageID,
 			SenderID:          item.SenderID,
+			MessageType:       item.MessageType,
+			MediaSummary:      item.MediaSummary,
 			Text:              item.Text,
 			RawJSON:           item.RawJSON,
 			Date:              item.Date,
 			EditDate:          item.EditDate,
+			Files:             item.Files,
 		})
 	}
 	s.mu.Lock()

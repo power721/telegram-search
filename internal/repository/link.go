@@ -79,7 +79,7 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 	query := `
 SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
        COALESCE(l.source_snippet, ''), COALESCE(l.category, ''), l.created_at,
-       mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
+       mc.text, m.date, m.message_type, m.media_summary, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
 JOIN telegram_message_contents mc ON mc.message_id = m.id
@@ -95,7 +95,7 @@ LIMIT ? OFFSET ?`
 	var out []model.LinkResult
 	for rows.Next() {
 		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -112,7 +112,7 @@ func (r *LinkRepository) SearchResources(ctx context.Context, params LinkSearchP
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT id, message_id, type, url, password, note, source_snippet, category, created_at,
-       message_text, message_date, account_id, channel_id, telegram_channel_id, channel_title, channel_username, telegram_message_id
+       message_text, message_date, message_type, media_summary, account_id, channel_id, telegram_channel_id, channel_title, channel_username, telegram_message_id
 FROM (
   SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, '') AS password,
          COALESCE(l.note, '') AS note, COALESCE(l.source_snippet, '') AS source_snippet,
@@ -123,7 +123,7 @@ FROM (
            WHEN l.type = 'url' THEN 'http'
            ELSE 'cloud_drive'
          END AS category,
-         l.created_at, mc.text AS message_text, m.date AS message_date, m.account_id,
+         l.created_at, mc.text AS message_text, m.date AS message_date, m.message_type, m.media_summary, m.account_id,
          m.channel_id, c.telegram_channel_id, c.title AS channel_title, c.username AS channel_username, m.telegram_message_id,
          row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
   FROM telegram_links l
@@ -143,7 +143,7 @@ LIMIT ? OFFSET ?`
 	var out []model.LinkResult
 	for rows.Next() {
 		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)

@@ -222,43 +222,69 @@ func downloadMessageImage(ctx context.Context, api *tg.Client, msg *tg.Message) 
 		if !ok {
 			return ImageFile{}, fmt.Errorf("unexpected photo type %T", media.Photo)
 		}
-		thumbType, cached, err := choosePhotoSize(photo.Sizes)
-		if err != nil {
-			return ImageFile{}, err
-		}
-		if cached != nil {
-			return ImageFile{Data: cached, MIMEType: http.DetectContentType(cached)}, nil
-		}
-		data, err := downloadSmallFile(ctx, api, &tg.InputPhotoFileLocation{
-			ID:            photo.ID,
-			AccessHash:    photo.AccessHash,
-			FileReference: photo.FileReference,
-			ThumbSize:     thumbType,
-		})
-		if err != nil {
-			return ImageFile{}, err
-		}
-		return ImageFile{Data: data, MIMEType: imageMIME(data, "")}, nil
+		return downloadPhotoImage(ctx, api, photo)
 	case *tg.MessageMediaDocument:
 		doc, ok := media.Document.(*tg.Document)
 		if !ok {
 			return ImageFile{}, fmt.Errorf("unexpected document type %T", media.Document)
 		}
-		thumbType, cached, err := choosePhotoSize(doc.Thumbs)
-		if err != nil {
-			return ImageFile{}, err
+		return downloadDocumentThumb(ctx, api, doc)
+	case *tg.MessageMediaWebPage:
+		webPage, ok := media.Webpage.(*tg.WebPage)
+		if !ok {
+			return ImageFile{}, fmt.Errorf("unexpected webpage type %T", media.Webpage)
 		}
-		if cached != nil {
-			return ImageFile{Data: cached, MIMEType: http.DetectContentType(cached)}, nil
+		if photo, ok := webPage.GetPhoto(); ok {
+			if p, ok := photo.(*tg.Photo); ok {
+				return downloadPhotoImage(ctx, api, p)
+			}
+			return ImageFile{}, fmt.Errorf("unexpected webpage photo type %T", photo)
 		}
-		data, err := downloadSmallFile(ctx, api, documentFileLocation(videoFileFromDocument(doc), thumbType))
-		if err != nil {
-			return ImageFile{}, err
+		if document, ok := webPage.GetDocument(); ok {
+			if doc, ok := document.(*tg.Document); ok {
+				return downloadDocumentThumb(ctx, api, doc)
+			}
+			return ImageFile{}, fmt.Errorf("unexpected webpage document type %T", document)
 		}
-		return ImageFile{Data: data, MIMEType: imageMIME(data, doc.MimeType)}, nil
+		return ImageFile{}, fmt.Errorf("webpage has no image media")
 	default:
 		return ImageFile{}, fmt.Errorf("message has no image media")
 	}
+}
+
+func downloadPhotoImage(ctx context.Context, api *tg.Client, photo *tg.Photo) (ImageFile, error) {
+	thumbType, cached, err := choosePhotoSize(photo.Sizes)
+	if err != nil {
+		return ImageFile{}, err
+	}
+	if cached != nil {
+		return ImageFile{Data: cached, MIMEType: http.DetectContentType(cached)}, nil
+	}
+	data, err := downloadSmallFile(ctx, api, &tg.InputPhotoFileLocation{
+		ID:            photo.ID,
+		AccessHash:    photo.AccessHash,
+		FileReference: photo.FileReference,
+		ThumbSize:     thumbType,
+	})
+	if err != nil {
+		return ImageFile{}, err
+	}
+	return ImageFile{Data: data, MIMEType: imageMIME(data, "")}, nil
+}
+
+func downloadDocumentThumb(ctx context.Context, api *tg.Client, doc *tg.Document) (ImageFile, error) {
+	thumbType, cached, err := choosePhotoSize(doc.Thumbs)
+	if err != nil {
+		return ImageFile{}, err
+	}
+	if cached != nil {
+		return ImageFile{Data: cached, MIMEType: http.DetectContentType(cached)}, nil
+	}
+	data, err := downloadSmallFile(ctx, api, documentFileLocation(videoFileFromDocument(doc), thumbType))
+	if err != nil {
+		return ImageFile{}, err
+	}
+	return ImageFile{Data: data, MIMEType: imageMIME(data, doc.MimeType)}, nil
 }
 
 func choosePhotoSize(sizes []tg.PhotoSizeClass) (thumbType string, cached []byte, err error) {

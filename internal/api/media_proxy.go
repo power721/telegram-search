@@ -152,8 +152,9 @@ func (h handlers) resolveMediaSession(ctx context.Context, channelParam string) 
 		if err != nil {
 			return telegram.AccountSession{}, telegram.MediaChannelRef{}, err
 		}
+		numericChannelID, _ := strconv.ParseInt(channelParam, 10, 64)
 		for _, channel := range channels {
-			if strings.EqualFold(strings.TrimPrefix(channel.Username, "@"), channelParam) {
+			if strings.EqualFold(strings.TrimPrefix(channel.Username, "@"), channelParam) || (numericChannelID > 0 && channel.ID == numericChannelID) {
 				matchedChannel = channel
 				break
 			}

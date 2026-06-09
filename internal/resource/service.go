@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"tg-search/internal/model"
 	"tg-search/internal/repository"
 )
 
@@ -22,24 +23,27 @@ type Query struct {
 }
 
 type Item struct {
-	ID                string    `json:"id"`
-	Kind              string    `json:"kind"`
-	Type              string    `json:"type,omitempty"`
-	Category          string    `json:"category"`
-	URL               string    `json:"url,omitempty"`
-	FileName          string    `json:"file_name,omitempty"`
-	Extension         string    `json:"extension,omitempty"`
-	MimeType          string    `json:"mime_type,omitempty"`
-	SizeBytes         int64     `json:"size_bytes,omitempty"`
-	Note              string    `json:"note,omitempty"`
-	Title             string    `json:"title,omitempty"`
-	SourceSnippet     string    `json:"source_snippet,omitempty"`
-	Datetime          time.Time `json:"datetime"`
-	ChannelID         int64     `json:"channel_id"`
-	TelegramChannelID int64     `json:"telegram_channel_id"`
-	ChannelTitle      string    `json:"channel_title"`
-	ChannelUsername   string    `json:"channel_username"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
+	ID                string           `json:"id"`
+	Kind              string           `json:"kind"`
+	Type              string           `json:"type,omitempty"`
+	Category          string           `json:"category"`
+	URL               string           `json:"url,omitempty"`
+	FileName          string           `json:"file_name,omitempty"`
+	Extension         string           `json:"extension,omitempty"`
+	MimeType          string           `json:"mime_type,omitempty"`
+	SizeBytes         int64            `json:"size_bytes,omitempty"`
+	Note              string           `json:"note,omitempty"`
+	Title             string           `json:"title,omitempty"`
+	SourceSnippet     string           `json:"source_snippet,omitempty"`
+	Datetime          time.Time        `json:"datetime"`
+	ChannelID         int64            `json:"channel_id"`
+	TelegramChannelID int64            `json:"telegram_channel_id"`
+	ChannelTitle      string           `json:"channel_title"`
+	ChannelUsername   string           `json:"channel_username"`
+	TelegramMessageID int64            `json:"telegram_message_id"`
+	MessageType       string           `json:"message_type,omitempty"`
+	MediaSummary      string           `json:"media_summary,omitempty"`
+	Media             *model.MediaURLs `json:"media,omitempty"`
 }
 
 type ListResult struct {
@@ -101,6 +105,8 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				ChannelTitle:      link.ChannelTitle,
 				ChannelUsername:   link.ChannelUsername,
 				TelegramMessageID: link.TelegramMessageID,
+				MessageType:       link.MessageType,
+				MediaSummary:      link.MediaSummary,
 			})
 		}
 	}

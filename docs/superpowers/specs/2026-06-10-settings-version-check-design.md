@@ -6,7 +6,7 @@ The settings page shows the currently running tg-search version and lets an admi
 
 ## User Experience
 
-The settings page adds a compact version panel. On load, the panel displays the current backend version. The panel includes a "检查更新" button. When the administrator clicks it, the UI calls the backend, shows a loading state, then displays one of these outcomes:
+The settings page adds a compact version panel. On load, the panel displays the current backend version without contacting GitHub. The panel includes a "检查更新" button. When the administrator clicks it, the UI calls the backend with update checking enabled, shows a loading state, then displays one of these outcomes:
 
 - Current version is up to date.
 - A newer GitHub Release is available, with a link to the release page.
@@ -16,7 +16,7 @@ The current version should still be visible if the GitHub check fails. If the bi
 
 ## Backend Design
 
-Add `GET /api/settings/version` under the existing settings API surface. The endpoint returns:
+Add `GET /api/settings/version` under the existing settings API surface. Without query parameters the endpoint returns only the current version. With `?check_update=true`, it also checks GitHub Releases and returns:
 
 ```json
 {
@@ -33,13 +33,13 @@ The backend owns the GitHub API call to `https://api.github.com/repos/power721/t
 
 Version comparison strips a leading `v` and compares semantic numeric parts. If either version is `dev`, empty, or not parseable, the response should not report `update_available: true`; it can still return the latest release version and URL.
 
-GitHub request failures return a non-2xx API error from `/api/settings/version`. The frontend handles that as a failed check while preserving the already displayed current version when possible.
+GitHub request failures return a non-2xx API error from `/api/settings/version?check_update=true`. The frontend handles that as a failed check while preserving the already displayed current version when possible.
 
 ## Frontend Design
 
 Add a `VersionInfoResponse` type to `web/src/api/types.ts`.
 
-`SettingsView.vue` loads `/api/settings/version` on mount so the current version is shown without requiring a button click. The same request also populates latest-release fields when GitHub is reachable. The "检查更新" button re-runs the request and uses the same response.
+`SettingsView.vue` loads `/api/settings/version` on mount so the current version is shown without requiring a button click or GitHub access. The "检查更新" button calls `/api/settings/version?check_update=true` and uses that response to populate latest-release fields.
 
 The version panel follows the existing settings layout and uses Naive UI buttons like the API key panel. It should not introduce a new global store because this data is local to the settings page.
 
@@ -55,7 +55,7 @@ Backend tests cover:
 Frontend tests cover:
 
 - Settings page requests `/api/settings/version` on mount and displays the current version.
-- Clicking "检查更新" requests the endpoint again and displays the latest version state.
+- Clicking "检查更新" requests `/api/settings/version?check_update=true` and displays the latest version state.
 
 ## Scope
 

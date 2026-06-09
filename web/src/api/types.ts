@@ -75,6 +75,13 @@ export interface StorageUsage {
   media_over_quota: boolean
 }
 
+export interface VersionInfoResponse {
+  current_version: string
+  latest_version?: string
+  latest_url?: string
+  update_available: boolean
+}
+
 export interface TelegramAPISettingsResponse {
   configured: boolean
   app_id: number

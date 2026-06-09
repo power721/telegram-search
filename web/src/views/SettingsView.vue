@@ -2,7 +2,7 @@
 import { useMessage } from 'naive-ui'
 import { onMounted, ref, watch } from 'vue'
 import { apiGet, apiPut } from '@/api/client'
-import type { StorageUsage, TelegramAPISettingsResponse } from '@/api/types'
+import type { StorageUsage, TelegramAPISettingsResponse, VersionInfoResponse } from '@/api/types'
 import { useAPIKeyStore } from '@/stores/apiKey'
 import { useAuthStore } from '@/stores/auth'
 
@@ -20,6 +20,9 @@ const telegramSettings = ref<TelegramAPISettingsResponse | null>(null)
 const telegramAppID = ref('')
 const telegramAppHash = ref('')
 const telegramLoading = ref(false)
+const versionInfo = ref<VersionInfoResponse | null>(null)
+const versionLoading = ref(false)
+const versionError = ref('')
 
 onMounted(() => {
   apiKey.load().catch((error) => {
@@ -27,6 +30,7 @@ onMounted(() => {
   })
   loadStorageUsage()
   loadTelegramSettings()
+  loadVersionInfo(false)
   if (!auth.loaded) {
     auth.loadMe().catch(() => {
       message.error('无法加载当前管理员')
@@ -92,6 +96,19 @@ async function loadTelegramSettings() {
   }
 }
 
+async function loadVersionInfo(checkUpdate = true) {
+  versionLoading.value = true
+  versionError.value = ''
+  try {
+    versionInfo.value = await apiGet<VersionInfoResponse>(checkUpdate ? '/api/settings/version?check_update=true' : '/api/settings/version')
+  } catch (error) {
+    versionError.value = error instanceof Error ? error.message : '无法检查更新'
+    message.error(versionError.value)
+  } finally {
+    versionLoading.value = false
+  }
+}
+
 async function updateTelegramAPI() {
   const appID = Number(telegramAppID.value)
   const appHash = telegramAppHash.value.trim()
@@ -146,6 +163,13 @@ function formatBytes(value = 0) {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB`
   return `${value} B`
+}
+
+function versionStatusText() {
+  if (versionError.value) return '检查失败'
+  if (!versionInfo.value?.latest_version) return '尚未检查'
+  if (versionInfo.value.update_available) return `发现新版本 ${versionInfo.value.latest_version}`
+  return '已是最新版本'
 }
 </script>
 
@@ -222,6 +246,33 @@ function formatBytes(value = 0) {
               <dd>{{ formatBytes(storageUsage?.max_media_bytes) }}</dd>
             </div>
           </dl>
+        </section>
+        <section class="panel version-panel">
+          <div class="panel-header">
+            <h2>版本</h2>
+            <n-button data-testid="check-version" size="small" type="primary" :loading="versionLoading" @click="loadVersionInfo()">
+              检查更新
+            </n-button>
+          </div>
+          <dl>
+            <div>
+              <dt>当前版本</dt>
+              <dd data-testid="current-version">{{ versionInfo?.current_version ?? '-' }}</dd>
+            </div>
+            <div>
+              <dt>更新状态</dt>
+              <dd>{{ versionStatusText() }}</dd>
+            </div>
+          </dl>
+          <a
+            v-if="versionInfo?.latest_url"
+            class="version-link"
+            :href="versionInfo.latest_url"
+            target="_blank"
+            rel="noreferrer"
+          >
+            查看 GitHub Release
+          </a>
         </section>
       </div>
       <div class="settings-column settings-column-right">
@@ -341,6 +392,21 @@ function formatBytes(value = 0) {
   gap: 12px;
 }
 
+.version-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.version-link {
+  color: var(--app-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.version-link:hover {
+  text-decoration: underline;
+}
+
 dl {
   margin: 0;
 }
@@ -412,6 +478,10 @@ dd {
 
   .telegram-panel {
     order: 4;
+  }
+
+  .version-panel {
+    order: 5;
   }
 }
 

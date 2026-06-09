@@ -177,6 +177,9 @@ sync:
 	if time.Duration(cfg.Sync.TelegramRequestInterval) != 750*time.Millisecond {
 		t.Fatalf("telegram request interval = %s, want 750ms", cfg.Sync.TelegramRequestInterval)
 	}
+	if cfg.Server.Host != "0.0.0.0" {
+		t.Fatalf("server host = %q, want 0.0.0.0", cfg.Server.Host)
+	}
 }
 
 func TestLoadRejectsTelegramCredentialConfig(t *testing.T) {

@@ -311,10 +311,6 @@ function formatBytes(value = 0) {
   gap: 16px;
 }
 
-.settings-column-right {
-  gap: 0;
-}
-
 .credential-form {
   display: grid;
 }

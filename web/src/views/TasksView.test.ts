@@ -79,7 +79,7 @@ describe('TasksView', () => {
 
     expect(wrapper.text()).toContain('任务')
     expect(wrapper.text()).toContain('历史同步')
-    expect(wrapper.text()).toContain('缺口恢复')
+    expect(wrapper.text()).toContain('消息同步')
     expect(wrapper.text()).toContain('排队中')
     expect(wrapper.text()).toContain('失败')
     expect(wrapper.text()).toContain('25 / 100')

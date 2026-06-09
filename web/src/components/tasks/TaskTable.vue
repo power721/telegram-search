@@ -27,7 +27,7 @@ function taskTypeLabel(type: string) {
   const labels: Record<string, string> = {
     backup: '备份',
     channel_analysis: '频道分析',
-    gap_recovery: '缺口恢复',
+    gap_recovery: '消息同步',
     history_sync: '历史同步',
     listener_recovery: '监听恢复',
     metadata_sync: '元数据同步',

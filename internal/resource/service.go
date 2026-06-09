@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tg-search/internal/repository"
+	"tg-search/internal/searchrank"
 )
 
 type Query struct {
@@ -222,12 +223,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			})
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if !items[i].Datetime.Equal(items[j].Datetime) {
-			return items[i].Datetime.After(items[j].Datetime)
-		}
-		return resourceKindRank(items[i].Kind) < resourceKindRank(items[j].Kind)
-	})
+	SortItemsByQuality(items, query.Keyword)
 
 	grouped, err := s.groupedForQuery(ctx, query)
 	if err != nil {
@@ -418,6 +414,85 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func SortItemsByQuality(items []Item, keyword string) {
+	if strings.TrimSpace(keyword) == "" {
+		sortItemsByDate(items)
+		return
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		leftScore := ItemQualityScore(items[i], keyword)
+		rightScore := ItemQualityScore(items[j], keyword)
+		if leftScore != rightScore {
+			return leftScore > rightScore
+		}
+		if !items[i].Datetime.Equal(items[j].Datetime) {
+			return items[i].Datetime.After(items[j].Datetime)
+		}
+		if leftRank, rightRank := resourceKindRank(items[i].Kind), resourceKindRank(items[j].Kind); leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		return items[i].ID < items[j].ID
+	})
+}
+
+func sortItemsByDate(items []Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		if !items[i].Datetime.Equal(items[j].Datetime) {
+			return items[i].Datetime.After(items[j].Datetime)
+		}
+		if leftRank, rightRank := resourceKindRank(items[i].Kind), resourceKindRank(items[j].Kind); leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		return items[i].ID < items[j].ID
+	})
+}
+
+func ItemQualityScore(item Item, keyword string) int {
+	return searchrank.TextMatchScore(keyword, item.MediaTitle, item.Title, item.Note, item.FileName, item.MediaTags, item.SourceSnippet, item.URL) +
+		searchrank.TitleMarkerScore(item.MediaTitle, item.Title, item.Note, item.FileName) +
+		searchrank.MetadataScore(item.MediaTitle, item.MediaYear, item.MediaSeason, item.MediaEpisode, item.MediaQuality, item.MediaSize, item.MediaTMDBID, item.MediaCategory, item.MediaTags) +
+		resourceCategoryScore(item) +
+		resourcePasswordScore(item.Password)
+}
+
+func resourceCategoryScore(item Item) int {
+	switch item.Category {
+	case "cloud_drive":
+		return 90 + providerScore(item.Type)
+	case "video":
+		return 75
+	case "files":
+		return 55
+	case "magnet":
+		return 45
+	case "ed2k":
+		return 40
+	case "http":
+		return 15
+	default:
+		if item.Kind == "file" {
+			return 50
+		}
+		return providerScore(item.Type)
+	}
+}
+
+func providerScore(typ string) int {
+	switch typ {
+	case "quark", "aliyun", "baidu", "115", "uc", "xunlei", "tianyi", "mobile", "123", "pikpak", "guangya":
+		return 35
+	default:
+		return 0
+	}
+}
+
+func resourcePasswordScore(password string) int {
+	if strings.TrimSpace(password) == "" {
+		return 0
+	}
+	return 8
 }
 
 func resourceKindRank(kind string) int {

@@ -935,6 +935,55 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 }
 
+func TestExternalSearchRanksResultsByQuality(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu 24.04 完整合集", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu random mirror", RawJSON: "{}", Date: newDate},
+	})
+	_, _ = deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/high", Note: "Ubuntu 24.04 最新合集", MediaTitle: "Ubuntu 24.04",
+		MediaYear: "2026", MediaQuality: "4K", MediaCategory: "software",
+	}})
+	_, _ = deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/weak", Note: "random mirror",
+	}})
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&res=results&cloud_types=quark", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			Results []struct {
+				Links []struct {
+					URL string `json:"url"`
+				} `json:"links"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Code != 0 || len(body.Data.Results) != 2 || len(body.Data.Results[0].Links) != 1 {
+		t.Fatalf("external search body = %+v raw=%s, want two result items", body, w.Body.String())
+	}
+	if body.Data.Results[0].Links[0].URL != "https://pan.quark.cn/s/high" {
+		t.Fatalf("first external result = %+v raw=%s, want high quality result first", body.Data.Results[0], w.Body.String())
+	}
+}
+
 func TestExternalResourceFiltersSupportRequestedTypeAliases(t *testing.T) {
 	got := externalResourceFilters([]string{"百度", "阿里", "夸克", "光鸭", "天翼", "115", "迅雷", "UC", "移动", "PikPak", "123", "磁力", "电驴"})
 	want := []externalResourceFilter{

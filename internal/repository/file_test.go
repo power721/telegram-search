@@ -74,7 +74,7 @@ func TestFileRepositoryPersistsFileMetadata(t *testing.T) {
 	}
 }
 
-func TestFileRepositorySkipsDuplicateFilesAcrossMessages(t *testing.T) {
+func TestFileRepositoryStoresDuplicateTelegramFilesAcrossMessages(t *testing.T) {
 	ctx := context.Background()
 	conn := openRepositoryTestDB(t)
 	accounts := NewAccountRepository(conn)
@@ -133,8 +133,8 @@ func TestFileRepositorySkipsDuplicateFilesAcrossMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save duplicate file: %v", err)
 	}
-	if len(duplicate) != 0 {
-		t.Fatalf("duplicate saved files = %+v, want duplicate skipped", duplicate)
+	if len(duplicate) != 1 || duplicate[0].MessageID != stored[1].ID || duplicate[0].TelegramFileID != 42 {
+		t.Fatalf("duplicate saved files = %+v, want one stored file for second message", duplicate)
 	}
 
 	foundFirst, err := files.FindByMessageID(ctx, stored[0].ID)
@@ -148,8 +148,11 @@ func TestFileRepositorySkipsDuplicateFilesAcrossMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find duplicate files: %v", err)
 	}
-	if len(foundDuplicate) != 0 {
-		t.Fatalf("duplicate message files = %+v, want none", foundDuplicate)
+	if len(foundDuplicate) != 1 {
+		t.Fatalf("duplicate message files = %+v, want one", foundDuplicate)
+	}
+	if len(foundDuplicate) != 1 || foundDuplicate[0].TelegramFileID != 42 {
+		t.Fatalf("duplicate message files = %+v, want telegram file 42", foundDuplicate)
 	}
 }
 

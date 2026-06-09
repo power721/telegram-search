@@ -160,7 +160,7 @@ describe('SearchResults', () => {
             id: 1,
             text: 'photo result',
             media: {
-              image_url: '/i/photos/42'
+              image_url: '/i/42'
             }
           }
         ],
@@ -174,7 +174,7 @@ describe('SearchResults', () => {
             type: 'url',
             url: 'https://example.com/poster',
             media: {
-              image_url: '/i/links/44'
+              image_url: '/i/44'
             }
           }
         ],
@@ -191,7 +191,7 @@ describe('SearchResults', () => {
             size_bytes: 100,
             category: 'image',
             media: {
-              image_url: '/i/files/43'
+              image_url: '/i/43'
             }
           }
         ],
@@ -205,9 +205,9 @@ describe('SearchResults', () => {
     })
 
     const thumbs = wrapper.findAll('img.search-thumb')
-    expect(thumbs.map((image) => image.attributes('src'))).toEqual(['/i/photos/42', '/i/links/44', '/i/files/43'])
+    expect(thumbs.map((image) => image.attributes('src'))).toEqual(['/i/42', '/i/44', '/i/43'])
     const previews = wrapper.findAll('.search-thumb-frame img.search-thumb-preview')
-    expect(previews.map((image) => image.attributes('src'))).toEqual(['/i/photos/42', '/i/links/44', '/i/files/43'])
+    expect(previews.map((image) => image.attributes('src'))).toEqual(['/i/42', '/i/44', '/i/43'])
     for (const preview of previews) {
       expect(preview.attributes('aria-hidden')).toBe('true')
     }
@@ -223,8 +223,8 @@ describe('SearchResults', () => {
             id: 1,
             text: 'video result',
             media: {
-              image_url: '/i/videos/42',
-              video_url: '/v/videos/42'
+              image_url: '/i/42',
+              video_url: '/v/42'
             }
           }
         ],
@@ -244,6 +244,6 @@ describe('SearchResults', () => {
     expect(wrapper.find('img.search-thumb').exists()).toBe(false)
     const video = wrapper.find('video.search-thumb')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/v/videos/42')
+    expect(video.attributes('src')).toBe('/v/42')
   })
 })

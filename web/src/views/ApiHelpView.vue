@@ -47,8 +47,7 @@ const healthFields: FieldRow[] = [
 ]
 
 const mediaParams: ParamRow[] = [
-  { name: 'channel', type: 'string', required: '是', description: '频道用户名或频道 ID。路径中不需要 @ 前缀。' },
-  { name: 'msgid', type: 'number', required: '是', description: 'Telegram 消息 ID，必须是正整数。' },
+  { name: 'fileid', type: 'number', required: '是', description: 'Telegram 文件 ID，必须是正整数。' },
   { name: 'exp', type: 'string', required: '签名访问必填', description: '签名 URL 的过期时间戳，由搜索结果里的媒体 URL 自动携带。' },
   { name: 'sig', type: 'string', required: '签名访问必填', description: '媒体 URL 签名，由搜索结果里的媒体 URL 自动携带。' }
 ]
@@ -74,20 +73,20 @@ const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
 
 const healthExample = `curl 'http://localhost:9900/api/health'`
 
-const videoExample = `curl 'http://localhost:9900/v/media_channel/102' \\
+const videoExample = `curl 'http://localhost:9900/v/202001' \\
   -H 'X-API-Key: YOUR_API_KEY' \\
   -H 'Range: bytes=0-'`
 
-const imageExample = `curl 'http://localhost:9900/i/media_channel/101' \\
+const imageExample = `curl 'http://localhost:9900/i/201001' \\
   -H 'X-API-Key: YOUR_API_KEY'`
 
 const signedMediaExample = `<video
-  src="/v/media_channel/102?exp=1735689600&sig=SIGNED_VALUE"
+  src="/v/202001?exp=1735689600&sig=SIGNED_VALUE"
   controls
 ></video>
 
 <img
-  src="/i/media_channel/101?exp=1735689600&sig=SIGNED_VALUE"
+  src="/i/201001?exp=1735689600&sig=SIGNED_VALUE"
   alt=""
 />`
 
@@ -134,12 +133,12 @@ async function copyCode(key: string, value: string) {
       </div>
       <div class="summary-item">
         <span class="method method-get">GET</span>
-        <strong>/v/:channel/:msgid</strong>
+        <strong>/v/:fileid</strong>
         <small>视频流</small>
       </div>
       <div class="summary-item">
         <span class="method method-get">GET</span>
-        <strong>/i/:channel/:msgid</strong>
+        <strong>/i/:fileid</strong>
         <small>图片</small>
       </div>
     </section>
@@ -279,7 +278,7 @@ async function copyCode(key: string, value: string) {
       <div class="endpoint-heading">
         <span class="method method-get">GET</span>
         <div>
-          <h2>/v/:channel/:msgid</h2>
+          <h2>/v/:fileid</h2>
           <p>读取 Telegram 消息中的视频文件，支持浏览器 Range 分段请求。</p>
         </div>
       </div>
@@ -321,7 +320,7 @@ async function copyCode(key: string, value: string) {
       <div class="endpoint-heading">
         <span class="method method-get">GET</span>
         <div>
-          <h2>/i/:channel/:msgid</h2>
+          <h2>/i/:fileid</h2>
           <p>读取 Telegram 消息中的图片，适合在外部页面或结果卡片中展示缩略图。</p>
         </div>
       </div>

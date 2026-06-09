@@ -33,8 +33,8 @@ API keys are limited external credentials. They can access only:
 
 - `GET /api/search`
 - `POST /api/search`
-- `GET /v/:channel/:msgid`
-- `GET /i/:channel/:msgid`
+- `GET /v/:fileid`
+- `GET /i/:fileid`
 
 Send API keys with one of:
 

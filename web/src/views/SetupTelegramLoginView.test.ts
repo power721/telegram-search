@@ -147,6 +147,28 @@ describe('SetupTelegramLoginView', () => {
     expect(push).toHaveBeenCalledWith('/setup/listen-rules')
   })
 
+  it('shows where to find the Telegram verification code after sending it', async () => {
+    const wrapper = mount(SetupTelegramLoginView, {
+      global: {
+        stubs: {
+          'n-form': { template: '<form><slot /></form>' },
+          'n-form-item': { props: ['label'], template: '<label>{{ label }}<slot /></label>' },
+          'n-input': true,
+          'n-button': { emits: ['click'], template: `<button @click="$emit('click')"><slot /></button>` },
+          'n-button-group': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+
+    await wrapper.findAll('button').find((button) => button.text() === '验证码登录')?.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '发送验证码')?.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Telegram 已接受验证码请求')
+    expect(wrapper.text()).toContain('请先查看已登录 Telegram 客户端里的官方验证码消息')
+    expect(wrapper.text()).toContain('不要连续重复发送验证码')
+  })
+
   it('starts qr login and finishes after poll succeeds', async () => {
     const wrapper = mount(SetupTelegramLoginView, {
       global: {

@@ -292,6 +292,9 @@ onBeforeUnmount(() => {
             <td>{{ displayName(account.first_name, account.last_name, account.username) }}</td>
             <td>
               <span class="status-pill" :class="statusClass(account.status)">{{ statusLabel(account.status) }}</span>
+              <p v-if="needsLogin(account)" class="status-help">
+                点击登录后发送验证码，并在 Telegram 官方消息中查看验证码。
+              </p>
             </td>
             <td>{{ formatDate(account.last_online_at) }}</td>
             <td>{{ account.last_error || '-' }}</td>
@@ -381,6 +384,11 @@ onBeforeUnmount(() => {
             <template #feedback>请包含国家码，可输入空格、短横线或括号。</template>
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
+          <div v-if="loginCodeSent" class="login-code-guidance" role="status">
+            <strong>Telegram 已接受验证码请求</strong>
+            <span>请先查看已登录 Telegram 客户端里的官方验证码消息。</span>
+            <span>不要连续重复发送验证码；如果没有任何已登录客户端，再等待短信或电话验证码。</span>
+          </div>
 
           <div class="form-section">
             <n-form-item label="验证码">
@@ -429,6 +437,14 @@ table {
   display: flex;
   gap: 8px;
   white-space: nowrap;
+}
+
+.status-help {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  max-width: 220px;
 }
 
 .login-dialog {
@@ -498,6 +514,22 @@ table {
 .sync-result {
   color: var(--app-text-muted);
   margin: 16px 0 0;
+}
+
+.login-code-guidance {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  color: var(--app-text-muted);
+  display: grid;
+  gap: 4px;
+  line-height: 1.6;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.login-code-guidance strong {
+  color: var(--app-text);
 }
 
 .loading-stack {

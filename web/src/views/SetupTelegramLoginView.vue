@@ -172,6 +172,11 @@ onBeforeUnmount(() => {
           <template #feedback>请包含国家码，可输入空格、短横线或括号。</template>
         </n-form-item>
         <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
+        <div v-if="codeSent" class="login-code-guidance" role="status">
+          <strong>Telegram 已接受验证码请求</strong>
+          <span>请先查看已登录 Telegram 客户端里的官方验证码消息。</span>
+          <span>不要连续重复发送验证码；如果没有任何已登录客户端，再等待短信或电话验证码。</span>
+        </div>
 
         <div class="form-section">
           <n-form-item label="验证码">
@@ -253,5 +258,21 @@ h1 {
 .sync-result {
   color: var(--app-text-muted);
   margin: 16px 0 0;
+}
+
+.login-code-guidance {
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  color: var(--app-text-muted);
+  display: grid;
+  gap: 4px;
+  line-height: 1.6;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.login-code-guidance strong {
+  color: var(--app-text);
 }
 </style>

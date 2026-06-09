@@ -127,6 +127,14 @@ describe('AccountsView', () => {
     expect(wrapper.text()).not.toContain('RECONNECTING')
   })
 
+  it('shows the next login step for accounts that need login', async () => {
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('需要登录')
+    expect(wrapper.text()).toContain('点击登录后发送验证码，并在 Telegram 官方消息中查看验证码。')
+  })
+
   it('opens telegram login dialog when adding or reconnecting an account', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()
@@ -234,6 +242,10 @@ describe('AccountsView', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === '发送验证码')!.trigger('click')
     await flushPromises()
+
+    expect(wrapper.text()).toContain('Telegram 已接受验证码请求')
+    expect(wrapper.text()).toContain('请先查看已登录 Telegram 客户端里的官方验证码消息')
+
     const dialogLoginButtons = wrapper.findAll('button').filter((button) => button.text() === '登录')
     await dialogLoginButtons.at(-1)!.trigger('click')
     await flushPromises()

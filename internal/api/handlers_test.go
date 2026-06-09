@@ -895,6 +895,9 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 	assertSignedMediaURL(t, deps.APIKeyService, videoURL)
 	responseText := w.Body.String()
+	if strings.Contains(responseText, `\u0026`) {
+		t.Fatalf("external response escaped media URL query separator: %s", responseText)
+	}
 	for _, forbidden := range []string{
 		"channel_id",
 		"telegram_message_id",

@@ -8,6 +8,51 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/bin" "$TMP_DIR/data"
 
+cat > "$TMP_DIR/bin/go" <<'MOCK_GO'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "env" && "${2:-}" == "GOARCH" ]]; then
+  printf 'amd64\n'
+  exit 0
+fi
+
+printf 'go'
+output=""
+previous=""
+for arg in "$@"; do
+  printf ' %s' "$arg"
+  if [[ "$previous" == "-o" ]]; then
+    output="$arg"
+  fi
+  previous="$arg"
+done
+printf '\n'
+
+if [[ -n "$output" ]]; then
+  mkdir -p "$(dirname "$output")"
+  printf 'mock binary\n' > "$output"
+fi
+MOCK_GO
+chmod +x "$TMP_DIR/bin/go"
+
+cat > "$TMP_DIR/bin/npm" <<'MOCK_NPM'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf 'npm'
+for arg in "$@"; do
+  printf ' %s' "$arg"
+done
+printf '\n'
+
+if [[ "${1:-}" == "run" && "${2:-}" == "web:build" ]]; then
+  mkdir -p web/dist
+  printf '<!doctype html>\n' > web/dist/index.html
+fi
+MOCK_NPM
+chmod +x "$TMP_DIR/bin/npm"
+
 cat > "$TMP_DIR/bin/docker" <<'MOCK_DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -43,7 +88,10 @@ assert_contains() {
   fi
 }
 
-assert_contains "docker build -f $ROOT_DIR/Dockerfile --build-arg VERSION="
+assert_contains "npm run web:build"
+assert_contains "go build -trimpath -ldflags -s -w -X 'tg-search/internal/build.Version="
+assert_contains "-o $ROOT_DIR/dist/local/tg-search ./cmd/tg-search"
+assert_contains "docker build -f $ROOT_DIR/Dockerfile.local"
 assert_contains "--tag=haroldli/tg-search:latest $ROOT_DIR"
 assert_contains "=== use image default /app/config.yaml ==="
 assert_contains "docker rm -f tg-search"

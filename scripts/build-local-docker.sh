@@ -12,6 +12,16 @@ PORT=9900
 TZ_VALUE="${TZ:-Asia/Shanghai}"
 CONFIG_SOURCE=""
 EXTRA_MOUNTS=()
+LOCAL_DOCKERFILE="$ROOT_DIR/Dockerfile.local"
+LOCAL_BINARY="$ROOT_DIR/dist/local/tg-search"
+BUILD_DIR=""
+
+cleanup() {
+  if [[ -n "$BUILD_DIR" ]]; then
+    rm -rf "$BUILD_DIR"
+  fi
+}
+trap cleanup EXIT
 
 usage() {
   cat <<EOF
@@ -27,6 +37,15 @@ Options:
   -v  Extra Docker volume mount. Can be specified multiple times.
   -h  Show this help.
 EOF
+}
+
+require_cmd() {
+  local cmd="$1"
+
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    printf 'required command not found: %s\n' "$cmd" >&2
+    exit 1
+  fi
 }
 
 abs_path() {
@@ -69,6 +88,95 @@ prepare_config() {
   fi
 
   echo "=== use image default /app/config.yaml ==="
+}
+
+target_arch() {
+  local platform="${DOCKER_PLATFORM:-${DOCKER_DEFAULT_PLATFORM:-}}"
+
+  case "$platform" in
+    linux/amd64 | linux/amd64/*)
+      printf 'amd64\n'
+      return
+      ;;
+    linux/arm64 | linux/arm64/*)
+      printf 'arm64\n'
+      return
+      ;;
+    "" )
+      go env GOARCH
+      return
+      ;;
+    * )
+      printf 'unsupported Docker platform for local Go build: %s\n' "$platform" >&2
+      printf 'set TARGETARCH=amd64 or TARGETARCH=arm64 to override.\n' >&2
+      exit 1
+      ;;
+  esac
+}
+
+ensure_frontend_deps() {
+  if [[ -d "$ROOT_DIR/web/node_modules" ]]; then
+    return
+  fi
+
+  echo "=== install frontend dependencies locally ==="
+  npm ci --prefix "$ROOT_DIR/web"
+}
+
+build_frontend() {
+  require_cmd npm
+  ensure_frontend_deps
+
+  echo "=== build frontend locally ==="
+  (
+    cd "$ROOT_DIR"
+    npm run web:build
+  )
+}
+
+stage_go_source() {
+  BUILD_DIR="$(mktemp -d "${TMPDIR:-/tmp}/tg-search-local-build.XXXXXX")"
+
+  tar -C "$ROOT_DIR" \
+    --exclude='.git' \
+    --exclude='.worktrees' \
+    --exclude='data' \
+    --exclude='dist' \
+    --exclude='web/node_modules' \
+    --exclude='web/dist' \
+    --exclude='web/.vite' \
+    --exclude='web/*.tsbuildinfo' \
+    -cf - . | tar -C "$BUILD_DIR" -xf -
+
+  rm -rf "$BUILD_DIR/internal/web/dist"
+  mkdir -p "$BUILD_DIR/internal/web"
+  cp -R "$ROOT_DIR/web/dist" "$BUILD_DIR/internal/web/dist"
+}
+
+build_local_binary() {
+  local arch="${TARGETARCH:-}"
+
+  require_cmd go
+
+  if [[ -z "$arch" ]]; then
+    arch="$(target_arch)"
+  fi
+
+  if [[ "$arch" != "amd64" && "$arch" != "arm64" ]]; then
+    printf 'unsupported TARGETARCH for Docker image: %s\n' "$arch" >&2
+    exit 1
+  fi
+
+  build_frontend
+  stage_go_source
+
+  mkdir -p "$(dirname "$LOCAL_BINARY")"
+
+  echo "=== build linux/$arch binary locally ==="
+  (
+    cd "$BUILD_DIR"
+    CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w -X 'tg-search/internal/build.Version=${VERSION}'" -o "$LOCAL_BINARY" ./cmd/tg-search
+  )
 }
 
 while getopts ":d:p:c:v:h" arg; do
@@ -116,8 +224,10 @@ prepare_config
 
 VERSION="${VERSION:-$(git -C "$ROOT_DIR" describe --tags --always)}"
 
+build_local_binary
+
 echo "=== build $IMAGE ==="
-docker build -f "$ROOT_DIR/Dockerfile" --build-arg "VERSION=$VERSION" --tag="$IMAGE" "$ROOT_DIR"
+docker build -f "$LOCAL_DOCKERFILE" --tag="$IMAGE" "$ROOT_DIR"
 
 echo "=== restart $CONTAINER_NAME ==="
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true

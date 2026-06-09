@@ -6,7 +6,28 @@ import (
 	"time"
 
 	"github.com/gotd/td/tg"
+
+	"tg-search/internal/telegram"
 )
+
+func TestNewGotdListenerStoresRuntimeConfig(t *testing.T) {
+	runtime := telegram.DefaultRuntimeConfig()
+	runtime.Proxy = "socks5://127.0.0.1:1080"
+	runtime.DialTimeout = 3 * time.Second
+	runtime.RateLimit.Enabled = false
+
+	listener := NewGotdListener(nil, nil, nil, runtime)
+
+	if listener.runtime.Proxy != "socks5://127.0.0.1:1080" {
+		t.Fatalf("proxy = %q", listener.runtime.Proxy)
+	}
+	if listener.runtime.DialTimeout != 3*time.Second {
+		t.Fatalf("dial timeout = %s, want 3s", listener.runtime.DialTimeout)
+	}
+	if listener.runtime.RateLimit.Enabled {
+		t.Fatal("rate limit enabled = true, want false")
+	}
+}
 
 func TestEventsFromGotdUpdates(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)

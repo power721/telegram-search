@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/gotd/td/session"
@@ -13,23 +12,26 @@ import (
 	"github.com/gotd/td/telegram/query/dialogs"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
-
-	"tg-search/internal/build"
 )
 
 type GotdClient struct {
 	credentials CredentialsProvider
 	logger      *zap.Logger
+	runtime     RuntimeConfig
 }
 
-func NewGotdClient(credentials CredentialsProvider, logger *zap.Logger) *GotdClient {
+func NewGotdClient(credentials CredentialsProvider, logger *zap.Logger, runtimeConfig ...RuntimeConfig) *GotdClient {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	if credentials == nil {
 		credentials = StaticCredentialsProvider{}
 	}
-	return &GotdClient{credentials: credentials, logger: logger}
+	runtime := DefaultRuntimeConfig()
+	if len(runtimeConfig) > 0 {
+		runtime = normalizeRuntimeConfig(runtimeConfig[0])
+	}
+	return &GotdClient{credentials: credentials, logger: logger, runtime: runtime}
 }
 
 func (g *GotdClient) SendCode(ctx context.Context, phone string, sessionPath string) (SentCode, error) {
@@ -240,18 +242,16 @@ func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func
 	if err != nil {
 		return err
 	}
-	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
+	opts, err := BuildOptions(ctx, BuildOptionsInput{
+		Runtime:        g.runtime,
 		SessionStorage: &session.FileStorage{Path: sessionPath},
-		Logger:         g.logger,
 		NoUpdates:      true,
-		Device: gotdtelegram.DeviceConfig{
-			DeviceModel:    "TG Search",
-			SystemVersion:  runtime.GOOS,
-			AppVersion:     build.Version,
-			SystemLangCode: "zh-CN",
-			LangCode:       "zh",
-		},
 	})
+	if err != nil {
+		return err
+	}
+	opts.Logger = g.logger
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, opts)
 	return client.Run(ctx, func(ctx context.Context) error {
 		return fn(ctx, client)
 	})

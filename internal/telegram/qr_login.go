@@ -3,7 +3,6 @@ package telegram
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"sync"
 	"time"
 
@@ -11,8 +10,6 @@ import (
 	gotdtelegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
-
-	"tg-search/internal/build"
 )
 
 type gotdQRLoginSession struct {
@@ -45,18 +42,17 @@ func (g *GotdClient) StartQRLogin(ctx context.Context, sessionPath string) (QRLo
 		cancel()
 		return nil, err
 	}
-	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
+	opts, err := BuildOptions(runCtx, BuildOptionsInput{
+		Runtime:        g.runtime,
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         g.logger,
 		UpdateHandler:  dispatcher,
-		Device: gotdtelegram.DeviceConfig{
-			DeviceModel:    "TG Search",
-			SystemVersion:  runtime.GOOS,
-			AppVersion:     build.Version,
-			SystemLangCode: "zh-CN",
-			LangCode:       "zh",
-		},
 	})
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, opts)
 
 	ready := make(chan error, 1)
 	var readyOnce sync.Once

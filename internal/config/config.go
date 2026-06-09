@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -18,9 +19,10 @@ var (
 )
 
 type Config struct {
-	Server  ServerConfig  `yaml:"server"`
-	Sync    SyncConfig    `yaml:"sync"`
-	Storage StorageConfig `yaml:"storage"`
+	Server   ServerConfig   `yaml:"server"`
+	Sync     SyncConfig     `yaml:"sync"`
+	Storage  StorageConfig  `yaml:"storage"`
+	Telegram TelegramConfig `yaml:"telegram"`
 }
 
 type ServerConfig struct {
@@ -37,6 +39,19 @@ type StorageConfig struct {
 	Path          string `yaml:"path"`
 	MaxDBSize     Size   `yaml:"max_db_size"`
 	MaxMediaCache Size   `yaml:"max_media_cache"`
+}
+
+type TelegramConfig struct {
+	Proxy            string                  `yaml:"proxy"`
+	ReconnectTimeout Duration                `yaml:"reconnect_timeout"`
+	DialTimeout      Duration                `yaml:"dial_timeout"`
+	RateLimit        TelegramRateLimitConfig `yaml:"rate_limit"`
+}
+
+type TelegramRateLimitConfig struct {
+	Enabled       bool `yaml:"enabled"`
+	RatePerSecond int  `yaml:"rate_per_second"`
+	Burst         int  `yaml:"burst"`
 }
 
 func Load(path string) (Config, error) {
@@ -145,6 +160,15 @@ func defaultConfig() Config {
 			MaxDBSize:     Size(10 * 1000 * 1000 * 1000),
 			MaxMediaCache: Size(20 * 1000 * 1000 * 1000),
 		},
+		Telegram: TelegramConfig{
+			ReconnectTimeout: Duration(5 * time.Minute),
+			DialTimeout:      Duration(10 * time.Second),
+			RateLimit: TelegramRateLimitConfig{
+				Enabled:       true,
+				RatePerSecond: 10,
+				Burst:         5,
+			},
+		},
 	}
 }
 
@@ -197,6 +221,21 @@ func applyDefaults(cfg *Config) {
 	if cfg.Storage.MaxMediaCache == 0 {
 		cfg.Storage.MaxMediaCache = defaults.Storage.MaxMediaCache
 	}
+	if cfg.Telegram.ReconnectTimeout == 0 {
+		cfg.Telegram.ReconnectTimeout = defaults.Telegram.ReconnectTimeout
+	}
+	if cfg.Telegram.DialTimeout == 0 {
+		cfg.Telegram.DialTimeout = defaults.Telegram.DialTimeout
+	}
+	if cfg.Telegram.RateLimit == (TelegramRateLimitConfig{}) {
+		cfg.Telegram.RateLimit = defaults.Telegram.RateLimit
+	}
+	if cfg.Telegram.RateLimit.RatePerSecond == 0 {
+		cfg.Telegram.RateLimit.RatePerSecond = defaults.Telegram.RateLimit.RatePerSecond
+	}
+	if cfg.Telegram.RateLimit.Burst == 0 {
+		cfg.Telegram.RateLimit.Burst = defaults.Telegram.RateLimit.Burst
+	}
 }
 
 func validate(cfg Config) error {
@@ -214,6 +253,18 @@ func validate(cfg Config) error {
 	}
 	if cfg.Storage.Path == "" {
 		return errors.New("storage.path is required")
+	}
+	if cfg.Telegram.ReconnectTimeout <= 0 {
+		return errors.New("telegram.reconnect_timeout must be greater than zero")
+	}
+	if cfg.Telegram.DialTimeout <= 0 {
+		return errors.New("telegram.dial_timeout must be greater than zero")
+	}
+	if cfg.Telegram.RateLimit.RatePerSecond <= 0 {
+		return errors.New("telegram.rate_limit.rate_per_second must be greater than zero")
+	}
+	if cfg.Telegram.RateLimit.Burst <= 0 {
+		return errors.New("telegram.rate_limit.burst must be greater than zero")
 	}
 	return nil
 }

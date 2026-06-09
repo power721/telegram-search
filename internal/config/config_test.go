@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadAppliesDefaultsFromLocalConfig(t *testing.T) {
@@ -46,7 +47,85 @@ server:
 	}
 }
 
-func TestLoadRejectsTelegramConfig(t *testing.T) {
+func TestLoadAppliesTelegramRuntimeDefaults(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(`
+server:
+  host: 127.0.0.1
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Telegram.Proxy != "" {
+		t.Fatalf("telegram proxy = %q, want empty default", cfg.Telegram.Proxy)
+	}
+	if time.Duration(cfg.Telegram.ReconnectTimeout) != 5*time.Minute {
+		t.Fatalf("telegram reconnect timeout = %s, want 5m", cfg.Telegram.ReconnectTimeout)
+	}
+	if time.Duration(cfg.Telegram.DialTimeout) != 10*time.Second {
+		t.Fatalf("telegram dial timeout = %s, want 10s", cfg.Telegram.DialTimeout)
+	}
+	if !cfg.Telegram.RateLimit.Enabled {
+		t.Fatal("telegram rate limit enabled = false, want true")
+	}
+	if cfg.Telegram.RateLimit.RatePerSecond != 10 {
+		t.Fatalf("telegram rate = %d, want 10", cfg.Telegram.RateLimit.RatePerSecond)
+	}
+	if cfg.Telegram.RateLimit.Burst != 5 {
+		t.Fatalf("telegram burst = %d, want 5", cfg.Telegram.RateLimit.Burst)
+	}
+}
+
+func TestLoadAppliesTelegramRuntimeConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(`
+telegram:
+  proxy: socks5://127.0.0.1:1080
+  reconnect_timeout: 2m
+  dial_timeout: 3s
+  rate_limit:
+    enabled: false
+    rate_per_second: 7
+    burst: 2
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if cfg.Telegram.Proxy != "socks5://127.0.0.1:1080" {
+		t.Fatalf("telegram proxy = %q", cfg.Telegram.Proxy)
+	}
+	if time.Duration(cfg.Telegram.ReconnectTimeout) != 2*time.Minute {
+		t.Fatalf("telegram reconnect timeout = %s, want 2m", cfg.Telegram.ReconnectTimeout)
+	}
+	if time.Duration(cfg.Telegram.DialTimeout) != 3*time.Second {
+		t.Fatalf("telegram dial timeout = %s, want 3s", cfg.Telegram.DialTimeout)
+	}
+	if cfg.Telegram.RateLimit.Enabled {
+		t.Fatal("telegram rate limit enabled = true, want false")
+	}
+	if cfg.Telegram.RateLimit.RatePerSecond != 7 {
+		t.Fatalf("telegram rate = %d, want 7", cfg.Telegram.RateLimit.RatePerSecond)
+	}
+	if cfg.Telegram.RateLimit.Burst != 2 {
+		t.Fatalf("telegram burst = %d, want 2", cfg.Telegram.RateLimit.Burst)
+	}
+}
+
+func TestLoadRejectsTelegramCredentialConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	err := os.WriteFile(configPath, []byte(`
@@ -59,8 +138,8 @@ telegram:
 	}
 
 	_, err = Load(configPath)
-	if err == nil || !strings.Contains(err.Error(), "field telegram not found") {
-		t.Fatalf("Load error = %v, want unknown telegram field error", err)
+	if err == nil || !strings.Contains(err.Error(), "field api_id not found") {
+		t.Fatalf("Load error = %v, want unknown telegram credential field error", err)
 	}
 }
 
@@ -103,8 +182,11 @@ func TestLoadGeneratesDefaultConfigAtExplicitMissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
-	if strings.Contains(string(generated), "telegram:") || strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
+	if strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
 		t.Fatalf("generated config contains Telegram API credentials:\n%s", string(generated))
+	}
+	if !strings.Contains(string(generated), "reconnect_timeout: 5m0s") || !strings.Contains(string(generated), "dial_timeout: 10s") {
+		t.Fatalf("generated config contains unreadable telegram durations:\n%s", string(generated))
 	}
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
@@ -159,8 +241,11 @@ func TestLoadGeneratesLocalDefaultConfigWhenNoConfigExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read local config: %v", err)
 	}
-	if strings.Contains(string(generated), "telegram:") || strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
+	if strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
 		t.Fatalf("local generated config contains Telegram API credentials:\n%s", string(generated))
+	}
+	if !strings.Contains(string(generated), "reconnect_timeout: 5m0s") || !strings.Contains(string(generated), "dial_timeout: 10s") {
+		t.Fatalf("local generated config contains unreadable telegram durations:\n%s", string(generated))
 	}
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)

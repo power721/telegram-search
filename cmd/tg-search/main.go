@@ -103,7 +103,8 @@ func run(configPath string) error {
 	storageUsage := storage.NewUsageService(cfg)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	telegramCredentials := repository.NewTelegramCredentialsProvider(settings)
-	tgClient := telegram.NewGotdClient(telegramCredentials, logs.Telegram)
+	telegramRuntime := telegram.RuntimeConfigFromConfig(cfg.Telegram)
+	tgClient := telegram.NewGotdClient(telegramCredentials, logs.Telegram, telegramRuntime)
 	retryPolicy := retry.DefaultPolicy()
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
@@ -123,7 +124,7 @@ func run(configPath string) error {
 		Accounts:    accounts,
 		Channels:    channels,
 		Processor:   updateProcessor,
-		Listener:    updatepkg.NewGotdListener(telegramCredentials, sessions, logs.Telegram),
+		Listener:    updatepkg.NewGotdListener(telegramCredentials, sessions, logs.Telegram, telegramRuntime),
 		RetryPolicy: retryPolicy,
 		Logger:      logs.Telegram,
 	})

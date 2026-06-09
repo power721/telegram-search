@@ -3,7 +3,6 @@ package update
 import (
 	"context"
 	"encoding/json"
-	"runtime"
 	"time"
 
 	gotdsession "github.com/gotd/td/session"
@@ -12,7 +11,6 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
-	"tg-search/internal/build"
 	"tg-search/internal/model"
 	localsession "tg-search/internal/session"
 	"tg-search/internal/telegram"
@@ -22,16 +20,21 @@ type GotdListener struct {
 	credentials telegram.CredentialsProvider
 	sessions    *localsession.Manager
 	logger      *zap.Logger
+	runtime     telegram.RuntimeConfig
 }
 
-func NewGotdListener(credentials telegram.CredentialsProvider, sessions *localsession.Manager, logger *zap.Logger) *GotdListener {
+func NewGotdListener(credentials telegram.CredentialsProvider, sessions *localsession.Manager, logger *zap.Logger, runtimeConfig ...telegram.RuntimeConfig) *GotdListener {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	if credentials == nil {
 		credentials = telegram.StaticCredentialsProvider{}
 	}
-	return &GotdListener{credentials: credentials, sessions: sessions, logger: logger}
+	runtime := telegram.DefaultRuntimeConfig()
+	if len(runtimeConfig) > 0 {
+		runtime = runtimeConfig[0]
+	}
+	return &GotdListener{credentials: credentials, sessions: sessions, logger: logger, runtime: runtime}
 }
 
 func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
@@ -55,18 +58,16 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 	if err != nil {
 		return err
 	}
-	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
+	opts, err := telegram.BuildOptions(ctx, telegram.BuildOptionsInput{
+		Runtime:        l.runtime,
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         l.logger,
 		UpdateHandler:  manager,
-		Device: gotdtelegram.DeviceConfig{
-			DeviceModel:    "TG Search",
-			SystemVersion:  runtime.GOOS,
-			AppVersion:     build.Version,
-			SystemLangCode: "zh-CN",
-			LangCode:       "zh",
-		},
 	})
+	if err != nil {
+		return err
+	}
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, opts)
 	return client.Run(ctx, func(ctx context.Context) error {
 		self, err := client.Self(ctx)
 		if err != nil {

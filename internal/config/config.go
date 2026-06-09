@@ -161,7 +161,7 @@ func probeWritable(dir string) error {
 func defaultConfig() Config {
 	return Config{
 		Server: ServerConfig{
-			Host: "127.0.0.1",
+			Host: "0.0.0.0",
 			Port: 9900,
 		},
 		Sync: SyncConfig{

@@ -593,7 +593,7 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	status.AdminConfigured = adminCount > 0
 	status.APIKeyConfigured = keyCount > 0
 	status.APIKeyStepComplete = status.APIKeyConfigured || (apiKeyDone && apiKeyDoneRaw == `true`)
-	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured
+	status.TelegramConfigured = telegramAPI.AppID > 0 && telegramAPI.AppHash != ""
 	if h.deps.Accounts != nil {
 		accounts, err := h.deps.Accounts.FindAll(ctx)
 		if err != nil {

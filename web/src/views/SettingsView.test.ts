@@ -195,4 +195,45 @@ describe('SettingsView', () => {
       app_hash: 'new-hash-secret'
     })
   })
+
+  it('does not show default Telegram API credentials as saved settings', async () => {
+    vi.mocked(apiGet).mockImplementation((path: string) => {
+      if (path === '/api/auth/me') {
+        return Promise.resolve({ id: 1, username: 'admin', role: 'admin' })
+      }
+      if (path === '/api/storage/usage') {
+        return Promise.resolve({
+          db_bytes: 100,
+          index_bytes: 200,
+          media_cache_bytes: 300,
+          total_bytes: 600,
+          max_db_bytes: 15_000_000_000,
+          max_media_bytes: 25_000_000_000,
+          db_over_quota: false,
+          media_over_quota: false
+        })
+      }
+      if (path === '/api/settings/telegram-api') {
+        return Promise.resolve({ configured: false, app_id: 0, app_hash_set: false })
+      }
+      return Promise.resolve({
+        id: 1,
+        name: 'default',
+        prefix: '12345678',
+        key: '12345678123456781234567812345678',
+        created_at: '2026-06-08T00:00:00Z'
+      })
+    })
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="telegram-app-id-input"]').element.value).toBe('')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="telegram-app-hash-input"]').element.placeholder).toBe('请输入 App Hash')
+    expect(wrapper.text()).not.toContain('26375241')
+  })
 })

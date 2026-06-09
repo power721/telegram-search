@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GlobalSearchResult, RemoteSearchItem } from '@/api/types'
+import { telegramChannelHref, telegramMessageHref } from '@/utils/telegramLinks'
 
 defineProps<{
   result: GlobalSearchResult | null
@@ -39,6 +40,18 @@ function messageTextSegments(text: string) {
   }
   return segments.length > 0 ? segments : [{ text }]
 }
+
+function messageHref(item: {
+  channel_username?: string
+  telegram_channel_id?: number
+  telegram_message_id?: number
+}) {
+  return telegramMessageHref(item)
+}
+
+function channelHref(item: { username?: string }) {
+  return telegramChannelHref(item)
+}
 </script>
 
 <template>
@@ -55,7 +68,18 @@ function messageTextSegments(text: string) {
       </div>
       <template v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`">
         <article class="result-row">
-          <strong>{{ item.channel_title || 'Telegram' }}</strong>
+          <strong>
+            <a
+              v-if="messageHref(item)"
+              class="title-link"
+              :href="messageHref(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {{ item.channel_title || 'Telegram' }}
+            </a>
+            <template v-else>{{ item.channel_title || 'Telegram' }}</template>
+          </strong>
           <p class="message-text">
             <template v-for="(segment, index) in messageTextSegments(item.text)" :key="index">
               <a
@@ -75,7 +99,18 @@ function messageTextSegments(text: string) {
       </template>
       <template v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`">
         <article class="result-row">
-          <strong>{{ item.channel_title || '远程结果' }}</strong>
+          <strong>
+            <a
+              v-if="messageHref(item)"
+              class="title-link"
+              :href="messageHref(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {{ item.channel_title || '远程结果' }}
+            </a>
+            <template v-else>{{ item.channel_title || '远程结果' }}</template>
+          </strong>
           <p class="message-text">
             <template v-for="(segment, index) in messageTextSegments(item.text)" :key="index">
               <a
@@ -113,7 +148,18 @@ function messageTextSegments(text: string) {
       </div>
       <template v-for="item in result?.links.items ?? []" :key="`l-${item.id}`">
         <article class="result-row">
-          <strong>{{ item.note || item.url }}</strong>
+          <strong>
+            <a
+              v-if="messageHref(item)"
+              class="title-link"
+              :href="messageHref(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {{ item.note || item.url }}
+            </a>
+            <template v-else>{{ item.note || item.url }}</template>
+          </strong>
           <p>
             <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
           </p>
@@ -137,7 +183,18 @@ function messageTextSegments(text: string) {
       </div>
       <template v-for="item in result?.files.items ?? []" :key="`f-${item.id}`">
         <article class="result-row">
-          <strong>{{ item.file_name }}</strong>
+          <strong>
+            <a
+              v-if="messageHref(item)"
+              class="title-link"
+              :href="messageHref(item)"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {{ item.file_name }}
+            </a>
+            <template v-else>{{ item.file_name }}</template>
+          </strong>
           <p>{{ item.extension }} {{ item.mime_type }}</p>
           <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
         </article>
@@ -158,7 +215,18 @@ function messageTextSegments(text: string) {
         <span class="skeleton-line short" />
       </div>
       <article v-for="item in result?.channels.items ?? []" :key="`c-${item.id}`" class="result-row">
-        <strong>{{ item.title }}</strong>
+        <strong>
+          <a
+            v-if="channelHref(item)"
+            class="title-link"
+            :href="channelHref(item)"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {{ item.title }}
+          </a>
+          <template v-else>{{ item.title }}</template>
+        </strong>
         <p>@{{ item.username || '私有频道' }}</p>
         <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
@@ -238,6 +306,12 @@ small {
   text-underline-offset: 2px;
 }
 
+.title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.title-link:hover,
 .external-link:hover {
   color: var(--app-accent-hover);
 }

@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import SearchResults from '@/components/search/SearchResults.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResourcesStore } from '@/stores/resources'
+import { useSearchStore } from '@/stores/search'
 import { useStatusStore } from '@/stores/status'
 import { useTasksStore } from '@/stores/tasks'
 
 const auth = useAuthStore()
 const status = useStatusStore()
 const resources = useResourcesStore()
+const search = useSearchStore()
 const tasks = useTasksStore()
+const searchQuery = ref('')
+const hasSearched = ref(false)
 
 onMounted(() => {
   if (!auth.loaded) {
@@ -84,6 +89,13 @@ function linkTypeLabel(type: string) {
   }
   return labels[type] ?? type
 }
+
+async function submitGlobalSearch() {
+  const query = searchQuery.value.trim()
+  if (!query) return
+  hasSearched.value = true
+  await search.searchGlobal(query)
+}
 </script>
 
 <template>
@@ -100,11 +112,24 @@ function linkTypeLabel(type: string) {
       </div>
     </div>
 
-    <form class="home-search filter-bar" action="/search" method="get">
+    <form class="home-search filter-bar" @submit.prevent="submitGlobalSearch">
       <label class="filter-label" for="home-search-input">全局搜索</label>
-      <input id="home-search-input" name="q" type="search" placeholder="搜索消息、链接、文件、频道" />
+      <input
+        id="home-search-input"
+        v-model="searchQuery"
+        name="q"
+        type="search"
+        placeholder="搜索消息、链接、文件、频道"
+      />
       <button type="submit">搜索</button>
     </form>
+    <p v-if="search.error" class="error-text">{{ search.error }}</p>
+    <SearchResults
+      v-if="hasSearched || search.global || search.loading"
+      class="home-search-results"
+      :loading="search.loading"
+      :result="search.global"
+    />
 
     <div class="metric-grid">
       <div v-for="card in cards" :key="card.label" class="metric-card">
@@ -196,6 +221,10 @@ function linkTypeLabel(type: string) {
   color: #ffffff;
   min-height: 34px;
   padding: 6px 12px;
+}
+
+.home-search-results {
+  margin-top: 14px;
 }
 
 .admin-account {

@@ -87,6 +87,9 @@ func (r *SettingsRepository) LoadTelegramAPI(ctx context.Context) (model.Telegra
 }
 
 func RedactTelegramAPI(settings model.TelegramAPISettings) model.TelegramAPISettingsResponse {
+	if isDefaultTelegramAPI(settings) {
+		return model.TelegramAPISettingsResponse{}
+	}
 	return model.TelegramAPISettingsResponse{
 		Configured: settings.AppID > 0 && settings.AppHash != "",
 		AppID:      settings.AppID,
@@ -121,4 +124,8 @@ func defaultTelegramAPISettings() model.TelegramAPISettings {
 		AppID:   telegram.DefaultAPIID,
 		AppHash: telegram.DefaultAPIHash,
 	}
+}
+
+func isDefaultTelegramAPI(settings model.TelegramAPISettings) bool {
+	return settings.AppID == telegram.DefaultAPIID && settings.AppHash == telegram.DefaultAPIHash
 }

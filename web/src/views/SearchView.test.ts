@@ -57,7 +57,7 @@ describe('SearchView', () => {
     await wrapper.get('button[aria-label="下一页"]').trigger('click')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50&offset=50')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=50&offset=50')
     expect(wrapper.text()).toContain('第 2 / 2 页')
   })
 
@@ -80,7 +80,7 @@ describe('SearchView', () => {
     await wrapper.get('select[aria-label="每页条数"]').setValue('100')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=100')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=100')
     expect(wrapper.text()).toContain('第 1 / 1 页')
   })
 
@@ -104,6 +104,6 @@ describe('SearchView', () => {
     await wrapper.get('form.pagination-jump').trigger('submit')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50&offset=50')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=50&offset=50')
   })
 })

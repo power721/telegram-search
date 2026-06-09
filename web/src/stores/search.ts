@@ -39,14 +39,14 @@ export const useSearchStore = defineStore('search', {
     async searchGlobal(query: string, filters: Omit<SearchFilters, 'query'> = {}) {
       return this.withLoading(async () => {
         this.global = await apiGet<GlobalSearchResult>(
-          buildSearchPath('/api/search/global', { ...filters, query })
+          buildSearchPath('/api/admin/search/global', { ...filters, query })
         )
         return this.global
       })
     },
     async createRemoteSearch(channelId: number, query: string) {
       return this.withLoading(async () => {
-        this.remoteTask = await apiPost<RemoteSearchTask>('/api/search/remote', {
+        this.remoteTask = await apiPost<RemoteSearchTask>('/api/admin/search/remote', {
           channel_id: channelId,
           query
         })
@@ -55,7 +55,7 @@ export const useSearchStore = defineStore('search', {
     },
     async loadRemoteResults(taskId: number) {
       return this.withLoading(async () => {
-        this.remoteResults = await apiGet<RemoteSearchResults>(`/api/search/remote/${taskId}`)
+        this.remoteResults = await apiGet<RemoteSearchResults>(`/api/admin/search/remote/${taskId}`)
         return this.remoteResults
       })
     },

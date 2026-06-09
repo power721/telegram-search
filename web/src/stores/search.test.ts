@@ -26,7 +26,7 @@ describe('useSearchStore', () => {
 
     await store.searchGlobal('ubuntu')
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=50')
     expect(store.global?.messages.total).toBe(1)
   })
 
@@ -41,7 +41,7 @@ describe('useSearchStore', () => {
 
     await store.searchGlobal('ubuntu', { limit: 25, offset: 50, sort: 'date_asc' })
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=25&offset=50&sort=date_asc')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=25&offset=50&sort=date_asc')
   })
 
   it('creates and loads remote search results', async () => {
@@ -52,8 +52,8 @@ describe('useSearchStore', () => {
     await store.createRemoteSearch(3, 'ubuntu')
     await store.loadRemoteResults(7)
 
-    expect(apiPost).toHaveBeenCalledWith('/api/search/remote', { channel_id: 3, query: 'ubuntu' })
-    expect(apiGet).toHaveBeenCalledWith('/api/search/remote/7')
+    expect(apiPost).toHaveBeenCalledWith('/api/admin/search/remote', { channel_id: 3, query: 'ubuntu' })
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/remote/7')
     expect(store.remoteResults?.items[0].source).toBe('remote')
   })
 })

@@ -47,7 +47,7 @@ vi.mock('@/api/client', () => ({
         items: [{ id: 1, type: 'history_sync', status: 'failed', error_message: 'temporary failure' }]
       })
     }
-    if (path === '/api/search/global?q=ubuntu&limit=50') {
+    if (path === '/api/admin/search/global?q=ubuntu&limit=50') {
       return Promise.resolve({
         messages: { total: 1, items: [{ id: 1, channel_title: 'Linux', text: 'ubuntu iso' }] },
         links: { total: 0, items: [] },
@@ -91,7 +91,7 @@ describe('HomeView', () => {
     await wrapper.get('form.home-search').trigger('submit')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50')
+    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=50')
     expect(wrapper.text()).toContain('ubuntu iso')
   })
 })

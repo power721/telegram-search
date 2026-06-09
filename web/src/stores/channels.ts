@@ -99,7 +99,7 @@ export const useChannelsStore = defineStore('channels', {
     },
     async createRemoteSearch(channelId: number, query: string) {
       return this.withLoading(async () => {
-        this.remoteTask = await apiPost<RemoteSearchTask>('/api/search/remote', {
+        this.remoteTask = await apiPost<RemoteSearchTask>('/api/admin/search/remote', {
           channel_id: channelId,
           query
         })

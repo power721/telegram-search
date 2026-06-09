@@ -372,9 +372,15 @@ Creates a listen rule.
 
 `PUT /api/watch-rules/:id` uses the same payload. `GET /api/watch-rules` and `GET /api/watch-rules/:id` return these fields.
 
-## Search
+## External Search
 
-### `GET /api/search/global?q=ubuntu`
+### `GET /api/search?kw=ubuntu`
+
+Public integration search endpoint protected by API key. It returns sanitized resource results and does not require an admin session.
+
+## Admin Search
+
+### `GET /api/admin/search/global?q=ubuntu`
 
 Returns grouped local search results.
 
@@ -392,10 +398,10 @@ Returns grouped local search results.
 Scoped endpoints use the same filters (`q`, `account_id`, `channel_id`, `limit`, `offset`, `sort`, date range where applicable):
 
 ```text
-GET /api/search/messages
-GET /api/search/links
-GET /api/search/files
-GET /api/search/channels
+GET /api/admin/search/messages
+GET /api/admin/search/links
+GET /api/admin/search/files
+GET /api/admin/search/channels
 ```
 
 Supported `sort` values:
@@ -407,10 +413,10 @@ date_asc
 
 Omitting `sort` uses `date_desc`.
 
-Legacy endpoints remain available:
+Admin legacy endpoints remain available:
 
 ```text
-GET /api/search
+GET /api/admin/search
 GET /api/messages/latest
 GET /api/links
 GET /api/links/merged
@@ -418,7 +424,7 @@ GET /api/links/merged
 
 ## Remote Search
 
-### `POST /api/search/remote`
+### `POST /api/admin/search/remote`
 
 Executes a display-only Telegram remote search for an unsynced channel.
 
@@ -449,7 +455,7 @@ Response `202`:
 }
 ```
 
-### `GET /api/search/remote/:task_id`
+### `GET /api/admin/search/remote/:task_id`
 
 Returns temporary remote results:
 

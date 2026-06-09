@@ -91,6 +91,11 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/settings/api-key", h.getAPIKeySettings)
 	api.POST("/settings/api-key/regenerate", h.regenerateAPIKey)
 
+	external := router.Group("")
+	external.Use(h.requireAPIKey())
+	external.GET("/search", h.externalSearch)
+	external.POST("/search", h.externalSearch)
+
 	adminOnly := api.Group("")
 	adminOnly.Use(h.requireAdminSession())
 	adminOnly.GET("/listen-rules", h.getListenRules)

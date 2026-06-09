@@ -28,6 +28,7 @@ type Item struct {
 	Type              string           `json:"type,omitempty"`
 	Category          string           `json:"category"`
 	URL               string           `json:"url,omitempty"`
+	Password          string           `json:"password,omitempty"`
 	FileName          string           `json:"file_name,omitempty"`
 	Extension         string           `json:"extension,omitempty"`
 	MimeType          string           `json:"mime_type,omitempty"`
@@ -96,6 +97,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				Type:              link.Type,
 				Category:          category,
 				URL:               link.URL,
+				Password:          link.Password,
 				Note:              link.Note,
 				Title:             firstNonEmpty(link.Note, link.URL),
 				SourceSnippet:     link.SourceSnippet,
@@ -292,11 +294,11 @@ func normalizedOffset(offset int) int {
 }
 
 func includeLinks(query Query) bool {
-	return query.Type != "files" && query.Category != "files"
+	return query.Type != "files" && query.Category != "files" && !isFileResourceCategory(query.Category)
 }
 
 func includeFiles(query Query) bool {
-	return (query.Type == "" || query.Type == "files") && (query.Category == "" || query.Category == "files")
+	return (query.Type == "" || query.Type == "files") && (query.Category == "" || query.Category == "files" || isFileResourceCategory(query.Category))
 }
 
 func fileCategoryFilter(query Query) string {
@@ -304,6 +306,15 @@ func fileCategoryFilter(query Query) string {
 		return ""
 	}
 	return query.Category
+}
+
+func isFileResourceCategory(category string) bool {
+	switch category {
+	case "image", "video", "audio", "ebook", "archive", "software", "file":
+		return true
+	default:
+		return false
+	}
 }
 
 func firstNonEmpty(values ...string) string {

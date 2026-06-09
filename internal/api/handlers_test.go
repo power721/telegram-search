@@ -740,6 +740,125 @@ func TestAPIKeyOnlyAllowsResourceEndpoints(t *testing.T) {
 	}
 }
 
+func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.APIKeyService = apikey.NewService(deps.APIKeys, deps.Settings)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 1, Title: "Private Channel", Username: "private_channel", Type: model.ChannelTypeChannel,
+	})
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 101, Text: "ubuntu cloud raw message secret", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 102, Text: "ubuntu magnet raw message secret", RawJSON: "{}", Date: now.Add(-time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 103, Text: "ubuntu ed2k raw message secret", RawJSON: "{}", Date: now.Add(-2 * time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 104, Text: "ubuntu video raw message secret", RawJSON: "{}", Date: now.Add(-3 * time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 105, Text: "ubuntu http raw message secret", RawJSON: "{}", Date: now.Add(-4 * time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 106, Text: "ubuntu archive raw message secret", RawJSON: "{}", Date: now.Add(-5 * time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/ubuntu", Password: "pass", Note: "Ubuntu Quark"}}); err != nil {
+		t.Fatalf("save quark link: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "magnet", URL: "magnet:?xt=urn:btih:abcdef", Note: "Ubuntu Magnet"}}); err != nil {
+		t.Fatalf("save magnet link: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[2].ID, []model.Link{{Type: "ed2k", URL: "ed2k://|file|ubuntu.mkv|123|ABCDEF|/", Note: "Ubuntu ED2K"}}); err != nil {
+		t.Fatalf("save ed2k link: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[3].ID, []model.File{{FileName: "ubuntu-trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save video file: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[4].ID, []model.Link{{Type: "url", URL: "https://example.com/ubuntu", Note: "Ubuntu HTTP"}}); err != nil {
+		t.Fatalf("save http link: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[5].ID, []model.File{{FileName: "ubuntu-archive.zip", Extension: ".zip", MimeType: "application/zip", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save archive file: %v", err)
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+	cookie := createAdminSession(t, router)
+
+	for _, tc := range []struct {
+		name       string
+		configure  func(*http.Request)
+		wantStatus int
+	}{
+		{name: "missing api key", wantStatus: http.StatusUnauthorized},
+		{name: "admin cookie without api key", configure: func(req *http.Request) { req.AddCookie(cookie) }, wantStatus: http.StatusUnauthorized},
+		{name: "invalid api key", configure: func(req *http.Request) { req.Header.Set("X-API-Key", "invalid") }, wantStatus: http.StatusUnauthorized},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/search?kw=ubuntu", nil)
+			if tc.configure != nil {
+				tc.configure(req)
+			}
+			router.ServeHTTP(w, req)
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d body=%s, want %d", w.Code, w.Body.String(), tc.wantStatus)
+			}
+		})
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search?kw=ubuntu", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("external search status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			Total        int `json:"total"`
+			MergedByType map[string][]struct {
+				URL      string   `json:"url"`
+				Password string   `json:"password"`
+				Note     string   `json:"note"`
+				Images   []string `json:"images"`
+			} `json:"merged_by_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Code != 0 || body.Data.Total != 4 {
+		t.Fatalf("external response = %+v body=%s, want code 0 total 4", body, w.Body.String())
+	}
+	for _, key := range []string{"quark", "magnet", "ed2k", "video"} {
+		if len(body.Data.MergedByType[key]) != 1 {
+			t.Fatalf("merged_by_type[%s] = %+v, want one item; body=%s", key, body.Data.MergedByType[key], w.Body.String())
+		}
+	}
+	if body.Data.MergedByType["quark"][0].Password != "pass" {
+		t.Fatalf("quark password = %q, want pass", body.Data.MergedByType["quark"][0].Password)
+	}
+	videoURL := body.Data.MergedByType["video"][0].URL
+	if !strings.HasPrefix(videoURL, "/v/") {
+		t.Fatalf("video URL = %q, want signed media proxy URL", videoURL)
+	}
+	assertSignedMediaURL(t, deps.APIKeyService, videoURL)
+	responseText := w.Body.String()
+	for _, forbidden := range []string{
+		"channel_id",
+		"telegram_message_id",
+		"channel_title",
+		"private_channel",
+		"raw message secret",
+		"https://example.com/ubuntu",
+		"ubuntu-archive.zip",
+	} {
+		if strings.Contains(responseText, forbidden) {
+			t.Fatalf("external response leaked %q: %s", forbidden, responseText)
+		}
+	}
+}
+
 func TestAPIKeyAllowsResourceDetail(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -789,7 +908,7 @@ func TestAPIKeyCannotAccessAdminOnlyEndpoints(t *testing.T) {
 	key := createTestAPIKey(t, router)
 	cookie := createAdminSession(t, router)
 
-	for _, path := range []string{"/api/status", "/api/tasks", "/api/search/global?q=ubuntu"} {
+	for _, path := range []string{"/api/status", "/api/tasks", "/api/search/global?q=ubuntu", "/api/search?q=ubuntu"} {
 		t.Run("api key denied "+path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, path, nil)

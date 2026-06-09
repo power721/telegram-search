@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -20,6 +23,7 @@ import (
 )
 
 const settingsSecretKey = "api_key.encryption_secret"
+const mediaSigningContext = "tg-search-media-signing"
 
 type Service struct {
 	keys     *repository.APIKeyRepository
@@ -103,6 +107,53 @@ func (s *Service) Verify(ctx context.Context, plaintext string) (int64, bool, er
 		}
 	}
 	return 0, false, nil
+}
+
+func (s *Service) VerifyMediaSignature(ctx context.Context, method string, path string, exp string, sig string, now time.Time) (bool, error) {
+	expiresAt, err := strconv.ParseInt(exp, 10, 64)
+	if err != nil || expiresAt <= now.Unix() {
+		return false, nil
+	}
+	active, err := s.keys.Active(ctx)
+	if err != nil {
+		return false, err
+	}
+	plaintext, err := s.decrypt(ctx, active.KeyCiphertext)
+	if err != nil {
+		return false, err
+	}
+	expected, err := MediaSignature(plaintext, method, path, exp)
+	if err != nil {
+		return false, err
+	}
+	expectedBytes, _ := hex.DecodeString(expected)
+	gotBytes, err := hex.DecodeString(sig)
+	if err != nil {
+		return false, nil
+	}
+	if !hmac.Equal(gotBytes, expectedBytes) {
+		return false, nil
+	}
+	if err := s.keys.UpdateLastUsed(ctx, active.ID, now.UTC()); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func MediaSignature(apiKey string, method string, path string, exp string) (string, error) {
+	if apiKey == "" || method == "" || path == "" || exp == "" {
+		return "", fmt.Errorf("media signature inputs are required")
+	}
+	derive := hmac.New(sha256.New, []byte(apiKey))
+	if _, err := derive.Write([]byte(mediaSigningContext)); err != nil {
+		return "", err
+	}
+	signingKey := derive.Sum(nil)
+	mac := hmac.New(sha256.New, signingKey)
+	if _, err := mac.Write([]byte(method + "\n" + path + "\n" + exp)); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
 func (s *Service) response(ctx context.Context, key model.APIKey) (model.APIKeyResponse, error) {

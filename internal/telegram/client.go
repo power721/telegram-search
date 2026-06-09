@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -69,6 +70,26 @@ type ChannelRef struct {
 	Type              string
 }
 
+type MediaChannelRef struct {
+	Username          string
+	TelegramChannelID int64
+	AccessHash        int64
+	Type              string
+}
+
+type VideoFile struct {
+	ID            int64
+	AccessHash    int64
+	FileReference []byte
+	Size          int64
+	MIMEType      string
+}
+
+type ImageFile struct {
+	Data     []byte
+	MIMEType string
+}
+
 type Message struct {
 	TelegramMessageID int64
 	SenderID          int64
@@ -88,6 +109,9 @@ type Client interface {
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
 	SearchMessages(ctx context.Context, session AccountSession, channel ChannelRef, query string, limit int) ([]Message, error)
+	VideoFile(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (VideoFile, error)
+	StreamVideoRange(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int, file VideoFile, offset int64, length int64, w io.Writer) error
+	DownloadMessageImage(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (ImageFile, error)
 }
 
 type CodeStore struct {
@@ -147,4 +171,16 @@ func (NopClient) FetchHistory(context.Context, AccountSession, ChannelRef, int64
 
 func (NopClient) SearchMessages(context.Context, AccountSession, ChannelRef, string, int) ([]Message, error) {
 	return nil, ErrUnavailable
+}
+
+func (NopClient) VideoFile(context.Context, AccountSession, MediaChannelRef, int) (VideoFile, error) {
+	return VideoFile{}, ErrUnavailable
+}
+
+func (NopClient) StreamVideoRange(context.Context, AccountSession, MediaChannelRef, int, VideoFile, int64, int64, io.Writer) error {
+	return ErrUnavailable
+}
+
+func (NopClient) DownloadMessageImage(context.Context, AccountSession, MediaChannelRef, int) (ImageFile, error) {
+	return ImageFile{}, ErrUnavailable
 }

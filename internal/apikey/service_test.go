@@ -3,8 +3,11 @@ package apikey
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"tg-search/internal/db"
 	"tg-search/internal/repository"
@@ -52,6 +55,42 @@ func TestServiceRegenerateInvalidatesOldKey(t *testing.T) {
 	}
 	if id, ok, err := service.Verify(ctx, second.Key); err != nil || !ok || id != second.ID {
 		t.Fatalf("new verify id=%d ok=%v err=%v, want id %d", id, ok, err, second.ID)
+	}
+}
+
+func TestServiceVerifyMediaSignature(t *testing.T) {
+	ctx := context.Background()
+	conn := testDB(t)
+	service := NewService(repository.NewAPIKeyRepository(conn), repository.NewSettingsRepository(conn))
+	key, err := service.EnsureActive(ctx)
+	if err != nil {
+		t.Fatalf("ensure active: %v", err)
+	}
+	now := time.Now().UTC()
+	exp := now.Add(time.Hour).Unix()
+	expRaw := strconv.FormatInt(exp, 10)
+	sig, err := MediaSignature(key.Key, http.MethodGet, "/v/NewQuark/12345", expRaw)
+	if err != nil {
+		t.Fatalf("media signature: %v", err)
+	}
+	ok, err := service.VerifyMediaSignature(ctx, http.MethodGet, "/v/NewQuark/12345", expRaw, sig, now)
+	if err != nil || !ok {
+		t.Fatalf("verify ok=%v err=%v, want valid", ok, err)
+	}
+	ok, err = service.VerifyMediaSignature(ctx, http.MethodGet, "/v/NewQuark/54321", expRaw, sig, now)
+	if err != nil || ok {
+		t.Fatalf("verify changed path ok=%v err=%v, want invalid", ok, err)
+	}
+	ok, err = service.VerifyMediaSignature(ctx, http.MethodGet, "/v/NewQuark/12345", strconv.FormatInt(now.Add(-time.Minute).Unix(), 10), sig, now)
+	if err != nil || ok {
+		t.Fatalf("verify expired ok=%v err=%v, want invalid", ok, err)
+	}
+	if _, err := service.Regenerate(ctx); err != nil {
+		t.Fatalf("regenerate: %v", err)
+	}
+	ok, err = service.VerifyMediaSignature(ctx, http.MethodGet, "/v/NewQuark/12345", expRaw, sig, now)
+	if err != nil || ok {
+		t.Fatalf("verify after regenerate ok=%v err=%v, want invalid", ok, err)
 	}
 }
 

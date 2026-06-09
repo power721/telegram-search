@@ -266,8 +266,11 @@ function formatDate(value?: string) {
 }
 
 .resource-thumb-frame {
+  align-items: center;
+  display: flex;
   flex: 0 0 88px;
   height: 55px;
+  justify-content: center;
   position: relative;
   width: 88px;
 }
@@ -280,6 +283,7 @@ function formatDate(value?: string) {
   display: flex;
   flex: 0 0 88px;
   height: 55px;
+  justify-content: center;
   padding: 0;
   position: relative;
   width: 88px;
@@ -325,6 +329,17 @@ function formatDate(value?: string) {
   width: 88px;
 }
 
+img.resource-thumb {
+  aspect-ratio: auto;
+  display: block;
+  flex: 0 1 auto;
+  height: auto;
+  max-height: 55px;
+  max-width: 88px;
+  object-fit: contain;
+  width: auto;
+}
+
 .resource-video-placeholder {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.12) 12.5%, transparent 12.5% 87.5%, rgba(255, 255, 255, 0.12) 87.5%),
@@ -333,16 +348,17 @@ function formatDate(value?: string) {
 }
 
 .resource-thumb-preview {
-  aspect-ratio: 16 / 10;
   background: var(--app-bg-muted);
   border: 1px solid var(--app-border);
   border-radius: 8px;
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+  display: block;
   height: auto;
   left: calc(100% + 10px);
+  max-height: calc(100vh - 32px);
   max-width: min(var(--resource-thumb-preview-width), calc(100vw - 32px));
   opacity: 0;
-  object-fit: cover;
+  object-fit: contain;
   pointer-events: none;
   position: absolute;
   top: 50%;
@@ -352,7 +368,7 @@ function formatDate(value?: string) {
     opacity 0.16s ease,
     transform 0.16s ease;
   visibility: hidden;
-  width: var(--resource-thumb-preview-width);
+  width: auto;
   z-index: 20;
 }
 
@@ -438,7 +454,6 @@ function formatDate(value?: string) {
     top: calc(100% + 8px);
     transform: scale(0.96);
     transform-origin: top left;
-    width: min(var(--resource-thumb-preview-width), calc(100vw - 32px));
   }
 
   .resource-thumb-frame:hover .resource-thumb-preview {

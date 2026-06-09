@@ -192,6 +192,8 @@ describe('ResourceTable', () => {
     expect(preview.attributes('src')).toBe('/i/77')
     expect(preview.attributes('aria-hidden')).toBe('true')
     expect(resourceTableSource).toMatch(/--resource-thumb-preview-width:\s*600px;/)
+    expect(resourceTableSource).toMatch(/img\.resource-thumb\s*\{[\s\S]*max-height:\s*55px;[\s\S]*max-width:\s*88px;[\s\S]*object-fit:\s*contain;/)
+    expect(resourceTableSource).toMatch(/\.resource-thumb-preview\s*\{[\s\S]*max-height:\s*calc\(100vh - 32px\);[\s\S]*object-fit:\s*contain;[\s\S]*width:\s*auto;/)
     expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
   })
 

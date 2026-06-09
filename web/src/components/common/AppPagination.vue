@@ -33,6 +33,8 @@ const visiblePages = computed(() => {
   const end = Math.min(totalPages.value, normalizedPage.value + 5)
   return Array.from({ length: end - start + 1 }, (_, index) => start + index)
 })
+const showFirstPage = computed(() => !visiblePages.value.includes(1))
+const showLastPage = computed(() => !visiblePages.value.includes(totalPages.value))
 
 watch(
   () => props.page,
@@ -91,6 +93,15 @@ function changePageSize(event: Event) {
 
     <div class="pagination-pages" aria-label="页码">
       <button
+        v-if="showFirstPage"
+        aria-label="首页"
+        :disabled="loading"
+        type="button"
+        @click="goToPage(1)"
+      >
+        首页
+      </button>
+      <button
         v-for="pageNumber in visiblePages"
         :key="pageNumber"
         :aria-current="pageNumber === normalizedPage ? 'page' : undefined"
@@ -101,6 +112,15 @@ function changePageSize(event: Event) {
         @click="goToPage(pageNumber)"
       >
         {{ pageNumber }}
+      </button>
+      <button
+        v-if="showLastPage"
+        aria-label="尾页"
+        :disabled="loading"
+        type="button"
+        @click="goToPage(totalPages)"
+      >
+        尾页
       </button>
     </div>
 

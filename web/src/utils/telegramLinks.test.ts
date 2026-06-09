@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { telegramMessageHref } from './telegramLinks'
+import { telegramChannelHref, telegramMessageHref } from './telegramLinks'
 
 describe('telegramMessageHref', () => {
   it('uses channel username for public message links', () => {
@@ -17,5 +17,16 @@ describe('telegramMessageHref', () => {
   it('returns undefined without enough message location data', () => {
     expect(telegramMessageHref({ telegram_message_id: 42 })).toBeUndefined()
     expect(telegramMessageHref({ channel_username: 'publicchannel' })).toBeUndefined()
+  })
+})
+
+describe('telegramChannelHref', () => {
+  it('opens public channels through the Telegram app', () => {
+    expect(telegramChannelHref({ username: '@publicchannel' })).toBe('tg://resolve?domain=publicchannel')
+    expect(telegramChannelHref({ channel_username: 'otherchannel' })).toBe('tg://resolve?domain=otherchannel')
+  })
+
+  it('returns undefined without a channel username', () => {
+    expect(telegramChannelHref({})).toBeUndefined()
   })
 })

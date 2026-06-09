@@ -45,37 +45,37 @@ type externalSearchResult struct {
 	Content  string         `json:"content,omitempty"`
 	Links    []externalLink `json:"links"`
 	Images   []string       `json:"images,omitempty"`
-	externalMedia
+	Media    *externalMedia `json:"media,omitempty"`
 }
 
 type externalLink struct {
-	Type      string    `json:"type"`
-	URL       string    `json:"url"`
-	Password  string    `json:"password,omitempty"`
-	Datetime  time.Time `json:"datetime,omitempty"`
-	WorkTitle string    `json:"work_title,omitempty"`
-	externalMedia
+	Type      string         `json:"type"`
+	URL       string         `json:"url"`
+	Password  string         `json:"password,omitempty"`
+	Datetime  time.Time      `json:"datetime,omitempty"`
+	WorkTitle string         `json:"work_title,omitempty"`
+	Media     *externalMedia `json:"media,omitempty"`
 }
 
 type externalMergedLink struct {
-	URL      string    `json:"url"`
-	Password string    `json:"password,omitempty"`
-	Note     string    `json:"note,omitempty"`
-	Datetime time.Time `json:"datetime"`
-	Images   []string  `json:"images,omitempty"`
-	externalMedia
+	URL      string         `json:"url"`
+	Password string         `json:"password,omitempty"`
+	Note     string         `json:"note,omitempty"`
+	Datetime time.Time      `json:"datetime"`
+	Images   []string       `json:"images,omitempty"`
+	Media    *externalMedia `json:"media,omitempty"`
 }
 
 type externalMedia struct {
-	MediaTitle    string `json:"media_title,omitempty"`
-	MediaYear     string `json:"media_year,omitempty"`
-	MediaSeason   string `json:"media_season,omitempty"`
-	MediaEpisode  string `json:"media_episode,omitempty"`
-	MediaQuality  string `json:"media_quality,omitempty"`
-	MediaSize     string `json:"media_size,omitempty"`
-	MediaTMDBID   string `json:"media_tmdb_id,omitempty"`
-	MediaCategory string `json:"media_category,omitempty"`
-	MediaTags     string `json:"media_tags,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Year     string `json:"year,omitempty"`
+	Season   string `json:"season,omitempty"`
+	Episode  string `json:"episode,omitempty"`
+	Quality  string `json:"quality,omitempty"`
+	Size     string `json:"size,omitempty"`
+	TMDBID   string `json:"tmdb_id,omitempty"`
+	Category string `json:"category,omitempty"`
+	Tags     string `json:"tags,omitempty"`
 }
 
 type externalResourceFilter struct {
@@ -379,12 +379,12 @@ func buildExternalSearchResponse(items []resource.Item, total int, resultType st
 		results = append(results, result)
 		for _, link := range result.Links {
 			merged[link.Type] = append(merged[link.Type], externalMergedLink{
-				URL:           link.URL,
-				Password:      link.Password,
-				Note:          firstNonEmptyString(link.WorkTitle, result.Title),
-				Datetime:      link.Datetime,
-				Images:        result.Images,
-				externalMedia: link.externalMedia,
+				URL:      link.URL,
+				Password: link.Password,
+				Note:     firstNonEmptyString(link.WorkTitle, result.Title),
+				Datetime: link.Datetime,
+				Images:   result.Images,
+				Media:    link.Media,
 			})
 		}
 	}
@@ -409,7 +409,7 @@ func externalResultFromResource(item resource.Item, includeMediaMetadata bool) e
 	}
 	media := externalMediaFromResource(item)
 	if includeMediaMetadata {
-		link.externalMedia = media
+		link.Media = media
 	}
 	result := externalSearchResult{
 		UniqueID: item.ID,
@@ -418,7 +418,7 @@ func externalResultFromResource(item resource.Item, includeMediaMetadata bool) e
 		Links:    []externalLink{},
 	}
 	if includeMediaMetadata {
-		result.externalMedia = media
+		result.Media = media
 	}
 	if imageURL := externalResourceImageURL(item); imageURL != "" {
 		result.Images = []string{imageURL}
@@ -436,18 +436,22 @@ func externalResourceTitle(item resource.Item, includeMediaMetadata bool) string
 	return firstNonEmptyString(item.Note, item.FileName, item.URL)
 }
 
-func externalMediaFromResource(item resource.Item) externalMedia {
-	return externalMedia{
-		MediaTitle:    item.MediaTitle,
-		MediaYear:     item.MediaYear,
-		MediaSeason:   item.MediaSeason,
-		MediaEpisode:  item.MediaEpisode,
-		MediaQuality:  item.MediaQuality,
-		MediaSize:     item.MediaSize,
-		MediaTMDBID:   item.MediaTMDBID,
-		MediaCategory: item.MediaCategory,
-		MediaTags:     item.MediaTags,
+func externalMediaFromResource(item resource.Item) *externalMedia {
+	media := externalMedia{
+		Title:    item.MediaTitle,
+		Year:     item.MediaYear,
+		Season:   item.MediaSeason,
+		Episode:  item.MediaEpisode,
+		Quality:  item.MediaQuality,
+		Size:     item.MediaSize,
+		TMDBID:   item.MediaTMDBID,
+		Category: item.MediaCategory,
+		Tags:     item.MediaTags,
 	}
+	if media == (externalMedia{}) {
+		return nil
+	}
+	return &media
 }
 
 func externalResourceType(item resource.Item) string {

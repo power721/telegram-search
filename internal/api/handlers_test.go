@@ -876,32 +876,25 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 		Code int `json:"code"`
 		Data struct {
 			Results []struct {
-				MediaTitle string `json:"media_title"`
-				Links      []struct {
-					MediaTitle    string `json:"media_title"`
-					MediaYear     string `json:"media_year"`
-					MediaQuality  string `json:"media_quality"`
-					MediaTMDBID   string `json:"media_tmdb_id"`
-					MediaCategory string `json:"media_category"`
-					MediaTags     string `json:"media_tags"`
+				Media *externalMedia `json:"media"`
+				Links []struct {
+					Media *externalMedia `json:"media"`
 				} `json:"links"`
 			} `json:"results"`
 			MergedByType map[string][]struct {
-				MediaTitle    string `json:"media_title"`
-				MediaYear     string `json:"media_year"`
-				MediaQuality  string `json:"media_quality"`
-				MediaTMDBID   string `json:"media_tmdb_id"`
-				MediaCategory string `json:"media_category"`
-				MediaTags     string `json:"media_tags"`
+				Media *externalMedia `json:"media"`
 			} `json:"merged_by_type"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &metadataBody); err != nil {
 		t.Fatalf("invalid metadata JSON: %v", err)
 	}
-	quarkMetadata := metadataBody.Data.MergedByType["quark"][0]
-	if quarkMetadata.MediaTitle != "Ubuntu Movie" || quarkMetadata.MediaYear != "2026" || quarkMetadata.MediaQuality != "4K" || quarkMetadata.MediaTMDBID != "12345" || quarkMetadata.MediaCategory != "movie" || quarkMetadata.MediaTags != "linux,release" {
+	quarkMetadata := metadataBody.Data.MergedByType["quark"][0].Media
+	if quarkMetadata == nil || quarkMetadata.Title != "Ubuntu Movie" || quarkMetadata.Year != "2026" || quarkMetadata.Quality != "4K" || quarkMetadata.TMDBID != "12345" || quarkMetadata.Category != "movie" || quarkMetadata.Tags != "linux,release" {
 		t.Fatalf("merged quark metadata = %+v, want populated media metadata; body=%s", quarkMetadata, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "media_title") {
+		t.Fatalf("metadata response used prefixed media field: %s", w.Body.String())
 	}
 
 	w = httptest.NewRecorder()

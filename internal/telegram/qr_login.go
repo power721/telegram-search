@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"time"
 
@@ -41,6 +42,13 @@ func (g *GotdClient) StartQRLogin(ctx context.Context, sessionPath string) (QRLo
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         g.logger,
 		UpdateHandler:  dispatcher,
+		Device: gotdtelegram.DeviceConfig{
+			DeviceModel:    "TG Search",
+			SystemVersion:  runtime.GOOS,
+			AppVersion:     "1.0.0",
+			SystemLangCode: "cn",
+			LangCode:       "cn",
+		},
 	})
 
 	ready := make(chan error, 1)

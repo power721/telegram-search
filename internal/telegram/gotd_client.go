@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/gotd/td/session"
@@ -228,6 +229,13 @@ func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func
 		SessionStorage: &session.FileStorage{Path: sessionPath},
 		Logger:         g.logger,
 		NoUpdates:      true,
+		Device: gotdtelegram.DeviceConfig{
+			DeviceModel:    "TG Search",
+			SystemVersion:  runtime.GOOS,
+			AppVersion:     "1.0.0",
+			SystemLangCode: "cn",
+			LangCode:       "cn",
+		},
 	})
 	return client.Run(ctx, func(ctx context.Context) error {
 		return fn(ctx, client)

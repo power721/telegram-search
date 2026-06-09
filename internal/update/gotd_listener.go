@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"time"
 
 	gotdsession "github.com/gotd/td/session"
@@ -51,6 +52,13 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         l.logger,
 		UpdateHandler:  manager,
+		Device: gotdtelegram.DeviceConfig{
+			DeviceModel:    "TG Search",
+			SystemVersion:  runtime.GOOS,
+			AppVersion:     "1.0.0",
+			SystemLangCode: "cn",
+			LangCode:       "cn",
+		},
 	})
 	return client.Run(ctx, func(ctx context.Context) error {
 		self, err := client.Self(ctx)

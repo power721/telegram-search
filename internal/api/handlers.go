@@ -859,6 +859,7 @@ func (h handlers) events(c *gin.Context) {
 			if !ok {
 				return
 			}
+			event = localizeEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -869,6 +870,22 @@ func (h handlers) events(c *gin.Context) {
 			}
 		}
 	}
+}
+
+func localizeEvent(event taskpkg.Event) taskpkg.Event {
+	if event.Type != taskpkg.EventTaskUpdated {
+		return event
+	}
+	switch payload := event.Payload.(type) {
+	case model.Task:
+		event.Payload = localizeTask(payload)
+	case *model.Task:
+		if payload != nil {
+			localized := localizeTask(*payload)
+			event.Payload = &localized
+		}
+	}
+	return event
 }
 
 func (h handlers) publishEvent(event taskpkg.Event) {

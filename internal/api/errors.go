@@ -78,6 +78,10 @@ var fieldLabels = map[string]string{
 	"offset":        "offset",
 }
 
+var exactTaskMessages = map[string]string{
+	"completed": "已完成",
+}
+
 func localizedErrorMessage(status int, msg string) string {
 	msg = strings.TrimSpace(msg)
 	if msg == "" {
@@ -164,6 +168,15 @@ func localizeDisplayError(msg string) string {
 	return localizedErrorMessage(http.StatusInternalServerError, msg)
 }
 
+func localizeTaskMessage(msg string) (string, bool) {
+	key := strings.ToLower(strings.TrimSpace(msg))
+	if key == "" {
+		return "", false
+	}
+	translated, ok := exactTaskMessages[key]
+	return translated, ok
+}
+
 func localizeAccount(account model.Account) model.Account {
 	account.LastError = localizeDisplayError(account.LastError)
 	return account
@@ -192,8 +205,11 @@ func localizeChannels(channels []model.Channel) []model.Channel {
 
 func localizeTask(task model.Task) model.Task {
 	task.ErrorMessage = localizeDisplayError(task.ErrorMessage)
-	switch task.Status {
-	case model.TaskStatusFailed, model.TaskStatusFloodWait, model.TaskStatusReconnecting:
+	if translated, ok := localizeTaskMessage(task.Message); ok {
+		task.Message = translated
+	} else if task.Status == model.TaskStatusFailed ||
+		task.Status == model.TaskStatusFloodWait ||
+		task.Status == model.TaskStatusReconnecting {
 		task.Message = localizeDisplayError(task.Message)
 	}
 	return task

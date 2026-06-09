@@ -1513,6 +1513,55 @@ func TestTaskAPIReturnsEmptyItemsArray(t *testing.T) {
 	}
 }
 
+func TestTaskAPILocalizesCompletedMessage(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	completed, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 1})
+	if err != nil {
+		t.Fatalf("enqueue task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, completed.ID); err != nil {
+		t.Fatalf("start task: %v", err)
+	}
+	if err := deps.Tasks.Succeed(ctx, completed.ID, "completed"); err != nil {
+		t.Fatalf("succeed task: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var listBody struct {
+		Items []model.Task `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listBody.Items) != 1 || listBody.Items[0].Message != "已完成" {
+		t.Fatalf("list items = %+v, want localized completed message", listBody.Items)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/tasks/"+strconv.FormatInt(completed.ID, 10), nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("detail status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var detail model.Task
+	if err := json.Unmarshal(w.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if detail.Message != "已完成" {
+		t.Fatalf("detail message = %q, want 已完成", detail.Message)
+	}
+}
+
 func TestTaskAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -1695,6 +1744,20 @@ func TestEventsAPI(t *testing.T) {
 	}
 	if got := w.Header().Get("Content-Type"); !strings.Contains(got, "text/event-stream") {
 		t.Fatalf("content-type = %q, want text/event-stream", got)
+	}
+}
+
+func TestLocalizeEventLocalizesTaskUpdatedPayload(t *testing.T) {
+	event := localizeEvent(taskpkg.Event{
+		Type:    taskpkg.EventTaskUpdated,
+		Payload: model.Task{Status: model.TaskStatusSucceeded, Message: "completed"},
+	})
+	task, ok := event.Payload.(model.Task)
+	if !ok {
+		t.Fatalf("payload type = %T, want model.Task", event.Payload)
+	}
+	if task.Message != "已完成" {
+		t.Fatalf("task message = %q, want 已完成", task.Message)
 	}
 }
 

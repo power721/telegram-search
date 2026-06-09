@@ -104,6 +104,29 @@ describe('AccountsView', () => {
     expect(wrapper.text()).toContain('删除')
   })
 
+  it('translates reconnecting account status', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      items: [
+        {
+          id: 3,
+          phone: '+8613800138002',
+          telegram_user_id: 44,
+          first_name: '',
+          last_name: '',
+          username: 'reconnect',
+          status: 'RECONNECTING',
+          last_online_at: '',
+          last_error: ''
+        }
+      ]
+    })
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('重连中')
+    expect(wrapper.text()).not.toContain('RECONNECTING')
+  })
+
   it('opens telegram login dialog when adding or reconnecting an account', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()

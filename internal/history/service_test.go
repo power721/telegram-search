@@ -512,7 +512,7 @@ func TestSyncChannelRetriesTemporaryFetchError(t *testing.T) {
 	}
 }
 
-func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
+func TestSyncChannelStopsAfterFloodWait(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
@@ -531,8 +531,8 @@ func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
 	})
 
 	_, err := service.SyncChannel(ctx, channelID)
-	if err != nil {
-		t.Fatalf("SyncChannel returned error: %v", err)
+	if !errors.Is(err, ErrFloodWaitDeferred) {
+		t.Fatalf("SyncChannel error = %v, want ErrFloodWaitDeferred", err)
 	}
 	account, err := accounts.FindByID(ctx, accountID)
 	if err != nil {
@@ -541,8 +541,37 @@ func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
 	if account.Status != model.AccountStatusFloodWait {
 		t.Fatalf("status = %q, want FLOOD_WAIT", account.Status)
 	}
-	if fake.calls != 2 {
-		t.Fatalf("fetch calls = %d, want 2", fake.calls)
+	if fake.calls != 1 {
+		t.Fatalf("fetch calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestSyncChannelSkipsTelegramWhenAccountNotOnline(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	if err := accounts.UpdateStatus(ctx, accountID, model.AccountStatusFloodWait); err != nil {
+		t.Fatalf("update account status: %v", err)
+	}
+	fake := &retryingHistoryClient{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+
+	_, err := service.SyncChannel(ctx, channelID)
+	if !errors.Is(err, ErrAccountNotReady) {
+		t.Fatalf("SyncChannel error = %v, want ErrAccountNotReady", err)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("fetch calls = %d, want 0", fake.calls)
 	}
 }
 
@@ -915,14 +944,17 @@ func TestHistorySyncTaskFloodWaitNotifiesSink(t *testing.T) {
 
 	before := time.Now().UTC()
 	_, err := service.SyncChannelWithProgress(ctx, channelID, "", sink)
-	if err != nil {
-		t.Fatalf("SyncChannelWithProgress returned error: %v", err)
+	if !errors.Is(err, ErrFloodWaitDeferred) {
+		t.Fatalf("SyncChannelWithProgress error = %v, want ErrFloodWaitDeferred", err)
 	}
 	if len(sink.floodWaits) != 1 {
 		t.Fatalf("flood waits = %+v, want one", sink.floodWaits)
 	}
 	if sink.floodWaits[0].nextRunAt.Before(before) || sink.floodWaits[0].message == "" {
 		t.Fatalf("flood wait = %+v, want future next run and message", sink.floodWaits[0])
+	}
+	if fake.calls != 1 {
+		t.Fatalf("fetch calls = %d, want 1", fake.calls)
 	}
 }
 
@@ -977,6 +1009,114 @@ func TestHistorySyncTaskWorkerProcessesQueuedHistorySync(t *testing.T) {
 	}
 	if len(latest) != 2 {
 		t.Fatalf("stored messages = %+v, want 2 history messages", latest)
+	}
+}
+
+func TestHistorySyncTaskWorkerLeavesFloodWaitTaskDeferred(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	fake := &floodThenEmptyHistoryClient{}
+	historyService := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  2,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+	taskRepo := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepo)
+	queued, err := taskService.Enqueue(ctx, model.TaskTypeHistorySync, taskpkg.HistorySyncPayload{ChannelIDs: []int64{channelID}})
+	if err != nil {
+		t.Fatalf("enqueue history sync task: %v", err)
+	}
+	worker := taskpkg.NewWorker(taskpkg.WorkerOptions{
+		Service:    taskService,
+		Repository: taskRepo,
+		Handlers: map[string]taskpkg.Handler{
+			model.TaskTypeHistorySync: historyService.RunHistorySyncTask,
+		},
+	})
+
+	processed, err := worker.ProcessOnce(ctx)
+	if !errors.Is(err, ErrFloodWaitDeferred) {
+		t.Fatalf("ProcessOnce error = %v, want ErrFloodWaitDeferred", err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1", processed)
+	}
+	flooded, err := taskRepo.FindByID(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("find task: %v", err)
+	}
+	if flooded.Status != model.TaskStatusFloodWait || flooded.NextRunAt == nil {
+		t.Fatalf("task = %+v, want flood_wait with next_run_at", flooded)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusFloodWait {
+		t.Fatalf("account status = %q, want FLOOD_WAIT", account.Status)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("fetch calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestHistorySyncTaskWorkerDefersWhenAccountAlreadyFloodWait(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	if err := accounts.UpdateStatus(ctx, accountID, model.AccountStatusFloodWait); err != nil {
+		t.Fatalf("update account status: %v", err)
+	}
+	fake := &retryingHistoryClient{}
+	historyService := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  2,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+	taskRepo := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepo)
+	queued, err := taskService.Enqueue(ctx, model.TaskTypeHistorySync, taskpkg.HistorySyncPayload{ChannelIDs: []int64{channelID}})
+	if err != nil {
+		t.Fatalf("enqueue history sync task: %v", err)
+	}
+	worker := taskpkg.NewWorker(taskpkg.WorkerOptions{
+		Service:    taskService,
+		Repository: taskRepo,
+		Handlers: map[string]taskpkg.Handler{
+			model.TaskTypeHistorySync: historyService.RunHistorySyncTask,
+		},
+	})
+
+	processed, err := worker.ProcessOnce(ctx)
+	if !errors.Is(err, ErrFloodWaitDeferred) {
+		t.Fatalf("ProcessOnce error = %v, want ErrFloodWaitDeferred", err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1", processed)
+	}
+	flooded, err := taskRepo.FindByID(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("find task: %v", err)
+	}
+	if flooded.Status != model.TaskStatusFloodWait || flooded.NextRunAt == nil {
+		t.Fatalf("task = %+v, want flood_wait with next_run_at", flooded)
+	}
+	if fake.calls != 0 {
+		t.Fatalf("fetch calls = %d, want 0", fake.calls)
 	}
 }
 

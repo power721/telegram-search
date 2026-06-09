@@ -80,6 +80,29 @@ type SyncManyResult struct {
 
 var ErrChannelSyncInProgress = errors.New("channel sync already in progress")
 var ErrTaskPaused = errors.New("task is paused")
+var ErrFloodWaitDeferred = errors.New("telegram flood wait deferred")
+var ErrAccountNotReady = errors.New("telegram account is not ready")
+
+const accountFloodWaitDeferral = time.Hour
+
+type floodWaitDeferredError struct {
+	err error
+}
+
+func (e floodWaitDeferredError) Error() string {
+	if e.err != nil {
+		return fmt.Sprintf("%v: %v", ErrFloodWaitDeferred, e.err)
+	}
+	return ErrFloodWaitDeferred.Error()
+}
+
+func (e floodWaitDeferredError) Unwrap() error {
+	return e.err
+}
+
+func (e floodWaitDeferredError) Is(target error) bool {
+	return target == ErrFloodWaitDeferred
+}
 
 func NewService(opts Options) *Service {
 	if opts.Telegram == nil {
@@ -207,6 +230,14 @@ func (s historyTaskProgressSink) Progress(context.Context, int64, int64, string)
 	return nil
 }
 
+func (s historyTaskProgressSink) FloodWait(ctx context.Context, nextRunAt time.Time, message string) error {
+	sink, ok := s.ProgressSink.(taskpkg.FloodWaitSink)
+	if !ok {
+		return nil
+	}
+	return sink.FloodWait(ctx, nextRunAt, message)
+}
+
 func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.GapRecoveryPayload, progress taskpkg.ProgressSink) (SyncResult, error) {
 	if payload.ChannelID <= 0 || payload.FromMessageID <= 0 || payload.ToMessageID < payload.FromMessageID {
 		return SyncResult{}, fmt.Errorf("invalid gap recovery range %d..%d for channel %d", payload.FromMessageID, payload.ToMessageID, payload.ChannelID)
@@ -222,6 +253,9 @@ func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.Ga
 	account, err := s.accounts.FindByID(ctx, accountID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load gap recovery account: %w", err)
+	}
+	if err := s.ensureAccountReady(ctx, account, progress); err != nil {
+		return SyncResult{}, err
 	}
 	sessionPath := ""
 	if s.sessions != nil {
@@ -253,6 +287,11 @@ func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.Ga
 		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
 		if err != nil {
 			err = fmt.Errorf("fetch gap recovery history: %w", err)
+			if classification := retry.Classify(err); classification.Kind == retry.KindFloodWait {
+				s.markAccountFloodWait(ctx, account.ID)
+				s.notifyFloodWait(ctx, progress, s.retryPolicy.Delay(1, classification), classification.Err)
+				return result, floodWaitDeferredError{err: classification.Err}
+			}
 			s.markAccountAuthFailure(ctx, account.ID, err)
 			return result, err
 		}
@@ -551,7 +590,8 @@ func (s *Service) SyncListenBacklog(ctx context.Context) SyncManyResult {
 
 func (s *Service) syncListenBacklogChannel(ctx context.Context, channel model.Channel) (SyncResult, error) {
 	var result SyncResult
-	err := s.retryPolicy.Run(ctx, func() error {
+	floodWaitHandled := false
+	err := s.runTelegramRetry(ctx, func() error {
 		next, err := s.syncListenBacklogChannelOnce(ctx, channel)
 		result = next
 		return err
@@ -565,9 +605,14 @@ func (s *Service) syncListenBacklogChannel(ctx context.Context, channel model.Ch
 		)
 		if attempt.Classification.Kind == retry.KindFloodWait {
 			s.markChannelAccountStatus(ctx, channel.ID, model.AccountStatusFloodWait)
+			floodWaitHandled = true
 		}
 	})
 	if err != nil {
+		if classification := retry.Classify(err); classification.Kind == retry.KindFloodWait && !floodWaitHandled {
+			s.markChannelAccountStatus(ctx, channel.ID, model.AccountStatusFloodWait)
+			return result, floodWaitDeferredError{err: classification.Err}
+		}
 		s.markChannelAuthFailure(ctx, channel.ID, err)
 		return result, err
 	}
@@ -592,6 +637,9 @@ func (s *Service) syncListenBacklogChannelOnce(ctx context.Context, channel mode
 	account, err := s.accounts.FindByID(ctx, channel.AccountID)
 	if err != nil {
 		return result, fmt.Errorf("load account: %w", err)
+	}
+	if err := s.ensureAccountReady(ctx, account, nil); err != nil {
+		return result, err
 	}
 	sessionPath := ""
 	if s.sessions != nil {
@@ -716,7 +764,8 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 	started := time.Now()
 	s.logger.Info("history sync channel started", zap.Int64("channel_id", channelID), zap.String("profile", profile))
 	var result SyncResult
-	err := s.retryPolicy.Run(ctx, func() error {
+	floodWaitHandled := false
+	err := s.runTelegramRetry(ctx, func() error {
 		next, err := s.syncChannelOnce(ctx, channelID, profile, maxMessages, progress)
 		result = next
 		return err
@@ -729,15 +778,15 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 			zap.Error(attempt.Classification.Err),
 		)
 		if attempt.Classification.Kind == retry.KindFloodWait {
-			s.markChannelAccountStatus(ctx, channelID, model.AccountStatusFloodWait)
-			if progress != nil {
-				if sink, ok := progress.(taskpkg.FloodWaitSink); ok {
-					_ = sink.FloodWait(ctx, time.Now().UTC().Add(attempt.Delay), attempt.Classification.Err.Error())
-				}
-			}
+			s.handleChannelFloodWait(ctx, channelID, progress, attempt.Delay, attempt.Classification.Err)
+			floodWaitHandled = true
 		}
 	})
 	if err != nil {
+		if classification := retry.Classify(err); classification.Kind == retry.KindFloodWait && !floodWaitHandled {
+			s.handleChannelFloodWait(ctx, channelID, progress, s.retryPolicy.Delay(1, classification), classification.Err)
+			err = floodWaitDeferredError{err: classification.Err}
+		}
 		s.logger.Error("history sync channel failed",
 			zap.Int64("channel_id", channelID),
 			zap.Int("messages", result.Messages),
@@ -775,6 +824,9 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 	account, err := s.accounts.FindByID(ctx, channel.AccountID)
 	if err != nil {
 		return SyncResult{}, fmt.Errorf("load account: %w", err)
+	}
+	if err := s.ensureAccountReady(ctx, account, progress); err != nil {
+		return SyncResult{}, err
 	}
 
 	sessionPath := ""
@@ -936,6 +988,82 @@ func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64,
 		return
 	}
 	_ = s.accounts.UpdateStatus(ctx, channel.AccountID, status)
+}
+
+func (s *Service) markAccountFloodWait(ctx context.Context, accountID int64) {
+	if s.accounts == nil || accountID <= 0 {
+		return
+	}
+	_ = s.accounts.UpdateStatus(ctx, accountID, model.AccountStatusFloodWait)
+}
+
+func (s *Service) handleChannelFloodWait(ctx context.Context, channelID int64, progress taskpkg.ProgressSink, delay time.Duration, err error) {
+	s.markChannelAccountStatus(ctx, channelID, model.AccountStatusFloodWait)
+	s.notifyFloodWait(ctx, progress, delay, err)
+}
+
+func (s *Service) notifyFloodWait(ctx context.Context, progress taskpkg.ProgressSink, delay time.Duration, err error) {
+	if progress == nil {
+		return
+	}
+	sink, ok := progress.(taskpkg.FloodWaitSink)
+	if !ok {
+		return
+	}
+	if delay < 0 {
+		delay = 0
+	}
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	_ = sink.FloodWait(ctx, time.Now().UTC().Add(delay), message)
+}
+
+func (s *Service) runTelegramRetry(ctx context.Context, fn func() error, onRetry func(context.Context, retry.Attempt)) error {
+	policy := s.retryPolicy
+	sleep := policy.Sleep
+	var deferred error
+	policy.Sleep = func(ctx context.Context, d time.Duration) error {
+		if deferred != nil {
+			return deferred
+		}
+		if sleep != nil {
+			return sleep(ctx, d)
+		}
+		return sleepContext(ctx, d)
+	}
+	return policy.Run(ctx, fn, func(ctx context.Context, attempt retry.Attempt) {
+		if onRetry != nil {
+			onRetry(ctx, attempt)
+		}
+		if attempt.Classification.Kind == retry.KindFloodWait {
+			deferred = floodWaitDeferredError{err: attempt.Classification.Err}
+		}
+	})
+}
+
+func (s *Service) ensureAccountReady(ctx context.Context, account model.Account, progress taskpkg.ProgressSink) error {
+	if account.Status == model.AccountStatusOnline {
+		return nil
+	}
+	err := fmt.Errorf("%w: account %d status %s", ErrAccountNotReady, account.ID, account.Status)
+	if account.Status == model.AccountStatusFloodWait {
+		s.notifyFloodWait(ctx, progress, accountFloodWaitDeferral, err)
+		return floodWaitDeferredError{err: err}
+	}
+	return retry.Permanent(err)
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Service) markChannelAuthFailure(ctx context.Context, channelID int64, err error) {

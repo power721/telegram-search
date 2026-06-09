@@ -26,7 +26,7 @@ describe('SearchResults', () => {
     expect(searchResultsSource).toMatch(/\.external-link\s*\{[\s\S]*text-decoration:\s*underline;/)
   })
 
-  it('does not link result rows to Telegram message positions', () => {
+  it('opens Telegram message positions from message, link, and file titles', () => {
     const result = {
       messages: {
         items: [
@@ -68,7 +68,16 @@ describe('SearchResults', () => {
         ],
         total: 1
       },
-      channels: { items: [], total: 0 }
+      channels: {
+        items: [
+          {
+            id: 4,
+            title: 'Public Channel',
+            username: 'publicchannel'
+          }
+        ],
+        total: 1
+      }
     } as unknown as GlobalSearchResult
 
     const wrapper = mount(SearchResults, {
@@ -76,15 +85,17 @@ describe('SearchResults', () => {
     })
 
     expect(wrapper.find('a.result-row').exists()).toBe(false)
-    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).not.toContain(
-      'tg://resolve?domain=publicchannel&post=42'
-    )
-    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).not.toContain(
-      'tg://privatepost?channel=1234567890&post=43'
-    )
-    expect(wrapper.findAll('a').map((link) => link.attributes('href'))).not.toContain(
-      'tg://resolve?domain=files&post=44'
-    )
+    const titleHrefs = wrapper.findAll('a.title-link').map((link) => link.attributes('href'))
+    expect(titleHrefs).toEqual([
+      'tg://resolve?domain=publicchannel&post=42',
+      'tg://privatepost?channel=1234567890&post=43',
+      'tg://resolve?domain=files&post=44',
+      'tg://resolve?domain=publicchannel'
+    ])
+    for (const link of wrapper.findAll('a.title-link')) {
+      expect(link.attributes('target')).toBe('_blank')
+      expect(link.attributes('rel')).toContain('noopener')
+    }
   })
 
   it('keeps external links clickable in message text and link results', () => {

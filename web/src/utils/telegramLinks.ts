@@ -4,6 +4,11 @@ export interface TelegramMessageLocation {
   telegram_message_id?: number
 }
 
+export interface TelegramChannelLocation {
+  username?: string
+  channel_username?: string
+}
+
 export function telegramMessageHref(location: TelegramMessageLocation) {
   const postID = location.telegram_message_id
   if (!postID) return undefined
@@ -16,6 +21,12 @@ export function telegramMessageHref(location: TelegramMessageLocation) {
   const channelID = normalizePrivateChannelID(location.telegram_channel_id)
   if (!channelID) return undefined
   return `tg://privatepost?channel=${encodeURIComponent(channelID)}&post=${encodeURIComponent(String(postID))}`
+}
+
+export function telegramChannelHref(location: TelegramChannelLocation) {
+  const username = (location.username || location.channel_username)?.trim().replace(/^@/, '')
+  if (!username) return undefined
+  return `tg://resolve?domain=${encodeURIComponent(username)}`
 }
 
 function normalizePrivateChannelID(value?: number) {

@@ -1,19 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { useResourcesStore } from '@/stores/resources'
 import { useStatusStore } from '@/stores/status'
 import { useTasksStore } from '@/stores/tasks'
 
+const auth = useAuthStore()
 const status = useStatusStore()
 const resources = useResourcesStore()
 const tasks = useTasksStore()
 
 onMounted(() => {
+  if (!auth.loaded) {
+    void auth.loadMe()
+  }
   void status.load()
   void resources.loadGrouped()
   void resources.loadLinkTypesGrouped()
   void tasks.loadTasks()
 })
+
+const adminUsername = computed(() => auth.user?.username ?? '-')
 
 const cards = computed(() => [
   { label: '账号', value: status.service?.accounts ?? 0 },
@@ -86,6 +93,10 @@ function linkTypeLabel(type: string) {
         <p class="page-kicker">概览</p>
         <h1 class="page-title">本地 Telegram 索引</h1>
         <p class="page-subtitle">查看索引健康、资源增长、任务错误和存储使用情况。</p>
+      </div>
+      <div class="admin-account" aria-label="当前管理员账号">
+        <span>管理员账号</span>
+        <strong>{{ adminUsername }}</strong>
       </div>
     </div>
 
@@ -187,6 +198,33 @@ function linkTypeLabel(type: string) {
   padding: 6px 12px;
 }
 
+.admin-account {
+  align-items: flex-end;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: grid;
+  gap: 3px;
+  justify-items: end;
+  min-width: 160px;
+  padding: 8px 10px;
+}
+
+.admin-account span {
+  color: var(--app-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.admin-account strong {
+  color: var(--app-heading);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.25;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+}
+
 .dashboard-grid {
   display: grid;
   gap: 16px;
@@ -252,6 +290,12 @@ dd {
   .home-search,
   .dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .admin-account {
+    align-items: flex-start;
+    justify-items: start;
+    width: 100%;
   }
 }
 </style>

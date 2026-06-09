@@ -128,6 +128,7 @@ function formatDate(value?: string) {
 
 <style scoped>
 .resource-table {
+  --resource-thumb-preview-width: 480px;
   overflow: visible;
   width: 100%;
 }
@@ -206,7 +207,7 @@ function formatDate(value?: string) {
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
   height: auto;
   left: calc(100% + 10px);
-  max-width: min(240px, calc(100vw - 32px));
+  max-width: min(var(--resource-thumb-preview-width), calc(100vw - 32px));
   opacity: 0;
   object-fit: cover;
   pointer-events: none;
@@ -218,7 +219,7 @@ function formatDate(value?: string) {
     opacity 0.16s ease,
     transform 0.16s ease;
   visibility: hidden;
-  width: 240px;
+  width: var(--resource-thumb-preview-width);
   z-index: 20;
 }
 
@@ -269,7 +270,7 @@ function formatDate(value?: string) {
     top: calc(100% + 8px);
     transform: scale(0.96);
     transform-origin: top left;
-    width: min(240px, calc(100vw - 32px));
+    width: min(var(--resource-thumb-preview-width), calc(100vw - 32px));
   }
 
   .resource-thumb-frame:hover .resource-thumb-preview {

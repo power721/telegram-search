@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ResourceItem } from '@/api/types'
+import { telegramMessageHref } from '@/utils/telegramLinks'
 
 defineProps<{
   items: ResourceItem[]
@@ -43,18 +44,33 @@ function formatDate(value?: string) {
       <strong>暂无资源</strong>
       <span>调整筛选条件或同步频道后，资源会显示在这里。</span>
     </div>
-    <article v-for="item in items" :key="item.id" class="table-row">
-      <div>
-        <strong>{{ itemLabel(item) }}</strong>
-        <p v-if="item.url">
-          <a :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
-        </p>
-        <p v-else>{{ item.file_name || '-' }}</p>
-      </div>
-      <span>{{ categoryLabel(item.category) }}</span>
-      <span>{{ item.channel_title || 'Telegram' }}</span>
-      <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
-    </article>
+    <template v-for="item in items" :key="item.id">
+      <a
+        v-if="telegramMessageHref(item)"
+        class="table-row resource-link"
+        :href="telegramMessageHref(item)"
+        rel="noopener noreferrer"
+      >
+        <div>
+          <strong>{{ itemLabel(item) }}</strong>
+          <p v-if="item.url">{{ item.url }}</p>
+          <p v-else>{{ item.file_name || '-' }}</p>
+        </div>
+        <span>{{ categoryLabel(item.category) }}</span>
+        <span>{{ item.channel_title || 'Telegram' }}</span>
+        <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
+      </a>
+      <article v-else class="table-row">
+        <div>
+          <strong>{{ itemLabel(item) }}</strong>
+          <p v-if="item.url">{{ item.url }}</p>
+          <p v-else>{{ item.file_name || '-' }}</p>
+        </div>
+        <span>{{ categoryLabel(item.category) }}</span>
+        <span>{{ item.channel_title || 'Telegram' }}</span>
+        <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
+      </article>
+    </template>
   </div>
 </template>
 
@@ -74,11 +90,12 @@ function formatDate(value?: string) {
 
 .table-row {
   border-top: 1px solid var(--app-border-subtle);
+  color: inherit;
+  text-decoration: none;
 }
 
 .table-row strong,
 .table-row p,
-.table-row a,
 .table-row time {
   overflow-wrap: anywhere;
 }
@@ -88,9 +105,8 @@ function formatDate(value?: string) {
   margin: 4px 0 0;
 }
 
-.table-row a {
+.resource-link:hover strong {
   color: var(--app-accent);
-  text-decoration: underline;
 }
 
 .table-row time {

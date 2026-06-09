@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { GlobalSearchResult, RemoteSearchItem } from '@/api/types'
+import { telegramMessageHref } from '@/utils/telegramLinks'
 
 defineProps<{
   result: GlobalSearchResult | null
@@ -29,16 +30,40 @@ function sourceLabel(source?: string) {
         <span class="skeleton-line" />
         <span class="skeleton-line short" />
       </div>
-      <article v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`" class="result-row">
-        <strong>{{ item.channel_title || 'Telegram' }}</strong>
-        <p>{{ item.text }}</p>
-        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-      </article>
-      <article v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`" class="result-row">
-        <strong>{{ item.channel_title || '远程结果' }}</strong>
-        <p>{{ item.text }}</p>
-        <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
-      </article>
+      <template v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`">
+        <a
+          v-if="telegramMessageHref(item)"
+          class="result-row result-link"
+          :href="telegramMessageHref(item)"
+          rel="noopener noreferrer"
+        >
+          <strong>{{ item.channel_title || 'Telegram' }}</strong>
+          <p>{{ item.text }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </a>
+        <article v-else class="result-row">
+          <strong>{{ item.channel_title || 'Telegram' }}</strong>
+          <p>{{ item.text }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </article>
+      </template>
+      <template v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`">
+        <a
+          v-if="telegramMessageHref(item)"
+          class="result-row result-link"
+          :href="telegramMessageHref(item)"
+          rel="noopener noreferrer"
+        >
+          <strong>{{ item.channel_title || '远程结果' }}</strong>
+          <p>{{ item.text }}</p>
+          <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
+        </a>
+        <article v-else class="result-row">
+          <strong>{{ item.channel_title || '远程结果' }}</strong>
+          <p>{{ item.text }}</p>
+          <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
+        </article>
+      </template>
       <div
         v-if="!loading && (result?.messages.items?.length ?? 0) === 0 && (remoteItems?.length ?? 0) === 0"
         class="empty-state"
@@ -57,13 +82,23 @@ function sourceLabel(source?: string) {
         <span class="skeleton-line" />
         <span class="skeleton-line short" />
       </div>
-      <article v-for="item in result?.links.items ?? []" :key="`l-${item.id}`" class="result-row">
-        <strong>{{ item.note || item.url }}</strong>
-        <p>
-          <a :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
-        </p>
-        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-      </article>
+      <template v-for="item in result?.links.items ?? []" :key="`l-${item.id}`">
+        <a
+          v-if="telegramMessageHref(item)"
+          class="result-row result-link"
+          :href="telegramMessageHref(item)"
+          rel="noopener noreferrer"
+        >
+          <strong>{{ item.note || item.url }}</strong>
+          <p>{{ item.url }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </a>
+        <article v-else class="result-row">
+          <strong>{{ item.note || item.url }}</strong>
+          <p>{{ item.url }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </article>
+      </template>
       <div v-if="!loading && (result?.links.items?.length ?? 0) === 0" class="empty-state">
         <strong>暂无链接结果</strong>
         <span>资源链接会在本地索引后出现在这里。</span>
@@ -79,11 +114,23 @@ function sourceLabel(source?: string) {
         <span class="skeleton-line" />
         <span class="skeleton-line short" />
       </div>
-      <article v-for="item in result?.files.items ?? []" :key="`f-${item.id}`" class="result-row">
-        <strong>{{ item.file_name }}</strong>
-        <p>{{ item.extension }} {{ item.mime_type }}</p>
-        <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-      </article>
+      <template v-for="item in result?.files.items ?? []" :key="`f-${item.id}`">
+        <a
+          v-if="telegramMessageHref(item)"
+          class="result-row result-link"
+          :href="telegramMessageHref(item)"
+          rel="noopener noreferrer"
+        >
+          <strong>{{ item.file_name }}</strong>
+          <p>{{ item.extension }} {{ item.mime_type }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </a>
+        <article v-else class="result-row">
+          <strong>{{ item.file_name }}</strong>
+          <p>{{ item.extension }} {{ item.mime_type }}</p>
+          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
+        </article>
+      </template>
       <div v-if="!loading && (result?.files.items?.length ?? 0) === 0" class="empty-state">
         <strong>暂无文件结果</strong>
         <span>文件元数据会在历史同步后进入搜索。</span>
@@ -143,7 +190,10 @@ small {
 
 .result-row {
   border-top: 1px solid var(--app-border-subtle);
+  color: inherit;
+  display: block;
   padding: 10px 0;
+  text-decoration: none;
 }
 
 .result-row:first-of-type {
@@ -161,9 +211,8 @@ small {
   margin: 4px 0;
 }
 
-.result-row a {
+.result-link:hover strong {
   color: var(--app-accent);
-  text-decoration: underline;
 }
 
 .loading-stack {

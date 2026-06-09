@@ -1823,6 +1823,7 @@ func (h handlers) latest(c *gin.Context) {
 type latestMessageItem struct {
 	ID                int64        `json:"id"`
 	ChannelID         int64        `json:"channel_id"`
+	TelegramChannelID int64        `json:"telegram_channel_id"`
 	TelegramMessageID int64        `json:"telegram_message_id"`
 	SenderID          int64        `json:"sender_id"`
 	Text              string       `json:"text"`
@@ -1847,6 +1848,7 @@ func latestMessageItems(items []model.SearchResult) []latestMessageItem {
 		out[i] = latestMessageItem{
 			ID:                item.ID,
 			ChannelID:         item.ChannelID,
+			TelegramChannelID: item.TelegramChannelID,
 			TelegramMessageID: item.TelegramMessageID,
 			SenderID:          item.SenderID,
 			Text:              item.Text,

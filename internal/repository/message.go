@@ -133,7 +133,7 @@ func (r *MessageRepository) Search(ctx context.Context, params SearchParams) ([]
 	query := `
 SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
        mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
-       a.phone, a.username, a.first_name, c.title, c.username
+       a.phone, a.username, a.first_name, c.title, c.username, c.telegram_channel_id
 FROM telegram_messages_fts
 JOIN telegram_messages m ON m.id = telegram_messages_fts.rowid
 JOIN telegram_message_contents mc ON mc.message_id = m.id
@@ -229,7 +229,7 @@ func (r *MessageRepository) Latest(ctx context.Context, params LatestParams) ([]
 	query := `
 SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
        mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at,
-       a.phone, a.username, a.first_name, c.title, c.username
+       a.phone, a.username, a.first_name, c.title, c.username, c.telegram_channel_id
 FROM telegram_messages m
 JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_accounts a ON a.id = m.account_id
@@ -289,7 +289,7 @@ func scanSearchResult(row interface {
 	var editDate sql.NullTime
 	var deleted int
 	err := row.Scan(&item.ID, &item.AccountID, &item.ChannelID, &item.TelegramMessageID, &item.SenderID, &item.MessageType, &item.MediaSummary, &item.Text, &item.RawJSON, &item.Date, &editDate,
-		&deleted, &item.CreatedAt, &item.UpdatedAt, &item.AccountPhone, &item.AccountUsername, &item.AccountFirstName, &item.ChannelTitle, &item.ChannelUsername)
+		&deleted, &item.CreatedAt, &item.UpdatedAt, &item.AccountPhone, &item.AccountUsername, &item.AccountFirstName, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramChannelID)
 	if err != nil {
 		return model.SearchResult{}, err
 	}

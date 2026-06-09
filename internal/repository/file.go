@@ -101,7 +101,7 @@ func (r *FileRepository) Search(ctx context.Context, params FileSearchParams) ([
 
 	query := `
 SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
-       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+       mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
 JOIN telegram_message_contents mc ON mc.message_id = m.id
@@ -118,7 +118,7 @@ LIMIT ? OFFSET ?`
 	var out []model.FileResult
 	for rows.Next() {
 		var item model.FileResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -136,7 +136,7 @@ func (r *FileRepository) SearchResources(ctx context.Context, params FileSearchP
 
 	query := `
 SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
-       mc.text, m.date, m.account_id, m.channel_id, c.title, m.telegram_message_id
+       mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
 JOIN telegram_message_contents mc ON mc.message_id = m.id
@@ -153,7 +153,7 @@ LIMIT ? OFFSET ?`
 	var out []model.FileResult
 	for rows.Next() {
 		var item model.FileResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.ChannelTitle, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)

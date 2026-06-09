@@ -45,4 +45,25 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain('发布时间')
     expect(wrapper.text()).toContain(expected)
   })
+
+  it('opens the Telegram message position for a resource row', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'link:https://example.com/course',
+            kind: 'link',
+            category: 'cloud_drive',
+            title: 'Course Pack',
+            url: 'https://example.com/course',
+            channel_username: 'resources',
+            telegram_message_id: 77,
+            datetime: '2026-06-08T04:30:00Z'
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.find('a.table-row').attributes('href')).toBe('tg://resolve?domain=resources&post=77')
+  })
 })

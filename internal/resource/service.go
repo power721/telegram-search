@@ -36,7 +36,9 @@ type Item struct {
 	SourceSnippet     string    `json:"source_snippet,omitempty"`
 	Datetime          time.Time `json:"datetime"`
 	ChannelID         int64     `json:"channel_id"`
+	TelegramChannelID int64     `json:"telegram_channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
+	ChannelUsername   string    `json:"channel_username"`
 	TelegramMessageID int64     `json:"telegram_message_id"`
 }
 
@@ -95,7 +97,9 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				SourceSnippet:     link.SourceSnippet,
 				Datetime:          link.MessageDate,
 				ChannelID:         link.ChannelID,
+				TelegramChannelID: link.TelegramChannelID,
 				ChannelTitle:      link.ChannelTitle,
+				ChannelUsername:   link.ChannelUsername,
 				TelegramMessageID: link.TelegramMessageID,
 			})
 		}
@@ -126,7 +130,9 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				Title:             file.FileName,
 				Datetime:          file.MessageDate,
 				ChannelID:         file.ChannelID,
+				TelegramChannelID: file.TelegramChannelID,
 				ChannelTitle:      file.ChannelTitle,
+				ChannelUsername:   file.ChannelUsername,
 				TelegramMessageID: file.TelegramMessageID,
 			})
 		}

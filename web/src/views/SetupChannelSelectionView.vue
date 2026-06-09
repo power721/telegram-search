@@ -3,6 +3,7 @@ import { useMessage } from 'naive-ui'
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TelegramChannel } from '@/api/types'
+import AppPagination from '@/components/common/AppPagination.vue'
 import { useChannelsStore } from '@/stores/channels'
 import { useSetupStore } from '@/stores/setup'
 
@@ -55,12 +56,8 @@ function channelStatusClass(channel: TelegramChannel) {
   return 'status-muted'
 }
 
-function previousPage() {
-  page.value = Math.max(1, page.value - 1)
-}
-
-function nextPage() {
-  page.value = Math.min(totalPages.value, page.value + 1)
+function changePage(pageNumber: number) {
+  page.value = Math.min(Math.max(1, pageNumber), totalPages.value)
 }
 
 async function finish() {
@@ -149,10 +146,14 @@ async function finish() {
         </table>
       </div>
 
-      <div class="pagination">
-        <n-button :disabled="page <= 1" @click="previousPage">上一页</n-button>
-        <n-button :disabled="page >= totalPages" @click="nextPage">下一页</n-button>
-      </div>
+      <AppPagination
+        :loading="channels.loading"
+        :page="page"
+        :page-size="pageSize"
+        :show-page-size="false"
+        :total="channels.items.length"
+        @update:page="changePage"
+      />
 
       <div class="actions">
         <n-button type="primary" :loading="channels.loading || setup.loading" @click="finish">
@@ -215,13 +216,6 @@ td:nth-child(5) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pagination {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  margin-top: 12px;
 }
 
 .actions {

@@ -81,7 +81,7 @@ describe('TasksView', () => {
     await flushPromises()
 
     expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
-    expect(wrapper.text()).toContain('第 2 页')
+    expect(wrapper.text()).toContain('第 2 / 2 页')
   })
 
   it('reloads tasks from page one when page size changes', async () => {
@@ -103,6 +103,28 @@ describe('TasksView', () => {
     await flushPromises()
 
     expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=20')
-    expect(wrapper.text()).toContain('第 1 页')
+    expect(wrapper.text()).toContain('第 1 / 4 页')
+  })
+
+  it('jumps to a typed tasks page', async () => {
+    const wrapper = mount(TasksView, {
+      global: {
+        stubs: {
+          'n-button': { template: '<button :disabled="disabled"><slot /></button>', props: ['disabled'] },
+          'n-tag': { template: '<span><slot /></span>' },
+          'n-drawer': true,
+          'n-drawer-content': true,
+          'n-descriptions': { template: '<div><slot /></div>' },
+          'n-descriptions-item': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.get('input[aria-label="跳转页码"]').setValue('2')
+    await wrapper.get('form.pagination-jump').trigger('submit')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
   })
 })

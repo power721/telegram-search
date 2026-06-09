@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { Task } from '@/api/types'
+import AppPagination from '@/components/common/AppPagination.vue'
 import TaskDetailDrawer from '@/components/tasks/TaskDetailDrawer.vue'
 import TaskTable from '@/components/tasks/TaskTable.vue'
 import { useEventsStore } from '@/stores/events'
@@ -14,8 +15,6 @@ const pageSize = ref(50)
 const offset = ref(0)
 
 const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
-const canGoPrevious = computed(() => offset.value > 0)
-const canGoNext = computed(() => offset.value + pageSize.value < tasks.total)
 
 function loadPage() {
   return tasks.loadTasks({ limit: pageSize.value, offset: offset.value })
@@ -39,20 +38,13 @@ async function refreshTasks() {
   await loadPage()
 }
 
-async function previousPage() {
-  if (!canGoPrevious.value) return
-  offset.value = Math.max(0, offset.value - pageSize.value)
+async function changePage(pageNumber: number) {
+  offset.value = (pageNumber - 1) * pageSize.value
   await loadPage()
 }
 
-async function nextPage() {
-  if (!canGoNext.value) return
-  offset.value += pageSize.value
-  await loadPage()
-}
-
-async function changePageSize(event: Event) {
-  pageSize.value = Number((event.target as HTMLSelectElement).value)
+async function changePageSize(value: number) {
+  pageSize.value = value
   offset.value = 0
   await loadPage()
 }
@@ -81,42 +73,16 @@ async function changePageSize(event: Event) {
       @resume="tasks.resumeTask($event.id)"
     />
 
-    <div class="pagination">
-      <label>
-        每页
-        <select aria-label="每页条数" :value="pageSize" @change="changePageSize">
-          <option v-for="option in pageSizeOptions" :key="option" :value="option">
-            {{ option }}
-          </option>
-        </select>
-      </label>
-      <button
-        aria-label="上一页"
-        :disabled="!canGoPrevious || tasks.loading"
-        type="button"
-        @click="previousPage"
-      >
-        上一页
-      </button>
-      <span>第 {{ page }} 页，共 {{ tasks.total }} 条</span>
-      <button
-        aria-label="下一页"
-        :disabled="!canGoNext || tasks.loading"
-        type="button"
-        @click="nextPage"
-      >
-        下一页
-      </button>
-    </div>
+    <AppPagination
+      :loading="tasks.loading"
+      :page="page"
+      :page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :total="tasks.total"
+      @update:page="changePage"
+      @update:page-size="changePageSize"
+    />
 
     <TaskDetailDrawer v-model:show="detailOpen" :task="tasks.selected" />
   </section>
 </template>
-
-<style scoped>
-.pagination label {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-}
-</style>

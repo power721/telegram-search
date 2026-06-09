@@ -316,6 +316,7 @@ a {
 }
 
 .pagination select,
+.pagination input,
 .table-pagination select {
   background: var(--app-surface);
   border: 1px solid var(--app-border);
@@ -323,6 +324,11 @@ a {
   color: var(--app-text);
   min-height: 32px;
   padding: 5px 28px 5px 8px;
+}
+
+.pagination input {
+  padding-right: 8px;
+  width: 72px;
 }
 
 .pagination button,
@@ -341,11 +347,37 @@ a {
   border-color: var(--app-border-strong);
 }
 
+.pagination button[aria-current='page'],
+.pagination button.active {
+  background: var(--app-accent);
+  border-color: var(--app-accent);
+  color: white;
+}
+
 .pagination button:disabled,
 .table-pagination button:disabled {
   color: var(--app-text-subtle);
   cursor: not-allowed;
   opacity: 0.68;
+}
+
+.pagination button[aria-current='page']:disabled,
+.pagination button.active:disabled {
+  color: white;
+  opacity: 1;
+}
+
+.pagination-size,
+.pagination-jump,
+.pagination-jump label,
+.pagination-pages {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pagination-pages {
+  flex-wrap: wrap;
 }
 
 .empty-state,

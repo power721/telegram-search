@@ -270,12 +270,26 @@ func TestResourcesAPI(t *testing.T) {
 	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
 	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
 		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
-		Text: "ubuntu resources", RawJSON: "{}", Date: time.Now().UTC(),
+		MediaSummary: "webpage_photo", Text: "ubuntu resources", RawJSON: "{}", Date: time.Now().UTC(),
 	}})
 	if err != nil {
 		t.Fatalf("save messages: %v", err)
 	}
-	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu", Note: "ubuntu"}}); err != nil {
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type:          "url",
+		Category:      "http",
+		URL:           "https://example.com/ubuntu",
+		Note:          "ubuntu",
+		MediaTitle:    "Ubuntu Movie",
+		MediaYear:     "2026",
+		MediaSeason:   "S01",
+		MediaEpisode:  "E02",
+		MediaQuality:  "4K",
+		MediaSize:     "12GB",
+		MediaTMDBID:   "12345",
+		MediaCategory: "movie",
+		MediaTags:     "linux,release",
+	}}); err != nil {
 		t.Fatalf("save links: %v", err)
 	}
 	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", SizeBytes: 5000, Category: "software"}}); err != nil {
@@ -296,6 +310,21 @@ func TestResourcesAPI(t *testing.T) {
 	}
 	if body.Total != 2 || body.Grouped["http"] != 1 || body.Grouped["files"] != 1 {
 		t.Fatalf("resources body = %+v, want link and file", body)
+	}
+	var linkItem *resource.Item
+	for i := range body.Items {
+		if body.Items[i].Kind == "link" {
+			linkItem = &body.Items[i]
+			break
+		}
+	}
+	if linkItem == nil || linkItem.Media == nil || linkItem.Media.Title != "Ubuntu Movie" || linkItem.Media.Year != "2026" || linkItem.Media.Quality != "4K" || linkItem.Media.TMDBID != "12345" || linkItem.Media.Category != "movie" || linkItem.Media.Tags != "linux,release" || linkItem.Media.Summary != "webpage_photo" {
+		t.Fatalf("resource media metadata = %+v, want nested media metadata", linkItem)
+	}
+	for _, forbidden := range []string{"media_title", "media_year", "media_quality", "media_tmdb_id", "media_category", "media_tags", "media_summary"} {
+		if strings.Contains(w.Body.String(), forbidden) {
+			t.Fatalf("resources response used prefixed media field %q: %s", forbidden, w.Body.String())
+		}
 	}
 }
 

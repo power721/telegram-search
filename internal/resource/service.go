@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"tg-search/internal/model"
 	"tg-search/internal/repository"
 )
 
@@ -24,38 +23,92 @@ type Query struct {
 }
 
 type Item struct {
-	ID                string           `json:"id"`
-	Kind              string           `json:"kind"`
-	Type              string           `json:"type,omitempty"`
-	Category          string           `json:"category"`
-	URL               string           `json:"url,omitempty"`
-	Password          string           `json:"password,omitempty"`
-	TelegramFileID    int64            `json:"telegram_file_id,omitempty"`
-	FileName          string           `json:"file_name,omitempty"`
-	Extension         string           `json:"extension,omitempty"`
-	MimeType          string           `json:"mime_type,omitempty"`
-	SizeBytes         int64            `json:"size_bytes,omitempty"`
-	Note              string           `json:"note,omitempty"`
-	Title             string           `json:"title,omitempty"`
-	SourceSnippet     string           `json:"source_snippet,omitempty"`
-	MediaTitle        string           `json:"media_title,omitempty"`
-	MediaYear         string           `json:"media_year,omitempty"`
-	MediaSeason       string           `json:"media_season,omitempty"`
-	MediaEpisode      string           `json:"media_episode,omitempty"`
-	MediaQuality      string           `json:"media_quality,omitempty"`
-	MediaSize         string           `json:"media_size,omitempty"`
-	MediaTMDBID       string           `json:"media_tmdb_id,omitempty"`
-	MediaCategory     string           `json:"media_category,omitempty"`
-	MediaTags         string           `json:"media_tags,omitempty"`
-	Datetime          time.Time        `json:"datetime"`
-	ChannelID         int64            `json:"channel_id"`
-	TelegramChannelID int64            `json:"telegram_channel_id"`
-	ChannelTitle      string           `json:"channel_title"`
-	ChannelUsername   string           `json:"channel_username"`
-	TelegramMessageID int64            `json:"telegram_message_id"`
-	MessageType       string           `json:"message_type,omitempty"`
-	MediaSummary      string           `json:"media_summary,omitempty"`
-	Media             *model.MediaURLs `json:"media,omitempty"`
+	ID                string    `json:"id"`
+	Kind              string    `json:"kind"`
+	Type              string    `json:"type,omitempty"`
+	Category          string    `json:"category"`
+	URL               string    `json:"url,omitempty"`
+	Password          string    `json:"password,omitempty"`
+	TelegramFileID    int64     `json:"telegram_file_id,omitempty"`
+	FileName          string    `json:"file_name,omitempty"`
+	Extension         string    `json:"extension,omitempty"`
+	MimeType          string    `json:"mime_type,omitempty"`
+	SizeBytes         int64     `json:"size_bytes,omitempty"`
+	Note              string    `json:"note,omitempty"`
+	Title             string    `json:"title,omitempty"`
+	SourceSnippet     string    `json:"source_snippet,omitempty"`
+	MediaTitle        string    `json:"-"`
+	MediaYear         string    `json:"-"`
+	MediaSeason       string    `json:"-"`
+	MediaEpisode      string    `json:"-"`
+	MediaQuality      string    `json:"-"`
+	MediaSize         string    `json:"-"`
+	MediaTMDBID       string    `json:"-"`
+	MediaCategory     string    `json:"-"`
+	MediaTags         string    `json:"-"`
+	Datetime          time.Time `json:"datetime"`
+	ChannelID         int64     `json:"channel_id"`
+	TelegramChannelID int64     `json:"telegram_channel_id"`
+	ChannelTitle      string    `json:"channel_title"`
+	ChannelUsername   string    `json:"channel_username"`
+	TelegramMessageID int64     `json:"telegram_message_id"`
+	MessageType       string    `json:"message_type,omitempty"`
+	MediaSummary      string    `json:"-"`
+	Media             *Media    `json:"media,omitempty"`
+}
+
+type Media struct {
+	ImageURL string `json:"image_url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Year     string `json:"year,omitempty"`
+	Season   string `json:"season,omitempty"`
+	Episode  string `json:"episode,omitempty"`
+	Quality  string `json:"quality,omitempty"`
+	Size     string `json:"size,omitempty"`
+	TMDBID   string `json:"tmdb_id,omitempty"`
+	Category string `json:"category,omitempty"`
+	Tags     string `json:"tags,omitempty"`
+	Summary  string `json:"summary,omitempty"`
+}
+
+func (m Media) Empty() bool {
+	return m == Media{}
+}
+
+func (item *Item) SetMediaMetadata(title, year, season, episode, quality, size, tmdbID, category, tags, summary string) {
+	media := item.ensureMedia()
+	media.Title = title
+	media.Year = year
+	media.Season = season
+	media.Episode = episode
+	media.Quality = quality
+	media.Size = size
+	media.TMDBID = tmdbID
+	media.Category = category
+	media.Tags = tags
+	media.Summary = summary
+	item.dropEmptyMedia()
+}
+
+func (item *Item) SetMediaURLs(imageURL, videoURL string) {
+	media := item.ensureMedia()
+	media.ImageURL = imageURL
+	media.VideoURL = videoURL
+	item.dropEmptyMedia()
+}
+
+func (item *Item) ensureMedia() *Media {
+	if item.Media == nil {
+		item.Media = &Media{}
+	}
+	return item.Media
+}
+
+func (item *Item) dropEmptyMedia() {
+	if item.Media != nil && item.Media.Empty() {
+		item.Media = nil
+	}
 }
 
 type ListResult struct {
@@ -102,7 +155,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			if category == "" {
 				category = link.Type
 			}
-			items = append(items, Item{
+			item := Item{
 				ID:                "link:" + link.URL,
 				Kind:              "link",
 				Type:              link.Type,
@@ -129,7 +182,9 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				TelegramMessageID: link.TelegramMessageID,
 				MessageType:       link.MessageType,
 				MediaSummary:      link.MediaSummary,
-			})
+			}
+			item.SetMediaMetadata(link.MediaTitle, link.MediaYear, link.MediaSeason, link.MediaEpisode, link.MediaQuality, link.MediaSize, link.MediaTMDBID, link.MediaCategory, link.MediaTags, link.MediaSummary)
+			items = append(items, item)
 		}
 	}
 	if s.files != nil && includeFiles(query) {

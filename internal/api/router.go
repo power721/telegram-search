@@ -93,8 +93,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	external := router.Group("")
 	external.Use(h.requireAPIKey())
-	external.GET("/search", h.externalSearch)
-	external.POST("/search", h.externalSearch)
+	external.GET("/external/search", h.externalSearch)
+	external.POST("/external/search", h.externalSearch)
 
 	adminOnly := api.Group("")
 	adminOnly.Use(h.requireAdminSession())

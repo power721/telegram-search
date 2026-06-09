@@ -46,6 +46,17 @@ func (h handlers) attachMediaToFileResults(ctx context.Context, items []model.Fi
 	return items, nil
 }
 
+func (h handlers) attachMediaToLinkResults(ctx context.Context, items []model.LinkResult, signed bool) ([]model.LinkResult, error) {
+	for i := range items {
+		media, err := h.searchResultMedia(ctx, items[i].ChannelUsername, items[i].ChannelID, items[i].TelegramMessageID, items[i].MessageType, nil, signed)
+		if err != nil {
+			return nil, err
+		}
+		items[i].Media = media
+	}
+	return items, nil
+}
+
 func (h handlers) attachMediaToRemoteSearchResults(ctx context.Context, result model.RemoteSearchResults, signed bool) (model.RemoteSearchResults, error) {
 	for i := range result.Items {
 		media, err := h.searchResultMedia(ctx, result.Items[i].ChannelUsername, result.Items[i].ChannelID, result.Items[i].TelegramMessageID, result.Items[i].MessageType, result.Items[i].Files, signed)

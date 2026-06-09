@@ -1905,6 +1905,11 @@ func (h handlers) searchGlobal(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	result.Links.Items, err = h.attachMediaToLinkResults(c.Request.Context(), result.Links.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	result.Files.Items, err = h.attachMediaToFileResults(c.Request.Context(), result.Files.Items, false)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -1939,6 +1944,11 @@ func (h handlers) searchLinks(c *gin.Context) {
 	result, err := h.deps.Search.ScopedLinks(c.Request.Context(), query)
 	if err != nil {
 		h.searchError(c, err)
+		return
+	}
+	result.Items, err = h.attachMediaToLinkResults(c.Request.Context(), result.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)

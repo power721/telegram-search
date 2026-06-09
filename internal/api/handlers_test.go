@@ -234,6 +234,9 @@ func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
 	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save file: %v", err)
 	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/media-trailer", Note: "media trailer"}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
@@ -256,6 +259,9 @@ func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
 	}
 	if messages[102].Media == nil || messages[102].Media.ImageURL != "/i/media_channel/102" || messages[102].Media.VideoURL != "/v/media_channel/102" {
 		t.Fatalf("video message media = %+v", messages[102].Media)
+	}
+	if len(body.Links.Items) != 1 || body.Links.Items[0].Media == nil || body.Links.Items[0].Media.ImageURL != "/i/media_channel/102" || body.Links.Items[0].Media.VideoURL != "/v/media_channel/102" {
+		t.Fatalf("link media = %+v", body.Links.Items)
 	}
 	if len(body.Files.Items) != 1 || body.Files.Items[0].Media == nil || body.Files.Items[0].Media.VideoURL != "/v/media_channel/102" {
 		t.Fatalf("file media = %+v", body.Files.Items)

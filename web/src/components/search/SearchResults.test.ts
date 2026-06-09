@@ -212,6 +212,8 @@ describe('SearchResults', () => {
       expect(preview.attributes('aria-hidden')).toBe('true')
     }
     expect(searchResultsSource).toMatch(/--search-thumb-preview-width:\s*600px;/)
+    expect(searchResultsSource).toMatch(/img\.search-thumb\s*\{[\s\S]*max-height:\s*55px;[\s\S]*max-width:\s*88px;[\s\S]*object-fit:\s*contain;/)
+    expect(searchResultsSource).toMatch(/\.search-thumb-preview\s*\{[\s\S]*max-height:\s*calc\(100vh - 32px\);[\s\S]*object-fit:\s*contain;[\s\S]*width:\s*auto;/)
     expect(searchResultsSource).toMatch(/\.search-thumb-frame:hover\s+\.search-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
   })
 

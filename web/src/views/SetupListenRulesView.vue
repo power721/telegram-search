@@ -10,6 +10,7 @@ const setup = useSetupStore()
 
 const includes = ref('')
 const excludes = ref('')
+const ignoredLinkPatterns = ref('t.me, toapp.mypikpak.com, telegra.ph, www.themoviedb.org')
 const messageTypes = ref(['link', 'text', 'image', 'video', 'audio'])
 const linkTypes = ref(['cloud_drive', 'magnet', 'ed2k', 'other'])
 
@@ -26,7 +27,8 @@ async function submit() {
       includes: terms(includes.value),
       excludes: terms(excludes.value),
       message_types: messageTypes.value,
-      link_types: linkTypes.value
+      link_types: linkTypes.value,
+      ignored_link_patterns: terms(ignoredLinkPatterns.value)
     })
     message.success('监听规则已保存')
     await router.push('/setup/channels')
@@ -47,6 +49,9 @@ async function submit() {
         </n-form-item>
         <n-form-item label="排除关键词">
           <n-input v-model:value="excludes" placeholder="多个关键词用英文逗号分隔" />
+        </n-form-item>
+        <n-form-item label="忽略链接">
+          <n-input v-model:value="ignoredLinkPatterns" placeholder="t.me, *.t.me, example.com" />
         </n-form-item>
         <n-form-item label="消息类型">
           <n-checkbox-group v-model:value="messageTypes">

@@ -50,7 +50,8 @@ describe('setup store', () => {
       includes: ['电影'],
       excludes: ['预告'],
       message_types: ['link', 'text'],
-      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other'],
+      ignored_link_patterns: ['t.me']
     })
 
     expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key')
@@ -59,7 +60,8 @@ describe('setup store', () => {
       includes: ['电影'],
       excludes: ['预告'],
       message_types: ['link', 'text'],
-      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other'],
+      ignored_link_patterns: ['t.me']
     })
   })
 })

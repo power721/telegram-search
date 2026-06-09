@@ -393,6 +393,26 @@ Response includes:
 
 ## Listen Rules
 
+### `GET /api/listen-rules`
+
+Returns the global listen rules used by history sync and realtime listeners.
+
+### `PUT /api/listen-rules`
+
+Updates the global listen rules.
+
+```json
+{
+  "includes": ["电影", "课程"],
+  "excludes": ["广告"],
+  "message_types": ["text", "file"],
+  "link_types": ["cloud_drive", "magnet", "ed2k", "http"],
+  "ignored_link_patterns": ["t.me", "*.t.me", "toapp.mypikpak.com", "telegra.ph", "www.themoviedb.org"]
+}
+```
+
+`ignored_link_patterns` accepts exact hosts such as `t.me`, wildcard subdomains such as `*.t.me`, and URL prefixes. Matching links are excluded from stored extracted links; the message text itself is not dropped solely because it contains an ignored link.
+
 ### `POST /api/watch-rules`
 
 Creates a listen rule.

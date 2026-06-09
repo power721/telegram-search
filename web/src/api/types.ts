@@ -21,6 +21,7 @@ export interface ListenRulesPayload {
   excludes: string[]
   message_types: string[]
   link_types: string[]
+  ignored_link_patterns?: string[]
 }
 
 export interface APIKeyResponse {

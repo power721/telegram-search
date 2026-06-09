@@ -130,7 +130,8 @@ vi.mock('@/api/client', () => ({
         includes: ['全局'],
         excludes: [],
         message_types: ['link', 'text'],
-        link_types: ['cloud_drive', 'magnet']
+        link_types: ['cloud_drive', 'magnet'],
+        ignored_link_patterns: ['t.me', 'toapp.mypikpak.com', 'telegra.ph', 'www.themoviedb.org']
       })
     }
     return Promise.resolve({ id: 9, channel_id: 2, enabled: true })
@@ -396,7 +397,8 @@ describe('ChannelsView', () => {
           includes: ['电影'],
           excludes: ['预告'],
           message_types: ['link'],
-          link_types: ['cloud_drive']
+          link_types: ['cloud_drive'],
+          ignored_link_patterns: ['t.me', '*.t.me']
         })
       }
       return Promise.resolve({
@@ -453,7 +455,8 @@ describe('ChannelsView', () => {
       includes: ['全局', '资源'],
       excludes: ['广告'],
       message_types: ['link'],
-      link_types: ['cloud_drive']
+      link_types: ['cloud_drive'],
+      ignored_link_patterns: ['t.me', '*.t.me']
     })
   })
 

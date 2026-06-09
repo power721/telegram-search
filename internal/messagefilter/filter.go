@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"strings"
 
 	"tg-search/internal/link"
@@ -48,6 +49,12 @@ const (
 	ReasonExcludeHit   Reason = "exclude_hit"
 )
 
+var defaultIgnoredLinkPatterns = []string{"t.me", "toapp.mypikpak.com", "telegra.ph", "www.themoviedb.org"}
+
+func DefaultIgnoredLinkPatterns() []string {
+	return append([]string(nil), defaultIgnoredLinkPatterns...)
+}
+
 func New(rules RuleStore) *Filter {
 	return &Filter{rules: rules, extractor: link.NewExtractor()}
 }
@@ -56,24 +63,26 @@ func (f *Filter) Apply(ctx context.Context, req Request) (Result, error) {
 	if f == nil || f.rules == nil {
 		return Result{Keep: true, Reason: ReasonNone}, nil
 	}
+	extractor := f.extractor
+	if extractor == nil {
+		extractor = link.NewExtractor()
+	}
+	rawLinks := extractor.Extract(req.Text)
 	rule, err := f.rules.FindByChannelID(ctx, req.ChannelID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			links := filterLinksByIgnoredPatterns(rawLinks, defaultIgnoredLinkPatterns)
 			if req.RequireRule {
-				return Result{Keep: false, Reason: ReasonNoRule}, nil
+				return Result{Keep: false, Links: links, Reason: ReasonNoRule}, nil
 			}
-			return Result{Keep: true, Reason: ReasonNoRule}, nil
+			return Result{Keep: true, Links: links, Reason: ReasonNoRule}, nil
 		}
 		return Result{}, err
 	}
 	if req.RequireEnabled && !rule.Enabled {
 		return Result{Keep: false, RuleApplied: true, Reason: ReasonRuleDisabled}, nil
 	}
-	extractor := f.extractor
-	if extractor == nil {
-		extractor = link.NewExtractor()
-	}
-	rawLinks := extractor.Extract(req.Text)
+	rawLinks = filterLinksByIgnoredPatterns(rawLinks, ignoredPatternsOrDefault(rule.IgnoredLinkPatterns))
 	links := filterLinksByType(rawLinks, rule.LinkTypes)
 	keepByType, reason := keepByMessageType(req, rule.MessageTypes, links, len(rawLinks) > 0)
 	if !keepByType {
@@ -87,6 +96,13 @@ func (f *Filter) Apply(ctx context.Context, req Request) (Result, error) {
 		return Result{Keep: false, RuleApplied: true, Links: links, Reason: ReasonExcludeHit}, nil
 	}
 	return Result{Keep: true, RuleApplied: true, Links: links, Reason: ReasonNone}, nil
+}
+
+func ignoredPatternsOrDefault(patterns []string) []string {
+	if patterns == nil {
+		return defaultIgnoredLinkPatterns
+	}
+	return patterns
 }
 
 func containsAny(lowerText string, terms []string) bool {
@@ -122,6 +138,52 @@ func filterLinksByType(links []model.Link, allowed []string) []model.Link {
 		}
 	}
 	return out
+}
+
+func filterLinksByIgnoredPatterns(links []model.Link, patterns []string) []model.Link {
+	if len(links) == 0 || len(patterns) == 0 {
+		return links
+	}
+	out := make([]model.Link, 0, len(links))
+	for _, item := range links {
+		if ignoredLinkURL(item.URL, patterns) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+func ignoredLinkURL(raw string, patterns []string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	lowerURL := strings.ToLower(raw)
+	for _, pattern := range patterns {
+		normalized := strings.ToLower(strings.TrimSpace(pattern))
+		if normalized == "" {
+			continue
+		}
+		if strings.HasPrefix(normalized, "*.") {
+			base := strings.TrimPrefix(normalized, "*.")
+			if host != base && strings.HasSuffix(host, "."+base) {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(normalized, "://") || strings.Contains(normalized, "/") {
+			if strings.HasPrefix(lowerURL, normalized) {
+				return true
+			}
+			continue
+		}
+		if host == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 func keepByMessageType(req Request, messageTypes []string, links []model.Link, hasRawLinks bool) (bool, Reason) {

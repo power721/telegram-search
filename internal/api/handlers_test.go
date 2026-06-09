@@ -1949,7 +1949,7 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["link","text"],"link_types":["cloud_drive","magnet"]}`))
+	req := httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["link","text"],"link_types":["cloud_drive","magnet"],"ignored_link_patterns":[" t.me ","*.t.me"]}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1963,7 +1963,8 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 	if !sameStringSlices(updated.Includes, []string{"庆余年"}) ||
 		!sameStringSlices(updated.Excludes, []string{"预告"}) ||
 		!sameStringSlices(updated.MessageTypes, []string{"link", "text"}) ||
-		!sameStringSlices(updated.LinkTypes, []string{"cloud_drive", "magnet"}) {
+		!sameStringSlices(updated.LinkTypes, []string{"cloud_drive", "magnet"}) ||
+		!sameStringSlices(updated.IgnoredLinkPatterns, []string{"t.me", "*.t.me"}) {
 		t.Fatalf("updated = %+v", updated)
 	}
 
@@ -1979,7 +1980,8 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 		t.Fatalf("decode get listen rules: %v", err)
 	}
 	if !sameStringSlices(got.Includes, []string{"庆余年"}) ||
-		!sameStringSlices(got.MessageTypes, []string{"link", "text"}) {
+		!sameStringSlices(got.MessageTypes, []string{"link", "text"}) ||
+		!sameStringSlices(got.IgnoredLinkPatterns, []string{"t.me", "*.t.me"}) {
 		t.Fatalf("got = %+v", got)
 	}
 

@@ -9,7 +9,8 @@ export const useSetupStore = defineStore('setup', {
       includes: [],
       excludes: [],
       message_types: ['link', 'text'],
-      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other'],
+      ignored_link_patterns: ['t.me', 'toapp.mypikpak.com', 'telegra.ph', 'www.themoviedb.org']
     } as ListenRulesPayload,
     createdAPIKey: null as APIKeySetupResponse | null,
     loaded: false,

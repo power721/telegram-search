@@ -54,7 +54,8 @@ describe('SetupListenRulesView', () => {
       includes: [],
       excludes: [],
       message_types: ['link', 'text', 'image', 'video', 'audio'],
-      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
+      link_types: ['cloud_drive', 'magnet', 'ed2k', 'other'],
+      ignored_link_patterns: ['t.me', 'toapp.mypikpak.com', 'telegra.ph', 'www.themoviedb.org']
     })
     expect(push).toHaveBeenCalledWith('/setup/channels')
   })

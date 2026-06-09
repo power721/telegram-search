@@ -300,20 +300,26 @@ func (h handlers) saveListenRules(ctx context.Context, rules model.ListenRules) 
 }
 
 func normalizeListenRules(req model.ListenRules) model.ListenRules {
+	ignoredLinkPatterns := req.IgnoredLinkPatterns
+	if ignoredLinkPatterns == nil {
+		ignoredLinkPatterns = messagefilter.DefaultIgnoredLinkPatterns()
+	}
 	return model.ListenRules{
-		Includes:     normalizeSetupStrings(req.Includes),
-		Excludes:     normalizeSetupStrings(req.Excludes),
-		MessageTypes: normalizeSetupStrings(req.MessageTypes),
-		LinkTypes:    normalizeSetupStrings(req.LinkTypes),
+		Includes:            normalizeSetupStrings(req.Includes),
+		Excludes:            normalizeSetupStrings(req.Excludes),
+		MessageTypes:        normalizeSetupStrings(req.MessageTypes),
+		LinkTypes:           normalizeSetupStrings(req.LinkTypes),
+		IgnoredLinkPatterns: normalizeSetupStrings(ignoredLinkPatterns),
 	}
 }
 
 func emptyListenRules() model.ListenRules {
 	return model.ListenRules{
-		Includes:     []string{},
-		Excludes:     []string{},
-		MessageTypes: []string{},
-		LinkTypes:    []string{},
+		Includes:            []string{},
+		Excludes:            []string{},
+		MessageTypes:        []string{},
+		LinkTypes:           []string{},
+		IgnoredLinkPatterns: messagefilter.DefaultIgnoredLinkPatterns(),
 	}
 }
 

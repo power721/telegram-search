@@ -138,22 +138,24 @@ type ChannelControl struct {
 }
 
 type WatchRule struct {
-	ID           int64     `json:"id"`
-	ChannelID    int64     `json:"channel_id"`
-	Enabled      bool      `json:"enabled"`
-	Includes     []string  `json:"includes"`
-	Excludes     []string  `json:"excludes"`
-	MessageTypes []string  `json:"message_types"`
-	LinkTypes    []string  `json:"link_types"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID                  int64     `json:"id"`
+	ChannelID           int64     `json:"channel_id"`
+	Enabled             bool      `json:"enabled"`
+	Includes            []string  `json:"includes"`
+	Excludes            []string  `json:"excludes"`
+	MessageTypes        []string  `json:"message_types"`
+	LinkTypes           []string  `json:"link_types"`
+	IgnoredLinkPatterns []string  `json:"ignored_link_patterns,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
 }
 
 type ListenRules struct {
-	Includes     []string `json:"includes"`
-	Excludes     []string `json:"excludes"`
-	MessageTypes []string `json:"message_types"`
-	LinkTypes    []string `json:"link_types"`
+	Includes            []string `json:"includes"`
+	Excludes            []string `json:"excludes"`
+	MessageTypes        []string `json:"message_types"`
+	LinkTypes           []string `json:"link_types"`
+	IgnoredLinkPatterns []string `json:"ignored_link_patterns"`
 }
 
 type ChannelIndexedCounts struct {

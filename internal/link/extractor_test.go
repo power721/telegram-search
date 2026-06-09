@@ -105,8 +105,27 @@ func TestExtractRealMessageCorpus(t *testing.T) {
 			t.Fatalf("type %s count = %d, want 1: %+v", typ, len(byType[typ]), links)
 		}
 	}
-	if len(byType["url"]) != 3 {
-		t.Fatalf("fallback url count = %d, want 3 telegram links: %+v", len(byType["url"]), byType["url"])
+	if len(byType["url"]) != 0 {
+		t.Fatalf("fallback url count = %d, want telegram links ignored: %+v", len(byType["url"]), byType["url"])
+	}
+}
+
+func TestExtractIgnoresTelegramLinks(t *testing.T) {
+	text := `频道：https://t.me/+Djia5z2lVsI5ODRl
+群组：http://t.me/Quark_Share_Group
+投稿：https://T.ME/QuarkRobot
+资源：https://pan.quark.cn/s/abc123
+官网：https://example.com/post`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want only non-telegram links: %+v", len(links), links)
+	}
+	if links[0].Type != "quark" || links[0].URL != "https://pan.quark.cn/s/abc123" {
+		t.Fatalf("first link = %+v, want quark link", links[0])
+	}
+	if links[1].Type != "url" || links[1].URL != "https://example.com/post" {
+		t.Fatalf("second link = %+v, want fallback url", links[1])
 	}
 }
 

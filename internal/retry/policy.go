@@ -14,10 +14,12 @@ type Kind string
 const (
 	KindTemporary Kind = "temporary"
 	KindFloodWait Kind = "flood_wait"
+	KindAuth      Kind = "auth"
 	KindPermanent Kind = "permanent"
 )
 
 var floodWaitText = regexp.MustCompile(`(?i)FLOOD[_ ]?WAIT[_ ]?(\d+)`)
+var authFailureText = regexp.MustCompile(`(?i)(AUTH_KEY_UNREGISTERED|AUTH_KEY_INVALID|SESSION_REVOKED)`)
 
 type Classification struct {
 	Kind Kind
@@ -123,6 +125,9 @@ func Classify(err error) Classification {
 			return Classification{Kind: KindFloodWait, Wait: time.Duration(seconds) * time.Second, Err: err}
 		}
 	}
+	if authFailureText.MatchString(err.Error()) {
+		return Classification{Kind: KindAuth, Err: err}
+	}
 	var permanent permanentError
 	if errors.As(err, &permanent) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return Classification{Kind: KindPermanent, Err: err}
@@ -158,7 +163,7 @@ func (p Policy) Run(ctx context.Context, fn func() error, onRetry func(context.C
 		}
 		last = err
 		classification := Classify(err)
-		if classification.Kind == KindPermanent || attempt == p.MaxTries {
+		if classification.Kind == KindAuth || classification.Kind == KindPermanent || attempt == p.MaxTries {
 			return err
 		}
 		delay := p.Delay(attempt, classification)

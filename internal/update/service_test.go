@@ -188,7 +188,7 @@ func TestServiceStartsListenerOnlyWhenAccountHasListenEnabledChannel(t *testing.
 	}
 }
 
-func TestServiceMarksReconnectingAccountOnlineWhenListenerStarts(t *testing.T) {
+func TestServiceMarksReconnectingAccountOnlineAfterListenerStabilizes(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
 	if err != nil {
@@ -210,9 +210,10 @@ func TestServiceMarksReconnectingAccountOnlineWhenListenerStarts(t *testing.T) {
 
 	listener := &blockingStartedListener{started: make(chan int64, 1)}
 	service := NewService(ServiceOptions{
-		Accounts:  accounts,
-		Processor: &recordingProcessor{},
-		Listener:  listener,
+		Accounts:    accounts,
+		Processor:   &recordingProcessor{},
+		Listener:    listener,
+		OnlineDelay: time.Millisecond,
 	})
 	service.Start(ctx)
 	if err := service.StartAccount(ctx, account); err != nil {
@@ -227,9 +228,67 @@ func TestServiceMarksReconnectingAccountOnlineWhenListenerStarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find updated account: %v", err)
 	}
-	if updated.Status != model.AccountStatusOnline {
-		t.Fatalf("status = %q, want ONLINE", updated.Status)
+	if updated.Status != model.AccountStatusReconnecting {
+		t.Fatalf("status immediately after listener start = %q, want RECONNECTING", updated.Status)
 	}
+	waitForAccountStatus(t, accounts, accountID, model.AccountStatusOnline)
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
+func TestServiceKeepsReconnectingAccountReconnectingUntilRetryStabilizes(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusReconnecting})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+
+	listener := &failThenBlockListener{
+		started:       make(chan int, 2),
+		releaseSecond: make(chan struct{}),
+	}
+	service := NewService(ServiceOptions{
+		Accounts:    accounts,
+		Processor:   &recordingProcessor{},
+		Listener:    listener,
+		OnlineDelay: time.Hour,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, account); err != nil {
+		t.Fatalf("StartAccount returned error: %v", err)
+	}
+
+	waitForRun(t, listener.started, 1)
+	waitForRun(t, listener.started, 2)
+	updated, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find updated account: %v", err)
+	}
+	if updated.Status != model.AccountStatusReconnecting {
+		t.Fatalf("status = %q, want RECONNECTING", updated.Status)
+	}
+
+	close(listener.releaseSecond)
 	if err := service.Stop(context.Background()); err != nil {
 		t.Fatalf("Stop returned error: %v", err)
 	}
@@ -346,6 +405,58 @@ func TestServiceMarksFloodWaitAndRetriesListener(t *testing.T) {
 	}
 }
 
+func TestServiceMarksAccountLoginRequiredOnAuthKeyUnregistered(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+
+	listener := &authKeyUnregisteredListener{started: make(chan struct{}, 2)}
+	service := NewService(ServiceOptions{
+		Accounts:  accounts,
+		Processor: &recordingProcessor{},
+		Listener:  listener,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep: func(context.Context, time.Duration) error {
+				t.Fatal("Sleep called for auth failure")
+				return nil
+			},
+		},
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, account); err != nil {
+		t.Fatalf("StartAccount returned error: %v", err)
+	}
+
+	waitForStarts(t, listener.started, 1)
+	waitForAccountStatus(t, accounts, accountID, model.AccountStatusLoginRequired)
+	select {
+	case <-listener.started:
+		t.Fatal("listener retried after auth failure")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
 type recordingProcessor struct {
 	mu        sync.Mutex
 	events    []Event
@@ -427,6 +538,17 @@ type reconnectThenSuccessListener struct {
 	started chan struct{}
 }
 
+type failThenBlockListener struct {
+	mu            sync.Mutex
+	runs          int
+	started       chan int
+	releaseSecond chan struct{}
+}
+
+type authKeyUnregisteredListener struct {
+	started chan struct{}
+}
+
 func (l *reconnectThenSuccessListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
 	l.mu.Lock()
 	l.runs++
@@ -437,6 +559,28 @@ func (l *reconnectThenSuccessListener) Run(ctx context.Context, account model.Ac
 		return errors.New("temporary disconnect")
 	}
 	return nil
+}
+
+func (l *failThenBlockListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	l.mu.Lock()
+	l.runs++
+	run := l.runs
+	l.mu.Unlock()
+	l.started <- run
+	if run == 1 {
+		return errors.New("temporary disconnect")
+	}
+	select {
+	case <-l.releaseSecond:
+		return errors.New("temporary disconnect")
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (l *authKeyUnregisteredListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
+	l.started <- struct{}{}
+	return errors.New("callback: rpcDoRequest: rpc error code 401: AUTH_KEY_UNREGISTERED")
 }
 
 func (l *floodWaitListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
@@ -450,6 +594,43 @@ func (l *floodWaitListener) Run(ctx context.Context, account model.Account, emit
 	}
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func waitForRun(t *testing.T, ch <-chan int, want int) {
+	t.Helper()
+	select {
+	case got := <-ch:
+		if got != want {
+			t.Fatalf("listener run = %d, want %d", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timed out waiting for listener run %d", want)
+	}
+}
+
+func waitForAccountStatus(t *testing.T, accounts *repository.AccountRepository, accountID int64, want string) {
+	t.Helper()
+	deadline := time.After(time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			account, err := accounts.FindByID(context.Background(), accountID)
+			if err != nil {
+				t.Fatalf("find account: %v", err)
+			}
+			t.Fatalf("status = %q, want %s", account.Status, want)
+		case <-ticker.C:
+			account, err := accounts.FindByID(context.Background(), accountID)
+			if err != nil {
+				t.Fatalf("find account: %v", err)
+			}
+			if account.Status == want {
+				return
+			}
+		}
+	}
 }
 
 func waitForStarts(t *testing.T, ch <-chan struct{}, n int) {

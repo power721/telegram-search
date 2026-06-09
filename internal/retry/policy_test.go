@@ -19,6 +19,13 @@ func TestClassifyFloodWaitFromTypedAndTextErrors(t *testing.T) {
 	}
 }
 
+func TestClassifyAuthKeyUnregisteredAsAuthFailure(t *testing.T) {
+	classification := Classify(errors.New("callback: rpcDoRequest: rpc error code 401: AUTH_KEY_UNREGISTERED"))
+	if classification.Kind != KindAuth {
+		t.Fatalf("classification = %+v, want auth failure", classification)
+	}
+}
+
 func TestPolicyRetriesTemporaryWithExponentialBackoffAndCap(t *testing.T) {
 	var slept []time.Duration
 	policy := Policy{

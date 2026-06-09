@@ -42,6 +42,7 @@ type ServiceOptions struct {
 	Listener      Listener
 	QueueSize     int
 	RetryInterval time.Duration
+	OnlineDelay   time.Duration
 	RetryPolicy   retry.Policy
 	Logger        *zap.Logger
 }
@@ -52,6 +53,7 @@ type Service struct {
 	processor     EventProcessor
 	listener      Listener
 	retryInterval time.Duration
+	onlineDelay   time.Duration
 	retryPolicy   retry.Policy
 	logger        *zap.Logger
 
@@ -80,6 +82,9 @@ func NewService(opts ServiceOptions) *Service {
 	if opts.QueueSize <= 0 {
 		opts.QueueSize = 100
 	}
+	if opts.OnlineDelay <= 0 {
+		opts.OnlineDelay = 5 * time.Second
+	}
 	if opts.RetryPolicy.MaxTries == 0 && opts.RetryPolicy.BaseDelay == 0 && opts.RetryPolicy.MaxDelay == 0 && opts.RetryPolicy.Sleep == nil {
 		opts.RetryPolicy = retry.Policy{
 			BaseDelay: opts.RetryInterval,
@@ -96,6 +101,7 @@ func NewService(opts ServiceOptions) *Service {
 		processor:       opts.Processor,
 		listener:        opts.Listener,
 		retryInterval:   opts.RetryInterval,
+		onlineDelay:     opts.OnlineDelay,
 		retryPolicy:     opts.RetryPolicy,
 		logger:          opts.Logger,
 		events:          make(chan Event, opts.QueueSize),
@@ -235,14 +241,10 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 	hadFailure := false
 	for {
 		s.logger.Info("telegram update listener running", zap.Int64("account_id", account.ID))
-		if account.Status == model.AccountStatusReconnecting && s.accounts != nil {
-			if updateErr := s.accounts.UpdateStatus(ctx, account.ID, model.AccountStatusOnline); updateErr != nil {
-				s.logger.Error("mark account online after listener start", zap.Int64("account_id", account.ID), zap.Error(updateErr))
-			}
+		err, markedOnline := s.runListenerAttempt(ctx, account)
+		if markedOnline {
+			account.Status = model.AccountStatusOnline
 		}
-		err := s.listener.Run(ctx, account, func(event Event) error {
-			return s.Enqueue(ctx, event)
-		})
 		if ctx.Err() != nil {
 			s.logger.Info("telegram update listener stopped by context", zap.Int64("account_id", account.ID))
 			return
@@ -258,6 +260,15 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 		}
 		s.logger.Warn("telegram update listener stopped", zap.Int64("account_id", account.ID), zap.Error(err))
 		classification := retry.Classify(err)
+		if classification.Kind == retry.KindAuth {
+			if s.accounts != nil {
+				if updateErr := s.accounts.UpdateStatus(ctx, account.ID, model.AccountStatusLoginRequired); updateErr != nil {
+					s.logger.Error("mark account login required after listener auth failure", zap.Int64("account_id", account.ID), zap.Error(updateErr))
+				}
+			}
+			s.logger.Error("telegram update listener auth failure", zap.Int64("account_id", account.ID), zap.Error(err))
+			return
+		}
 		if classification.Kind == retry.KindPermanent {
 			s.logger.Error("telegram update listener permanent failure", zap.Int64("account_id", account.ID), zap.Error(err))
 			return
@@ -271,6 +282,7 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 				s.logger.Error("mark account after listener failure", zap.Int64("account_id", account.ID), zap.String("status", status), zap.Error(updateErr))
 			}
 		}
+		account.Status = status
 		hadFailure = true
 		delay := s.retryPolicy.Delay(1, classification)
 		s.logger.Info("telegram update listener retry scheduled",
@@ -285,6 +297,34 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 		if sleepErr := sleep(ctx, delay); sleepErr != nil {
 			return
 		}
+	}
+}
+
+func (s *Service) runListenerAttempt(ctx context.Context, account model.Account) (error, bool) {
+	if account.Status != model.AccountStatusReconnecting || s.accounts == nil {
+		return s.listener.Run(ctx, account, func(event Event) error {
+			return s.Enqueue(ctx, event)
+		}), false
+	}
+
+	errc := make(chan error, 1)
+	go func() {
+		errc <- s.listener.Run(ctx, account, func(event Event) error {
+			return s.Enqueue(ctx, event)
+		})
+	}()
+
+	timer := time.NewTimer(s.onlineDelay)
+	defer timer.Stop()
+	select {
+	case err := <-errc:
+		return err, false
+	case <-timer.C:
+		if updateErr := s.accounts.UpdateStatus(ctx, account.ID, model.AccountStatusOnline); updateErr != nil {
+			s.logger.Error("mark account online after listener stabilizes", zap.Int64("account_id", account.ID), zap.Error(updateErr))
+		}
+		err := <-errc
+		return err, true
 	}
 }
 

@@ -1,6 +1,13 @@
 <script setup lang="ts">
+import type { SelectOption } from 'naive-ui'
+
 const keyword = defineModel<string>('keyword', { required: true })
 const category = defineModel<string>('category', { required: true })
+const channelId = defineModel<string | number>('channelId', { required: true })
+
+defineProps<{
+  channelOptions: SelectOption[]
+}>()
 
 const emit = defineEmits<{
   submit: []
@@ -29,13 +36,22 @@ const categories = [
       label-field="label"
       value-field="value"
     />
+    <label class="filter-label" for="resource-channel">频道</label>
+    <n-select
+      id="resource-channel"
+      v-model:value="channelId"
+      :options="channelOptions"
+      class="channel-select"
+      label-field="label"
+      value-field="value"
+    />
     <n-button attr-type="submit" type="primary">搜索</n-button>
   </form>
 </template>
 
 <style scoped>
 .resource-filters {
-  grid-template-columns: auto minmax(0, 1fr) auto 180px auto;
+  grid-template-columns: auto minmax(0, 1fr) auto 180px auto 220px auto;
 }
 
 @media (max-width: 760px) {

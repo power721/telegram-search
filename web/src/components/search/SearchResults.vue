@@ -40,7 +40,7 @@ function sourceLabel(source?: string) {
         <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
       </article>
       <div
-        v-if="!loading && (result?.messages.items.length ?? 0) === 0 && (remoteItems?.length ?? 0) === 0"
+        v-if="!loading && (result?.messages.items?.length ?? 0) === 0 && (remoteItems?.length ?? 0) === 0"
         class="empty-state"
       >
         <strong>暂无消息结果</strong>
@@ -64,7 +64,7 @@ function sourceLabel(source?: string) {
         </p>
         <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
-      <div v-if="!loading && (result?.links.items.length ?? 0) === 0" class="empty-state">
+      <div v-if="!loading && (result?.links.items?.length ?? 0) === 0" class="empty-state">
         <strong>暂无链接结果</strong>
         <span>资源链接会在本地索引后出现在这里。</span>
       </div>
@@ -84,7 +84,7 @@ function sourceLabel(source?: string) {
         <p>{{ item.extension }} {{ item.mime_type }}</p>
         <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
-      <div v-if="!loading && (result?.files.items.length ?? 0) === 0" class="empty-state">
+      <div v-if="!loading && (result?.files.items?.length ?? 0) === 0" class="empty-state">
         <strong>暂无文件结果</strong>
         <span>文件元数据会在历史同步后进入搜索。</span>
       </div>
@@ -104,7 +104,7 @@ function sourceLabel(source?: string) {
         <p>@{{ item.username || '私有频道' }}</p>
         <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
       </article>
-      <div v-if="!loading && (result?.channels.items.length ?? 0) === 0" class="empty-state">
+      <div v-if="!loading && (result?.channels.items?.length ?? 0) === 0" class="empty-state">
         <strong>暂无频道结果</strong>
         <span>频道元数据同步完成后可以被搜索。</span>
       </div>

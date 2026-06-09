@@ -11,6 +11,7 @@ export interface ResourceFilters {
   keyword?: string
   type?: string
   category?: string
+  channelId?: number
   extension?: string
   limit?: number
   offset?: number
@@ -22,6 +23,7 @@ function buildResourcePath(path: string, filters: ResourceFilters = {}, includeL
   if (keyword) params.set('q', keyword)
   if (filters.type) params.set('type', filters.type)
   if (filters.category) params.set('category', filters.category)
+  if (filters.channelId) params.set('channel_id', String(filters.channelId))
   if (filters.extension) params.set('extension', filters.extension)
   if (includeLimit) params.set('limit', String(filters.limit ?? 50))
   if (filters.offset) params.set('offset', String(filters.offset))

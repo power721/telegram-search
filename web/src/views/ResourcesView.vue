@@ -2,12 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import ResourceFilters from '@/components/resources/ResourceFilters.vue'
 import ResourceTable from '@/components/resources/ResourceTable.vue'
+import { useChannelsStore } from '@/stores/channels'
 import { useResourcesStore } from '@/stores/resources'
 
 const pageSizeOptions = [20, 50, 100]
 const resources = useResourcesStore()
+const channels = useChannelsStore()
 const keyword = ref('')
 const category = ref('')
+const channelId = ref<string | number>('')
 const pageSize = ref(50)
 const offset = ref(0)
 
@@ -34,11 +37,19 @@ const resourceTypes = computed(() => [
     count: resources.grouped[key] ?? 0
   }))
 ])
+const channelOptions = computed(() => [
+  { label: '全部频道', value: '' },
+  ...channels.items.map((channel) => ({
+    label: channel.username ? `${channel.title} (@${channel.username})` : channel.title,
+    value: channel.id
+  }))
+])
 
 async function load() {
   await resources.load({
     keyword: keyword.value,
     category: category.value,
+    channelId: typeof channelId.value === 'number' ? channelId.value : undefined,
     limit: pageSize.value,
     offset: offset.value
   })
@@ -73,6 +84,7 @@ async function changePageSize(event: Event) {
 }
 
 onMounted(() => {
+  void channels.loadChannels()
   void load()
 })
 </script>
@@ -104,7 +116,9 @@ onMounted(() => {
 
     <ResourceFilters
       v-model:category="category"
+      v-model:channel-id="channelId"
       v-model:keyword="keyword"
+      :channel-options="channelOptions"
       class="filters"
       @submit="resetAndLoad"
     />

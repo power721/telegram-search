@@ -28,13 +28,13 @@ describe('useResourcesStore', () => {
       })
     const store = useResourcesStore()
 
-    await store.load({ keyword: 'course', category: 'cloud_drive' })
+    await store.load({ keyword: 'course', category: 'cloud_drive', channelId: 7 })
     await store.loadGrouped()
     await store.loadLinkTypesGrouped()
 
     expect(apiGet).toHaveBeenNthCalledWith(
       1,
-      '/api/resources?q=course&category=cloud_drive&limit=50'
+      '/api/resources?q=course&category=cloud_drive&channel_id=7&limit=50'
     )
     expect(apiGet).toHaveBeenNthCalledWith(3, '/api/links/grouped')
     expect(store.items[0].title).toBe('Course')

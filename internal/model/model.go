@@ -1,6 +1,9 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 const (
 	AccountStatusNew           = "NEW"
@@ -310,6 +313,20 @@ type SearchResult struct {
 type ListResult[T any] struct {
 	Items []T `json:"items"`
 	Total int `json:"total"`
+}
+
+func (r ListResult[T]) MarshalJSON() ([]byte, error) {
+	items := r.Items
+	if items == nil {
+		items = []T{}
+	}
+	return json.Marshal(struct {
+		Items []T `json:"items"`
+		Total int `json:"total"`
+	}{
+		Items: items,
+		Total: r.Total,
+	})
 }
 
 type LinkResult struct {

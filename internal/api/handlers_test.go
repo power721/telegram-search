@@ -118,6 +118,40 @@ func TestGlobalSearchAPI(t *testing.T) {
 	}
 }
 
+func TestGlobalSearchAPIEncodesEmptyGroupItemsAsArray(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "推理频道", Username: "mystery", Type: model.ChannelTypeChannel})
+	if _, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "推理 小说", RawJSON: "{}", Date: time.Now().UTC(),
+	}}); err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=%E6%8E%A8%E7%90%86&limit=50", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Files struct {
+			Items json.RawMessage `json:"items"`
+			Total int             `json:"total"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if string(body.Files.Items) != "[]" || body.Files.Total != 0 {
+		t.Fatalf("files group raw items = %s total=%d, want [] and total 0; body=%s", string(body.Files.Items), body.Files.Total, w.Body.String())
+	}
+}
+
 func TestResourcesAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

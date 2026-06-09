@@ -440,6 +440,8 @@ Public integration search endpoint protected by API key. It returns sanitized re
 
 Set `include_media_metadata=true` to include extracted media metadata in a `media` object, for example `media.title`, `media.year`, `media.quality`, `media.tmdb_id`, `media.category`, and `media.tags`. The default is `false`. GET also accepts the alias `media_metadata=true`; POST accepts either `include_media_metadata` or `media_metadata` in the JSON body.
 
+Set `include_image=true` to include cover image URLs for cloud-drive resources in `images`. The default is `false`. Video file resources still return signed playback URLs when available.
+
 ## Admin Search
 
 ### `GET /api/admin/search/global?q=ubuntu`

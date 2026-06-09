@@ -895,6 +895,9 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if _, err := deps.BackupDB.ExecContext(ctx, `UPDATE telegram_links SET category = '' WHERE type IN ('quark', 'magnet', 'ed2k')`); err != nil {
 		t.Fatalf("clear legacy link categories: %v", err)
 	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 101001, FileName: "ubuntu-cover.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: 1000}}); err != nil {
+		t.Fatalf("save quark cover file: %v", err)
+	}
 	if _, err := files.SaveBatch(ctx, stored[3].ID, []model.File{{TelegramFileID: 104001, FileName: "ubuntu-trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save video file: %v", err)
 	}
@@ -972,6 +975,9 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if strings.Contains(responseText, `\u0026`) {
 		t.Fatalf("external response escaped media URL query separator: %s", responseText)
 	}
+	if strings.Contains(responseText, `"images"`) {
+		t.Fatalf("external response returned images without include_image=true: %s", responseText)
+	}
 	for _, forbidden := range []string{
 		"channel_id",
 		"telegram_message_id",
@@ -1019,6 +1025,33 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if strings.Contains(w.Body.String(), "media_title") {
 		t.Fatalf("metadata response used prefixed media field: %s", w.Body.String())
 	}
+	if strings.Contains(w.Body.String(), `"images"`) {
+		t.Fatalf("metadata response returned images without include_image=true: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&include_image=true", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("external search with images status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var imageBody struct {
+		Code int `json:"code"`
+		Data struct {
+			MergedByType map[string][]struct {
+				Images []string `json:"images"`
+			} `json:"merged_by_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &imageBody); err != nil {
+		t.Fatalf("invalid image JSON: %v", err)
+	}
+	quarkImages := imageBody.Data.MergedByType["quark"][0].Images
+	if len(quarkImages) != 1 || !strings.HasPrefix(quarkImages[0], "/i/") {
+		t.Fatalf("quark images = %+v body=%s, want signed image proxy URL", quarkImages, w.Body.String())
+	}
+	assertSignedMediaURL(t, deps.APIKeyService, quarkImages[0])
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&include_media_metadata=maybe", nil)
@@ -1026,6 +1059,14 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid include_media_metadata code = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&include_image=maybe", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid include_image code = %d body=%s, want 400", w.Code, w.Body.String())
 	}
 }
 

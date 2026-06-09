@@ -464,17 +464,6 @@ function formatDate(value?: string) {
   width: 88px;
 }
 
-img.resource-thumb {
-  aspect-ratio: auto;
-  display: block;
-  flex: 0 1 auto;
-  height: auto;
-  max-height: 55px;
-  max-width: 88px;
-  object-fit: contain;
-  width: auto;
-}
-
 .resource-video-placeholder {
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.12) 12.5%, transparent 12.5% 87.5%, rgba(255, 255, 255, 0.12) 87.5%),

@@ -481,17 +481,6 @@ small {
   width: 88px;
 }
 
-img.search-thumb {
-  aspect-ratio: auto;
-  display: block;
-  flex: 0 1 auto;
-  height: auto;
-  max-height: 55px;
-  max-width: 88px;
-  object-fit: contain;
-  width: auto;
-}
-
 .search-thumb-preview {
   background: var(--app-bg-muted);
   border: 1px solid var(--app-border);

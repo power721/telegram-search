@@ -105,6 +105,13 @@ type StorageUsage struct {
 	MediaOverQuota  bool  `json:"media_over_quota"`
 }
 
+type VersionInfoResponse struct {
+	CurrentVersion  string `json:"current_version"`
+	LatestVersion   string `json:"latest_version,omitempty"`
+	LatestURL       string `json:"latest_url,omitempty"`
+	UpdateAvailable bool   `json:"update_available"`
+}
+
 type Channel struct {
 	ID                  int64      `json:"id"`
 	AccountID           int64      `json:"account_id"`

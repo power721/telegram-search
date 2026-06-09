@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,6 +24,7 @@ import (
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/apikey"
+	"tg-search/internal/build"
 	"tg-search/internal/channel"
 	"tg-search/internal/config"
 	"tg-search/internal/db"
@@ -1606,6 +1608,123 @@ func TestTelegramAPISettings(t *testing.T) {
 	if bytes.Contains(w.Body.Bytes(), []byte("new-hash-secret")) {
 		t.Fatalf("put telegram api response leaked app hash: %s", w.Body.String())
 	}
+}
+
+func TestVersionSettingsReportsGitHubRelease(t *testing.T) {
+	originalVersion := build.Version
+	originalURL := githubLatestReleaseURL
+	originalClient := githubHTTPClient
+	defer func() {
+		build.Version = originalVersion
+		githubLatestReleaseURL = originalURL
+		githubHTTPClient = originalClient
+	}()
+
+	build.Version = "v1.2.3"
+	githubLatestReleaseURL = "https://api.github.test/repos/power721/tg-search/releases/latest"
+	githubHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != githubLatestReleaseURL {
+			t.Fatalf("unexpected GitHub URL: %s", req.URL.String())
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"tag_name":"v1.2.4","html_url":"https://github.com/power721/tg-search/releases/tag/v1.2.4"}`)),
+		}, nil
+	})}
+
+	router := NewRouter(testDeps(t))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/version?check_update=true", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.VersionInfoResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.CurrentVersion != "v1.2.3" || body.LatestVersion != "v1.2.4" || !body.UpdateAvailable {
+		t.Fatalf("version response = %+v", body)
+	}
+	if body.LatestURL != "https://github.com/power721/tg-search/releases/tag/v1.2.4" {
+		t.Fatalf("latest url = %q", body.LatestURL)
+	}
+}
+
+func TestVersionSettingsReportsCurrentVersionWithoutGitHubCheck(t *testing.T) {
+	originalVersion := build.Version
+	originalClient := githubHTTPClient
+	defer func() {
+		build.Version = originalVersion
+		githubHTTPClient = originalClient
+	}()
+
+	build.Version = "v1.2.3"
+	githubHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected GitHub request: %s", req.URL.String())
+		return nil, nil
+	})}
+
+	router := NewRouter(testDeps(t))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/version", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.VersionInfoResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.CurrentVersion != "v1.2.3" || body.LatestVersion != "" || body.UpdateAvailable {
+		t.Fatalf("version response = %+v", body)
+	}
+}
+
+func TestVersionSettingsDoesNotClaimUpdateForDevVersion(t *testing.T) {
+	originalVersion := build.Version
+	originalURL := githubLatestReleaseURL
+	originalClient := githubHTTPClient
+	defer func() {
+		build.Version = originalVersion
+		githubLatestReleaseURL = originalURL
+		githubHTTPClient = originalClient
+	}()
+
+	build.Version = "dev"
+	githubLatestReleaseURL = "https://api.github.test/repos/power721/tg-search/releases/latest"
+	githubHTTPClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"tag_name":"v9.9.9","html_url":"https://github.com/power721/tg-search/releases/tag/v9.9.9"}`)),
+		}, nil
+	})}
+
+	router := NewRouter(testDeps(t))
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/version?check_update=true", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.VersionInfoResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.CurrentVersion != "dev" || body.LatestVersion != "v9.9.9" || body.UpdateAvailable {
+		t.Fatalf("version response = %+v", body)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestSetupStatusUsesDefaultTelegramAPIWhenNotStored(t *testing.T) {

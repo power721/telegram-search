@@ -32,6 +32,20 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/settings/telegram-api') {
       return Promise.resolve({ configured: true, app_id: 123456, app_hash_set: true })
     }
+    if (path === '/api/settings/version') {
+      return Promise.resolve({
+        current_version: 'v1.2.3',
+        update_available: false
+      })
+    }
+    if (path === '/api/settings/version?check_update=true') {
+      return Promise.resolve({
+        current_version: 'v1.2.3',
+        latest_version: 'v1.2.4',
+        latest_url: 'https://github.com/power721/tg-search/releases/tag/v1.2.4',
+        update_available: true
+      })
+    }
     return Promise.resolve({
       id: 1,
       name: 'default',
@@ -177,6 +191,25 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('25.0 GB')
   })
 
+  it('shows current version and checks GitHub release updates', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/settings/version')
+    expect(wrapper.get('[data-testid="current-version"]').text()).toBe('v1.2.3')
+    expect(wrapper.text()).toContain('尚未检查')
+
+    await wrapper.get('[data-testid="check-version"]').trigger('click')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/settings/version?check_update=true')
+    expect(wrapper.text()).toContain('发现新版本 v1.2.4')
+  })
+
   it('updates Telegram API credentials from the settings page', async () => {
     const wrapper = mount(SettingsView, {
       global: {
@@ -218,6 +251,20 @@ describe('SettingsView', () => {
       }
       if (path === '/api/settings/telegram-api') {
         return Promise.resolve({ configured: false, app_id: 0, app_hash_set: false })
+      }
+      if (path === '/api/settings/version') {
+        return Promise.resolve({
+          current_version: 'dev',
+          update_available: false
+        })
+      }
+      if (path === '/api/settings/version?check_update=true') {
+        return Promise.resolve({
+          current_version: 'dev',
+          latest_version: 'v1.2.4',
+          latest_url: 'https://github.com/power721/tg-search/releases/tag/v1.2.4',
+          update_available: false
+        })
       }
       return Promise.resolve({
         id: 1,

@@ -72,6 +72,72 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryExcludesImageFilesByDefault(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	mirrorChannelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2, Title: "Mirror", Type: model.ChannelTypeChannel})
+	publishedAt := time.Date(2026, 6, 9, 16, 26, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 227,
+			MessageType: "photo", MediaSummary: "photo", Text: "吞噬星空 https://pan.quark.cn/s/abc", RawJSON: "{}", Date: publishedAt,
+		},
+		{
+			AccountID: accountID, ChannelID: mirrorChannelID, TelegramMessageID: 228,
+			MessageType: "photo", MediaSummary: "photo", Text: "telegram-photo-6143006241194709282.jpg", RawJSON: "{}", Date: publishedAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "url", Category: "cloud_drive", URL: "https://pan.quark.cn/s/abc", MediaTitle: "吞噬星空",
+	}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{
+		FileName: "telegram-photo-6143006241194709282.jpg", Extension: ".jpg", MimeType: "image/jpeg", Category: "image",
+	}}); err != nil {
+		t.Fatalf("save image file: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{
+		FileName: "telegram-photo-6143006241194709282.jpg", Extension: ".jpg", MimeType: "image/jpeg", Category: "image",
+	}}); err != nil {
+		t.Fatalf("save mirrored image file: %v", err)
+	}
+
+	service := NewService(links, files)
+	result, err := service.List(ctx, Query{Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("total = %d, want only the link resource", result.Total)
+	}
+	if len(result.Items) != 1 || result.Items[0].Kind != "link" {
+		t.Fatalf("items = %+v, want only the link resource", result.Items)
+	}
+	if result.Grouped["cloud_drive"] != 1 || result.Grouped["files"] != 0 {
+		t.Fatalf("grouped = %+v, want cloud_drive=1 files=0", result.Grouped)
+	}
+}
+
 func TestResourceLibraryCountsAndPagesBeyondInitialLinkBatch(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

@@ -48,16 +48,17 @@ type LinkSearchParams struct {
 }
 
 type FileSearchParams struct {
-	Query     string
-	Category  string
-	Extension string
-	AccountID int64
-	ChannelID int64
-	Sort      string
-	DateFrom  *time.Time
-	DateTo    *time.Time
-	Limit     int
-	Offset    int
+	Query              string
+	Category           string
+	ExcludedCategories []string
+	Extension          string
+	AccountID          int64
+	ChannelID          int64
+	Sort               string
+	DateFrom           *time.Time
+	DateTo             *time.Time
+	Limit              int
+	Offset             int
 }
 
 type MergedLinkSearchParams struct {

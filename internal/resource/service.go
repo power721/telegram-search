@@ -133,13 +133,14 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	}
 	if s.files != nil && includeFiles(query) {
 		files, err := s.files.SearchResources(ctx, repository.FileSearchParams{
-			Query:     query.Keyword,
-			Category:  fileCategoryFilter(query),
-			Extension: query.Extension,
-			AccountID: query.AccountID,
-			ChannelID: query.ChannelID,
-			Sort:      query.Sort,
-			Limit:     fetchLimit,
+			Query:              query.Keyword,
+			Category:           fileCategoryFilter(query),
+			ExcludedCategories: excludedFileCategories(query),
+			Extension:          query.Extension,
+			AccountID:          query.AccountID,
+			ChannelID:          query.ChannelID,
+			Sort:               query.Sort,
+			Limit:              fetchLimit,
 		})
 		if err != nil {
 			return ListResult{}, err
@@ -208,11 +209,12 @@ func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]
 	}
 	if s.files != nil && includeFiles(query) {
 		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{
-			Query:     query.Keyword,
-			Category:  fileCategoryFilter(query),
-			Extension: query.Extension,
-			AccountID: query.AccountID,
-			ChannelID: query.ChannelID,
+			Query:              query.Keyword,
+			Category:           fileCategoryFilter(query),
+			ExcludedCategories: excludedFileCategories(query),
+			Extension:          query.Extension,
+			AccountID:          query.AccountID,
+			ChannelID:          query.ChannelID,
 		})
 		if err != nil {
 			return nil, err
@@ -266,7 +268,9 @@ func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, err
 		}
 	}
 	if s.files != nil {
-		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{})
+		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{
+			ExcludedCategories: defaultExcludedFileCategories(),
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -328,6 +332,17 @@ func fileCategoryFilter(query Query) string {
 		return ""
 	}
 	return query.Category
+}
+
+func excludedFileCategories(query Query) []string {
+	if fileCategoryFilter(query) != "" {
+		return nil
+	}
+	return defaultExcludedFileCategories()
+}
+
+func defaultExcludedFileCategories() []string {
+	return []string{"image"}
 }
 
 func isFileResourceCategory(category string) bool {

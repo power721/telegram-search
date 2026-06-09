@@ -203,6 +203,14 @@ func fileSearchWhere(params FileSearchParams) ([]string, []any) {
 		where = append(where, `f.category = ?`)
 		args = append(args, params.Category)
 	}
+	for _, category := range params.ExcludedCategories {
+		category = strings.TrimSpace(category)
+		if category == "" {
+			continue
+		}
+		where = append(where, `f.category <> ?`)
+		args = append(args, category)
+	}
 	if params.Extension != "" {
 		extension := normalizeExtension(params.Extension, "")
 		where = append(where, `f.extension = ?`)

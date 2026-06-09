@@ -30,7 +30,7 @@ func TestParseRange(t *testing.T) {
 		{name: "empty", size: 1000, wantStart: 0, wantEnd: 999},
 		{name: "closed", header: "bytes=100-199", size: 1000, wantStart: 100, wantEnd: 199, wantPartial: true},
 		{name: "open ended", header: "bytes=900-", size: 1000, wantStart: 900, wantEnd: 999, wantPartial: true},
-		{name: "large open ended window", header: "bytes=1048576-", size: 32 * 1024 * 1024, wantStart: 1048576, wantEnd: 1048576 + maxOpenEndedVideoRangeLength - 1, wantPartial: true},
+		{name: "large open ended reaches eof", header: "bytes=1048576-", size: 32 * 1024 * 1024, wantStart: 1048576, wantEnd: 32*1024*1024 - 1, wantPartial: true},
 		{name: "suffix", header: "bytes=-200", size: 1000, wantStart: 800, wantEnd: 999, wantPartial: true},
 		{name: "large suffix", header: "bytes=-2000", size: 1000, wantStart: 0, wantEnd: 999, wantPartial: true},
 		{name: "end past size", header: "bytes=900-1000", size: 1000, wantErr: true},
@@ -56,7 +56,7 @@ func TestParseRange(t *testing.T) {
 	}
 }
 
-func TestServeTelegramVideoOpenEndedRangeUsesWindow(t *testing.T) {
+func TestServeTelegramVideoOpenEndedRangeReachesEOF(t *testing.T) {
 	deps := testDeps(t)
 	ctx := context.Background()
 	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
@@ -102,15 +102,16 @@ func TestServeTelegramVideoOpenEndedRangeUsesWindow(t *testing.T) {
 	if w.Code != http.StatusPartialContent {
 		t.Fatalf("status = %d body=%s, want 206", w.Code, w.Body.String())
 	}
-	wantEnd := int64(1048576 + maxOpenEndedVideoRangeLength - 1)
+	wantEnd := int64(32*1024*1024 - 1)
 	if got := w.Header().Get("Content-Range"); got != "bytes 1048576-"+strconv.FormatInt(wantEnd, 10)+"/33554432" {
 		t.Fatalf("Content-Range = %q", got)
 	}
-	if got := w.Header().Get("Content-Length"); got != strconv.FormatInt(maxOpenEndedVideoRangeLength, 10) {
+	wantLength := int64(32*1024*1024 - 1048576)
+	if got := w.Header().Get("Content-Length"); got != strconv.FormatInt(wantLength, 10) {
 		t.Fatalf("Content-Length = %q", got)
 	}
-	if fake.offset != 1048576 || fake.length != maxOpenEndedVideoRangeLength {
-		t.Fatalf("stream range = offset %d length %d, want 1048576/%d", fake.offset, fake.length, maxOpenEndedVideoRangeLength)
+	if fake.offset != 1048576 || fake.length != wantLength {
+		t.Fatalf("stream range = offset %d length %d, want 1048576/%d", fake.offset, fake.length, wantLength)
 	}
 }
 

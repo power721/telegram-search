@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/model"
 )
@@ -102,6 +104,55 @@ func TestTelegramAPISettingsDefaultsWhenNotStored(t *testing.T) {
 	redacted := RedactTelegramAPI(settings)
 	if redacted.Configured || redacted.AppID != 0 || redacted.AppHashSet {
 		t.Fatalf("redacted = %+v, want default credentials hidden from settings response", redacted)
+	}
+}
+
+func TestRuntimeSettingsDefaultsMissingStoredFieldsFromConfig(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+	defaults := config.Config{
+		Sync: config.SyncConfig{
+			Workers:                 5,
+			HistoryBatchSize:        100,
+			TelegramRequestInterval: config.Duration(2 * time.Second),
+		},
+		Storage: config.StorageConfig{
+			MaxDBSize:     config.Size(10 * 1000 * 1000 * 1000),
+			MaxMediaCache: config.Size(20 * 1000 * 1000 * 1000),
+		},
+		Telegram: config.TelegramConfig{
+			ReconnectTimeout: config.Duration(5 * time.Minute),
+			DialTimeout:      config.Duration(10 * time.Second),
+			RateLimit:        config.TelegramRateLimitConfig{Enabled: true, RatePerSecond: 10, Burst: 5},
+			Stream:           config.TelegramStreamConfig{Concurrency: 2, Buffers: 4, ChunkTimeout: config.Duration(20 * time.Second)},
+			Media:            config.TelegramMediaConfig{Concurrency: 2},
+		},
+	}
+	if err := repo.Set(ctx, "runtime", `{"sync":{"workers":8}}`); err != nil {
+		t.Fatalf("set runtime setting: %v", err)
+	}
+
+	settings, err := repo.LoadRuntimeSettings(ctx, defaults)
+	if err != nil {
+		t.Fatalf("load runtime settings: %v", err)
+	}
+
+	if settings.Sync.Workers != 8 {
+		t.Fatalf("workers = %d, want stored override 8", settings.Sync.Workers)
+	}
+	if settings.Sync.HistoryBatchSize != 100 {
+		t.Fatalf("history batch size = %d, want default 100", settings.Sync.HistoryBatchSize)
+	}
+	if settings.Telegram.Stream.ChunkTimeout != config.Duration(20*time.Second) {
+		t.Fatalf("chunk timeout = %s, want default 20s", settings.Telegram.Stream.ChunkTimeout)
 	}
 }
 

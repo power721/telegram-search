@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"tg-search/internal/config"
 	"tg-search/internal/model"
 	"tg-search/internal/telegram"
 )
@@ -16,7 +17,10 @@ type SettingsRepository struct {
 	db *sql.DB
 }
 
-const telegramAPISettingKey = "telegram_api"
+const (
+	telegramAPISettingKey = "telegram_api"
+	runtimeSettingKey     = "runtime"
+)
 
 type telegramAPISettingsJSON struct {
 	AppID   int    `json:"app_id"`
@@ -83,6 +87,32 @@ func (r *SettingsRepository) LoadTelegramAPI(ctx context.Context) (model.Telegra
 	}
 	settings.AppID = stored.AppID
 	settings.AppHash = stored.AppHash
+	return settings, nil
+}
+
+func (r *SettingsRepository) SaveRuntimeSettings(ctx context.Context, settings config.RuntimeSettings) error {
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal runtime settings: %w", err)
+	}
+	if err := r.Set(ctx, runtimeSettingKey, string(data)); err != nil {
+		return fmt.Errorf("save runtime settings: %w", err)
+	}
+	return nil
+}
+
+func (r *SettingsRepository) LoadRuntimeSettings(ctx context.Context, defaults config.Config) (config.RuntimeSettings, error) {
+	raw, ok, err := r.Get(ctx, runtimeSettingKey)
+	if err != nil {
+		return config.RuntimeSettings{}, fmt.Errorf("load runtime settings: %w", err)
+	}
+	if !ok {
+		return config.RuntimeSettingsFromConfig(defaults), nil
+	}
+	settings := config.RuntimeSettingsFromConfig(defaults)
+	if err := json.Unmarshal([]byte(raw), &settings); err != nil {
+		return config.RuntimeSettings{}, fmt.Errorf("decode runtime settings: %w", err)
+	}
 	return settings, nil
 }
 

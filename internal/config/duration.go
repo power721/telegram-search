@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -33,6 +34,31 @@ func (d *Duration) UnmarshalYAML(unmarshal func(any) error) error {
 
 func (d Duration) MarshalYAML() (any, error) {
 	return time.Duration(d).String(), nil
+}
+
+func (d *Duration) UnmarshalJSON(data []byte) error {
+	var raw any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	switch value := raw.(type) {
+	case float64:
+		*d = Duration(time.Duration(value))
+		return nil
+	case string:
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return fmt.Errorf("parse duration %q: %w", value, err)
+		}
+		*d = Duration(parsed)
+		return nil
+	default:
+		return fmt.Errorf("unsupported duration value %T", raw)
+	}
+}
+
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
 }
 
 func (d Duration) Std() time.Duration {

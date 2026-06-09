@@ -19,52 +19,52 @@ var (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Sync     SyncConfig     `yaml:"sync"`
-	Storage  StorageConfig  `yaml:"storage"`
-	Telegram TelegramConfig `yaml:"telegram"`
+	Server   ServerConfig   `yaml:"server" json:"server"`
+	Sync     SyncConfig     `yaml:"sync" json:"sync"`
+	Storage  StorageConfig  `yaml:"storage" json:"storage"`
+	Telegram TelegramConfig `yaml:"telegram" json:"telegram"`
 }
 
 type ServerConfig struct {
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
+	Host string `yaml:"host" json:"host"`
+	Port int    `yaml:"port" json:"port"`
 }
 
 type SyncConfig struct {
-	Workers                 int      `yaml:"workers"`
-	HistoryBatchSize        int      `yaml:"history_batch_size"`
-	TelegramRequestInterval Duration `yaml:"telegram_request_interval"`
+	Workers                 int      `yaml:"workers" json:"workers"`
+	HistoryBatchSize        int      `yaml:"history_batch_size" json:"history_batch_size"`
+	TelegramRequestInterval Duration `yaml:"telegram_request_interval" json:"telegram_request_interval"`
 }
 
 type StorageConfig struct {
-	Path          string `yaml:"path"`
-	MaxDBSize     Size   `yaml:"max_db_size"`
-	MaxMediaCache Size   `yaml:"max_media_cache"`
+	Path          string `yaml:"path" json:"path"`
+	MaxDBSize     Size   `yaml:"max_db_size" json:"max_db_size"`
+	MaxMediaCache Size   `yaml:"max_media_cache" json:"max_media_cache"`
 }
 
 type TelegramConfig struct {
-	Proxy            string                  `yaml:"proxy"`
-	ReconnectTimeout Duration                `yaml:"reconnect_timeout"`
-	DialTimeout      Duration                `yaml:"dial_timeout"`
-	RateLimit        TelegramRateLimitConfig `yaml:"rate_limit"`
-	Stream           TelegramStreamConfig    `yaml:"stream"`
-	Media            TelegramMediaConfig     `yaml:"media"`
+	Proxy            string                  `yaml:"proxy" json:"proxy"`
+	ReconnectTimeout Duration                `yaml:"reconnect_timeout" json:"reconnect_timeout"`
+	DialTimeout      Duration                `yaml:"dial_timeout" json:"dial_timeout"`
+	RateLimit        TelegramRateLimitConfig `yaml:"rate_limit" json:"rate_limit"`
+	Stream           TelegramStreamConfig    `yaml:"stream" json:"stream"`
+	Media            TelegramMediaConfig     `yaml:"media" json:"media"`
 }
 
 type TelegramRateLimitConfig struct {
-	Enabled       bool `yaml:"enabled"`
-	RatePerSecond int  `yaml:"rate_per_second"`
-	Burst         int  `yaml:"burst"`
+	Enabled       bool `yaml:"enabled" json:"enabled"`
+	RatePerSecond int  `yaml:"rate_per_second" json:"rate_per_second"`
+	Burst         int  `yaml:"burst" json:"burst"`
 }
 
 type TelegramStreamConfig struct {
-	Concurrency  int      `yaml:"concurrency"`
-	Buffers      int      `yaml:"buffers"`
-	ChunkTimeout Duration `yaml:"chunk_timeout"`
+	Concurrency  int      `yaml:"concurrency" json:"concurrency"`
+	Buffers      int      `yaml:"buffers" json:"buffers"`
+	ChunkTimeout Duration `yaml:"chunk_timeout" json:"chunk_timeout"`
 }
 
 type TelegramMediaConfig struct {
-	Concurrency int `yaml:"concurrency"`
+	Concurrency int `yaml:"concurrency" json:"concurrency"`
 }
 
 func Load(path string) (Config, error) {

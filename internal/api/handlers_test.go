@@ -1611,6 +1611,116 @@ func TestTelegramAPISettings(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettings(t *testing.T) {
+	deps := testDeps(t)
+	deps.RuntimeConfig.Sync.Workers = 5
+	deps.RuntimeConfig.Sync.HistoryBatchSize = 100
+	deps.RuntimeConfig.Sync.TelegramRequestInterval = config.Duration(2 * time.Second)
+	deps.RuntimeConfig.Storage.MaxDBSize = config.Size(10 * 1000 * 1000 * 1000)
+	deps.RuntimeConfig.Storage.MaxMediaCache = config.Size(20 * 1000 * 1000 * 1000)
+	deps.RuntimeConfig.Telegram.Proxy = ""
+	deps.RuntimeConfig.Telegram.ReconnectTimeout = config.Duration(5 * time.Minute)
+	deps.RuntimeConfig.Telegram.DialTimeout = config.Duration(10 * time.Second)
+	deps.RuntimeConfig.Telegram.RateLimit = config.TelegramRateLimitConfig{Enabled: true, RatePerSecond: 10, Burst: 5}
+	deps.RuntimeConfig.Telegram.Stream = config.TelegramStreamConfig{Concurrency: 2, Buffers: 4, ChunkTimeout: config.Duration(20 * time.Second)}
+	deps.RuntimeConfig.Telegram.Media = config.TelegramMediaConfig{Concurrency: 2}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var got config.RuntimeSettings
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode runtime settings: %v", err)
+	}
+	if got.Sync.Workers != 5 || got.Sync.HistoryBatchSize != 100 || got.Sync.TelegramRequestInterval != config.Duration(2*time.Second) {
+		t.Fatalf("default runtime sync settings = %+v", got.Sync)
+	}
+	if got.Storage.MaxDBSize != config.Size(10*1000*1000*1000) || got.Storage.MaxMediaCache != config.Size(20*1000*1000*1000) {
+		t.Fatalf("default runtime storage settings = %+v", got.Storage)
+	}
+
+	body := `{
+		"sync":{"workers":8,"history_batch_size":250,"telegram_request_interval":"1500ms"},
+		"storage":{"max_db_size":30000000000,"max_media_cache":40000000000},
+		"telegram":{
+			"proxy":"socks5://127.0.0.1:1080",
+			"reconnect_timeout":"6m",
+			"dial_timeout":"15s",
+			"rate_limit":{"enabled":false,"rate_per_second":12,"burst":6},
+			"stream":{"concurrency":4,"buffers":8,"chunk_timeout":"30s"},
+			"media":{"concurrency":3}
+		}
+	}`
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/runtime", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode updated runtime settings: %v", err)
+	}
+	if got.Sync.Workers != 8 || got.Sync.HistoryBatchSize != 250 || got.Sync.TelegramRequestInterval != config.Duration(1500*time.Millisecond) {
+		t.Fatalf("updated runtime sync settings = %+v", got.Sync)
+	}
+	if got.Telegram.RateLimit.Enabled || got.Telegram.RateLimit.RatePerSecond != 12 || got.Telegram.RateLimit.Burst != 6 {
+		t.Fatalf("updated runtime rate limit = %+v", got.Telegram.RateLimit)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get saved runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode saved runtime settings: %v", err)
+	}
+	if got.Telegram.Proxy != "socks5://127.0.0.1:1080" || got.Telegram.Media.Concurrency != 3 {
+		t.Fatalf("saved runtime settings = %+v", got)
+	}
+}
+
+func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/runtime", bytes.NewBufferString(`{
+		"sync":{"workers":0,"history_batch_size":100,"telegram_request_interval":"2s"},
+		"storage":{"max_db_size":10000000000,"max_media_cache":20000000000},
+		"telegram":{
+			"reconnect_timeout":"5m",
+			"dial_timeout":"10s",
+			"rate_limit":{"enabled":true,"rate_per_second":10,"burst":5},
+			"stream":{"concurrency":2,"buffers":4,"chunk_timeout":"20s"},
+			"media":{"concurrency":2}
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid runtime settings code = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode invalid runtime settings error: %v", err)
+	}
+	if body.Error.Code != "bad_request" || body.Error.Message == "" {
+		t.Fatalf("invalid runtime settings error = %s", w.Body.String())
+	}
+}
+
 func TestVersionSettingsReportsGitHubRelease(t *testing.T) {
 	originalVersion := build.Version
 	originalURL := githubLatestReleaseURL

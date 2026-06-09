@@ -81,6 +81,63 @@ func TestCoreReadAPIs(t *testing.T) {
 	}
 }
 
+func TestLogsAPIListsAndDownloadsLogFiles(t *testing.T) {
+	deps := testDeps(t)
+	logDir := filepath.Join(deps.RuntimeConfig.Storage.Path, "logs")
+	logData := strings.Join([]string{
+		`{"level":"info","ts":"2026-06-09T10:00:00.000+0800","caller":"cmd/main.go:1","msg":"boot complete"}`,
+		`{"level":"error","ts":"2026-06-09T10:01:00.000+0800","caller":"cmd/main.go:2","msg":"worker failed","error":"boom"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(logDir, "app.log"), []byte(logData), 0o600); err != nil {
+		t.Fatalf("write app log: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/logs?file=app.log&q=boot&order=asc&limit=20", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list logs status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			File    string `json:"file"`
+			Level   string `json:"level"`
+			Message string `json:"message"`
+			Raw     string `json:"raw"`
+		} `json:"items"`
+		Total int `json:"total"`
+		Files []struct {
+			Name string `json:"name"`
+			Size int64  `json:"size"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Total != 1 || len(body.Items) != 1 || body.Items[0].Message != "boot complete" {
+		t.Fatalf("logs body = %+v, want boot entry", body)
+	}
+	if len(body.Files) != 4 || body.Files[0].Name != "app.log" || body.Files[0].Size == 0 {
+		t.Fatalf("files metadata = %+v, want app.log with size", body.Files)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/logs/app.log/download", nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("download log status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Disposition"); !strings.Contains(got, `filename="app.log"`) {
+		t.Fatalf("Content-Disposition = %q, want app.log attachment", got)
+	}
+	if !strings.Contains(w.Body.String(), "worker failed") {
+		t.Fatalf("download body = %q, want log data", w.Body.String())
+	}
+}
+
 func TestGlobalSearchAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

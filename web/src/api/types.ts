@@ -348,6 +348,7 @@ export interface ResourceItem {
   type?: string
   category: string
   url?: string
+  password?: string
   file_name?: string
   extension?: string
   mime_type?: string

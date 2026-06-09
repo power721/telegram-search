@@ -500,6 +500,29 @@ func (h handlers) requireResourceAccess() gin.HandlerFunc {
 	}
 }
 
+func (h handlers) requireAPIKey() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		key := apiKeyFromRequest(c.Request)
+		if key == "" {
+			errorText(c, http.StatusUnauthorized, "api key is required")
+			c.Abort()
+			return
+		}
+		_, ok, err := h.deps.APIKeyService.Verify(c.Request.Context(), key)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			c.Abort()
+			return
+		}
+		if !ok {
+			errorText(c, http.StatusUnauthorized, "invalid api key")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func (h handlers) hasAdminSession(c *gin.Context) bool {
 	_, _, ok := h.adminSession(c)
 	return ok

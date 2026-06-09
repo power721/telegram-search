@@ -118,7 +118,7 @@ describe('ResourceTable', () => {
     expect(preview.exists()).toBe(true)
     expect(preview.attributes('src')).toBe('/i/resources/77')
     expect(preview.attributes('aria-hidden')).toBe('true')
-    expect(resourceTableSource).toMatch(/--resource-thumb-preview-width:\s*480px;/)
+    expect(resourceTableSource).toMatch(/--resource-thumb-preview-width:\s*600px;/)
     expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
   })
 

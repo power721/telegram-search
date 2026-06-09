@@ -128,7 +128,7 @@ function formatDate(value?: string) {
 
 <style scoped>
 .resource-table {
-  --resource-thumb-preview-width: 480px;
+  --resource-thumb-preview-width: 600px;
   overflow: visible;
   width: 100%;
 }

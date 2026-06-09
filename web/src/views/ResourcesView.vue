@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import AppPagination from '@/components/common/AppPagination.vue'
 import ResourceFilters from '@/components/resources/ResourceFilters.vue'
 import ResourceTable from '@/components/resources/ResourceTable.vue'
 import { useChannelsStore } from '@/stores/channels'
@@ -15,8 +16,6 @@ const pageSize = ref(50)
 const offset = ref(0)
 
 const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
-const canGoPrevious = computed(() => offset.value > 0)
-const canGoNext = computed(() => offset.value + pageSize.value < resources.total)
 const allCount = computed(() => {
   const groupedTotal = Object.values(resources.grouped).reduce((total, count) => total + count, 0)
   return groupedTotal || resources.total
@@ -65,20 +64,13 @@ async function selectCategory(value: string) {
   await resetAndLoad()
 }
 
-async function previousPage() {
-  if (!canGoPrevious.value) return
-  offset.value = Math.max(0, offset.value - pageSize.value)
+async function changePage(pageNumber: number) {
+  offset.value = (pageNumber - 1) * pageSize.value
   await load()
 }
 
-async function nextPage() {
-  if (!canGoNext.value) return
-  offset.value += pageSize.value
-  await load()
-}
-
-async function changePageSize(event: Event) {
-  pageSize.value = Number((event.target as HTMLSelectElement).value)
+async function changePageSize(value: number) {
+  pageSize.value = value
   offset.value = 0
   await load()
 }
@@ -129,33 +121,15 @@ onMounted(() => {
       <span class="skeleton-line short" />
     </div>
     <ResourceTable class="table" :items="resources.items" />
-    <div class="pagination">
-      <label>
-        每页
-        <select aria-label="每页条数" :value="pageSize" @change="changePageSize">
-          <option v-for="option in pageSizeOptions" :key="option" :value="option">
-            {{ option }}
-          </option>
-        </select>
-      </label>
-      <button
-        aria-label="上一页"
-        :disabled="!canGoPrevious || resources.loading"
-        type="button"
-        @click="previousPage"
-      >
-        上一页
-      </button>
-      <span>第 {{ page }} 页，共 {{ resources.total }} 条</span>
-      <button
-        aria-label="下一页"
-        :disabled="!canGoNext || resources.loading"
-        type="button"
-        @click="nextPage"
-      >
-        下一页
-      </button>
-    </div>
+    <AppPagination
+      :loading="resources.loading"
+      :page="page"
+      :page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :total="resources.total"
+      @update:page="changePage"
+      @update:page-size="changePageSize"
+    />
   </section>
 </template>
 
@@ -195,12 +169,6 @@ onMounted(() => {
 
 .resource-loading .short {
   width: 58%;
-}
-
-.pagination label {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
 }
 
 @media (max-width: 900px) {

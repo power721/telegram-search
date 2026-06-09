@@ -58,7 +58,7 @@ describe('SearchView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50&offset=50')
-    expect(wrapper.text()).toContain('第 2 页')
+    expect(wrapper.text()).toContain('第 2 / 2 页')
   })
 
   it('reloads search from page one when page size changes', async () => {
@@ -81,6 +81,29 @@ describe('SearchView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=100')
-    expect(wrapper.text()).toContain('第 1 页')
+    expect(wrapper.text()).toContain('第 1 / 1 页')
+  })
+
+  it('jumps to a typed search page', async () => {
+    const wrapper = mount(SearchView, {
+      global: {
+        stubs: {
+          SearchFilters: {
+            template: '<form @submit.prevent="$emit(\'submit\')"><input :value="query" @input="$emit(\'update:query\', $event.target.value)" /></form>',
+            props: ['query'],
+            emits: ['submit', 'update:query']
+          }
+        }
+      }
+    })
+    await wrapper.get('input').setValue('ubuntu')
+    await wrapper.get('form').trigger('submit')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.get('input[aria-label="跳转页码"]').setValue('2')
+    await wrapper.get('form.pagination-jump').trigger('submit')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiGet).toHaveBeenCalledWith('/api/search/global?q=ubuntu&limit=50&offset=50')
   })
 })

@@ -66,7 +66,7 @@ describe('ResourcesView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
-    expect(wrapper.text()).toContain('第 2 页')
+    expect(wrapper.text()).toContain('第 2 / 2 页')
   })
 
   it('clears the resource type filter from the all button', async () => {
@@ -91,7 +91,18 @@ describe('ResourcesView', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=100')
-    expect(wrapper.text()).toContain('第 1 页')
+    expect(wrapper.text()).toContain('第 1 / 1 页')
+  })
+
+  it('jumps to a typed resources page', async () => {
+    const wrapper = mountResourcesView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.get('input[aria-label="跳转页码"]').setValue('2')
+    await wrapper.get('form.pagination-jump').trigger('submit')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
   })
 
   it('filters resources by channel from the channel dropdown', async () => {
@@ -104,7 +115,7 @@ describe('ResourcesView', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/channels')
     expect(apiGet).toHaveBeenCalledWith('/api/resources?channel_id=7&limit=50')
-    expect(wrapper.text()).toContain('第 1 页')
+    expect(wrapper.text()).toContain('第 1 / 2 页')
   })
 })
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import AppPagination from '@/components/common/AppPagination.vue'
 import SearchFilters from '@/components/search/SearchFilters.vue'
 import SearchResults from '@/components/search/SearchResults.vue'
 import { useSearchStore } from '@/stores/search'
@@ -23,8 +24,6 @@ const total = computed(() => {
     result.channels.total
   )
 })
-const canGoPrevious = computed(() => offset.value > 0)
-const canGoNext = computed(() => offset.value + pageSize.value < total.value)
 
 async function runSearch() {
   if (!query.value.trim()) return
@@ -36,20 +35,13 @@ async function submitSearch() {
   await runSearch()
 }
 
-async function previousPage() {
-  if (!canGoPrevious.value) return
-  offset.value = Math.max(0, offset.value - pageSize.value)
+async function changePage(pageNumber: number) {
+  offset.value = (pageNumber - 1) * pageSize.value
   await runSearch()
 }
 
-async function nextPage() {
-  if (!canGoNext.value) return
-  offset.value += pageSize.value
-  await runSearch()
-}
-
-async function changePageSize(event: Event) {
-  pageSize.value = Number((event.target as HTMLSelectElement).value)
+async function changePageSize(value: number) {
+  pageSize.value = value
   offset.value = 0
   await runSearch()
 }
@@ -81,44 +73,21 @@ onMounted(() => {
       :remote-items="search.remoteResults?.items"
       :result="search.global"
     />
-    <div v-if="search.global" class="pagination">
-      <label>
-        每页
-        <select aria-label="每页条数" :value="pageSize" @change="changePageSize">
-          <option v-for="option in pageSizeOptions" :key="option" :value="option">
-            {{ option }}
-          </option>
-        </select>
-      </label>
-      <button
-        aria-label="上一页"
-        :disabled="!canGoPrevious || search.loading"
-        type="button"
-        @click="previousPage"
-      >
-        上一页
-      </button>
-      <span>第 {{ page }} 页，共 {{ total }} 条</span>
-      <button
-        aria-label="下一页"
-        :disabled="!canGoNext || search.loading"
-        type="button"
-        @click="nextPage"
-      >
-        下一页
-      </button>
-    </div>
+    <AppPagination
+      v-if="search.global"
+      :loading="search.loading"
+      :page="page"
+      :page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :total="total"
+      @update:page="changePage"
+      @update:page-size="changePageSize"
+    />
   </section>
 </template>
 
 <style scoped>
 .results {
   min-width: 0;
-}
-
-.pagination label {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
 }
 </style>

@@ -67,6 +67,16 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	if result.Items[0].Kind != "link" || result.Items[0].URL != "https://example.com/ubuntu" || result.Items[0].Note != "ubuntu latest" || !result.Items[0].Datetime.Equal(newDate) {
 		t.Fatalf("first item = %+v, want newest deduped link", result.Items[0])
 	}
+	var fileItem *Item
+	for i := range result.Items {
+		if result.Items[i].Kind == "file" {
+			fileItem = &result.Items[i]
+			break
+		}
+	}
+	if fileItem == nil || fileItem.Category != "files" || fileItem.Type != "software" {
+		t.Fatalf("file item = %+v, want category files and concrete type software", fileItem)
+	}
 	if result.Grouped["http"] != 1 || result.Grouped["files"] != 1 {
 		t.Fatalf("grouped = %+v, want http=1 files=1", result.Grouped)
 	}

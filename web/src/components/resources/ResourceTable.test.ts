@@ -133,6 +133,68 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain('网盘')
   })
 
+  it('shows the specific file type for file resources', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:video',
+            kind: 'file',
+            type: 'video',
+            category: 'files',
+            file_name: 'clip.mp4'
+          },
+          {
+            id: 'file:document',
+            kind: 'file',
+            type: 'document',
+            category: 'files',
+            file_name: 'guide.pdf'
+          },
+          {
+            id: 'file:archive',
+            kind: 'file',
+            type: 'archive',
+            category: 'files',
+            file_name: 'release.zip'
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.text()).toContain('视频')
+    expect(wrapper.text()).toContain('文档')
+    expect(wrapper.text()).toContain('压缩包')
+  })
+
+  it('falls back to MIME type and extension when file type is missing', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:image',
+            kind: 'file',
+            category: 'files',
+            file_name: 'poster.jpg',
+            extension: '.jpg',
+            mime_type: 'image/jpeg'
+          },
+          {
+            id: 'file:audio',
+            kind: 'file',
+            category: 'files',
+            file_name: 'theme.flac',
+            extension: '.flac',
+            mime_type: 'application/octet-stream'
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.text()).toContain('图片')
+    expect(wrapper.text()).toContain('音频')
+  })
+
   it('renders nested media metadata', () => {
     const wrapper = mount(ResourceTable, {
       props: {

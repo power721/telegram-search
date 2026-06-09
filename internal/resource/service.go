@@ -216,7 +216,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			items = append(items, Item{
 				ID:                "file:" + strconv.FormatInt(file.ID, 10),
 				Kind:              "file",
-				Type:              "files",
+				Type:              file.Category,
 				Category:          "files",
 				TelegramFileID:    file.TelegramFileID,
 				FileName:          file.FileName,
@@ -492,14 +492,17 @@ func normalizedOffset(offset int) int {
 }
 
 func includeLinks(query Query) bool {
-	return query.Type != "files" && query.Category != "files" && !isFileResourceCategory(query.Category)
+	return query.Type != "files" && !isFileResourceCategory(query.Type) && query.Category != "files" && !isFileResourceCategory(query.Category)
 }
 
 func includeFiles(query Query) bool {
-	return (query.Type == "" || query.Type == "files") && (query.Category == "" || query.Category == "files" || isFileResourceCategory(query.Category))
+	return (query.Type == "" || query.Type == "files" || isFileResourceCategory(query.Type)) && (query.Category == "" || query.Category == "files" || isFileResourceCategory(query.Category))
 }
 
 func fileCategoryFilter(query Query) string {
+	if isFileResourceCategory(query.Type) {
+		return query.Type
+	}
 	if query.Category == "files" {
 		return ""
 	}
@@ -519,7 +522,7 @@ func defaultExcludedFileCategories() []string {
 
 func isFileResourceCategory(category string) bool {
 	switch category {
-	case "image", "video", "audio", "ebook", "archive", "software", "file":
+	case "image", "video", "audio", "document", "ebook", "archive", "software", "file":
 		return true
 	default:
 		return false

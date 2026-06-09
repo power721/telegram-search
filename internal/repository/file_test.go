@@ -74,6 +74,37 @@ func TestFileRepositoryPersistsFileMetadata(t *testing.T) {
 	}
 }
 
+func TestFileRepositoryInfersDocumentAndArchiveCategories(t *testing.T) {
+	tests := []struct {
+		name string
+		file model.File
+		want string
+	}{
+		{
+			name: "document",
+			file: model.File{FileName: "guide.pdf", Extension: ".pdf", MimeType: "application/pdf"},
+			want: "document",
+		},
+		{
+			name: "office document",
+			file: model.File{FileName: "report.docx", Extension: ".docx", MimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+			want: "document",
+		},
+		{
+			name: "archive",
+			file: model.File{FileName: "release.tar.gz", Extension: ".gz", MimeType: "application/gzip"},
+			want: "archive",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fileCategory(tt.file); got != tt.want {
+				t.Fatalf("fileCategory(%+v) = %q, want %q", tt.file, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestFileRepositoryStoresDuplicateTelegramFilesAcrossMessages(t *testing.T) {
 	ctx := context.Background()
 	conn := openRepositoryTestDB(t)

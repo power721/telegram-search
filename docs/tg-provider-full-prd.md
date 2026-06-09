@@ -357,6 +357,10 @@ telegram:
 
   api_hash:
 
+  media:
+
+    concurrency: 2
+
 server:
 
   host: 127.0.0.1

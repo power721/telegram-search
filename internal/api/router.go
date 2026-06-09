@@ -12,6 +12,7 @@ import (
 	"tg-search/internal/channel"
 	"tg-search/internal/config"
 	"tg-search/internal/history"
+	"tg-search/internal/medialimit"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/scheduler"
@@ -57,6 +58,7 @@ type Dependencies struct {
 	Events           *taskpkg.EventBroker
 	AccountRuntime   AccountRuntime
 	Telegram         telegram.Client
+	MediaLimiter     *medialimit.Limiter
 	Sessions         *session.Manager
 	CodeStore        *telegram.CodeStore
 	QRLogins         *QRLoginStore

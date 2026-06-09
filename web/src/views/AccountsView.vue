@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import QRCode from 'qrcode'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDialog, useMessage } from 'naive-ui'
 import type { TelegramAccount } from '@/api/types'
+import AppPagination from '@/components/common/AppPagination.vue'
 import { useTelegramStore } from '@/stores/telegram'
 
 const telegram = useTelegramStore()
@@ -13,6 +15,20 @@ const loginPhone = ref('')
 const loginCode = ref('')
 const loginPassword = ref('')
 const loginCodeSent = ref(false)
+const loginMode = ref<'qr' | 'code'>('qr')
+const qrCanvas = ref<HTMLCanvasElement | null>(null)
+const qrLoginID = ref('')
+const qrStatus = ref('')
+const page = ref(1)
+const pageSize = ref(20)
+const pageSizeOptions = [10, 20, 50]
+let qrPolling: number | undefined
+
+const totalPages = computed(() => Math.max(1, Math.ceil(telegram.accounts.length / pageSize.value)))
+const pagedAccounts = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return telegram.accounts.slice(start, start + pageSize.value)
+})
 
 const metadataText = computed(() => {
   const sync = telegram.loginResult?.metadata_sync
@@ -25,6 +41,15 @@ const metadataText = computed(() => {
 onMounted(() => {
   void telegram.loadAccounts()
 })
+
+watch(
+  () => telegram.accounts.length,
+  () => {
+    if (page.value > totalPages.value) {
+      page.value = totalPages.value
+    }
+  }
+)
 
 function displayName(firstName: string, lastName: string, username: string) {
   const name = [firstName, lastName].filter(Boolean).join(' ')
@@ -67,14 +92,89 @@ function openTelegramLogin(account?: TelegramAccount) {
   loginCode.value = ''
   loginPassword.value = ''
   loginCodeSent.value = false
+  loginMode.value = account ? 'code' : 'qr'
+  qrLoginID.value = ''
+  qrStatus.value = ''
   telegram.phone = loginPhone.value
   telegram.passwordRequired = false
   telegram.loginResult = null
+  telegram.qrLogin = null
   loginDialogVisible.value = true
 }
 
 function closeTelegramLogin() {
+  void cancelQRLogin()
   loginDialogVisible.value = false
+}
+
+function setLoginMode(mode: 'qr' | 'code') {
+  loginMode.value = mode
+  if (mode === 'code') {
+    void cancelQRLogin()
+  }
+}
+
+async function startQRLogin() {
+  try {
+    stopQRPolling()
+    const response = await telegram.startQRLogin()
+    qrLoginID.value = response.login_id
+    qrStatus.value = response.status
+    await renderQRCode(response.qr_url)
+    await pollQRLogin()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法生成二维码')
+  }
+}
+
+async function renderQRCode(value?: string) {
+  if (!value) return
+  await nextTick()
+  if (qrCanvas.value) {
+    await QRCode.toCanvas(qrCanvas.value, value, { width: 220, margin: 1 })
+  }
+}
+
+async function pollQRLogin() {
+  if (!qrLoginID.value) return
+  try {
+    const response = await telegram.pollQRLogin(qrLoginID.value)
+    qrStatus.value = response.status
+    if (response.qr_url) {
+      await renderQRCode(response.qr_url)
+    }
+    if (response.account) {
+      finishLogin()
+      return
+    }
+    stopQRPolling()
+    qrPolling = window.setTimeout(() => {
+      void pollQRLogin()
+    }, 2000)
+  } catch (error) {
+    stopQRPolling()
+    message.error(error instanceof Error ? error.message : '无法确认扫码状态')
+  }
+}
+
+async function cancelQRLogin() {
+  stopQRPolling()
+  if (!qrLoginID.value) return
+  try {
+    await telegram.cancelQRLogin(qrLoginID.value)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法取消扫码登录')
+  } finally {
+    qrLoginID.value = ''
+    qrStatus.value = ''
+  }
+}
+
+function stopQRPolling() {
+  if (qrPolling !== undefined) {
+    window.clearTimeout(qrPolling)
+    qrPolling = undefined
+  }
 }
 
 async function sendCode() {
@@ -112,8 +212,20 @@ async function submitPassword() {
 }
 
 function finishLogin() {
+  stopQRPolling()
+  qrLoginID.value = ''
+  qrStatus.value = ''
   loginDialogVisible.value = false
   message.success('Telegram 账号已连接')
+}
+
+function changePage(pageNumber: number) {
+  page.value = Math.min(Math.max(1, pageNumber), totalPages.value)
+}
+
+function changePageSize(value: number) {
+  pageSize.value = value
+  page.value = 1
 }
 
 async function logoutAccount(account: TelegramAccount) {
@@ -130,6 +242,10 @@ function confirmDeleteAccount(account: TelegramAccount) {
     onPositiveClick: () => telegram.deleteAccount(account.id)
   })
 }
+
+onBeforeUnmount(() => {
+  stopQRPolling()
+})
 </script>
 
 <template>
@@ -167,7 +283,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
               </div>
             </td>
           </tr>
-          <tr v-for="account in telegram.accounts" :key="account.id">
+          <tr v-for="account in pagedAccounts" :key="account.id">
             <td>{{ account.phone }}</td>
             <td>{{ displayName(account.first_name, account.last_name, account.username) }}</td>
             <td>
@@ -207,6 +323,17 @@ function confirmDeleteAccount(account: TelegramAccount) {
       </table>
     </div>
 
+    <AppPagination
+      v-if="telegram.accounts.length > 0"
+      :loading="telegram.loading"
+      :page="page"
+      :page-size="pageSize"
+      :page-size-options="pageSizeOptions"
+      :total="telegram.accounts.length"
+      @update:page="changePage"
+      @update:page-size="changePageSize"
+    />
+
     <n-modal v-model:show="loginDialogVisible" :mask-closable="false">
       <n-card class="login-dialog" :bordered="false">
         <div class="login-dialog-header">
@@ -225,7 +352,26 @@ function confirmDeleteAccount(account: TelegramAccount) {
             ×
           </n-button>
         </div>
-        <n-form @submit.prevent>
+        <n-button-group class="mode-switch">
+          <n-button :type="loginMode === 'qr' ? 'primary' : 'default'" @click="setLoginMode('qr')">
+            扫码登录
+          </n-button>
+          <n-button :type="loginMode === 'code' ? 'primary' : 'default'" @click="setLoginMode('code')">
+            验证码登录
+          </n-button>
+        </n-button-group>
+
+        <div v-if="loginMode === 'qr'" class="qr-login">
+          <div class="qr-surface">
+            <canvas v-show="qrLoginID" ref="qrCanvas" class="qr-canvas" />
+            <div v-if="!qrLoginID" class="qr-placeholder">QR</div>
+          </div>
+          <n-button type="primary" block :loading="telegram.loading" @click="startQRLogin">生成二维码</n-button>
+          <n-button v-if="qrLoginID" block @click="cancelQRLogin">取消扫码</n-button>
+          <p v-if="qrStatus" class="sync-result">扫码状态：{{ qrStatus }}</p>
+        </div>
+
+        <n-form v-else @submit.prevent>
           <n-form-item label="手机号">
             <n-input v-model:value="loginPhone" autocomplete="tel" placeholder="请输入手机号码" />
           </n-form-item>
@@ -295,6 +441,47 @@ table {
 .login-dialog h2 {
   font-size: 22px;
   margin: 0 0 22px;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 18px;
+  width: 100%;
+}
+
+.qr-login {
+  display: grid;
+  gap: 14px;
+}
+
+.qr-surface {
+  align-items: center;
+  aspect-ratio: 1;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: flex;
+  justify-content: center;
+  margin: 0 auto;
+  max-width: 260px;
+  width: 100%;
+}
+
+.qr-canvas {
+  height: 220px;
+  width: 220px;
+}
+
+.qr-placeholder {
+  align-items: center;
+  color: var(--app-text-subtle);
+  display: flex;
+  font-size: 22px;
+  font-weight: 700;
+  height: 220px;
+  justify-content: center;
+  width: 220px;
 }
 
 .login-dialog-actions {

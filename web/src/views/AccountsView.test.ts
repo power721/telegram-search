@@ -10,6 +10,30 @@ const dialogWarning = vi.fn((options: { onPositiveClick?: () => void }) => {
 })
 const messageSuccess = vi.fn()
 const messageError = vi.fn()
+const defaultAccounts = [
+  {
+    id: 1,
+    phone: '+10000000000',
+    telegram_user_id: 42,
+    first_name: 'Ada',
+    last_name: 'Lovelace',
+    username: 'ada',
+    status: 'ONLINE',
+    last_online_at: '2026-06-08T02:00:00Z',
+    last_error: ''
+  },
+  {
+    id: 2,
+    phone: '+10000000001',
+    telegram_user_id: 43,
+    first_name: 'Grace',
+    last_name: 'Hopper',
+    username: 'grace',
+    status: 'LOGIN_REQUIRED',
+    last_online_at: '',
+    last_error: ''
+  }
+]
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push })
@@ -24,48 +48,13 @@ vi.mock('naive-ui', async () => {
   }
 })
 
+vi.mock('qrcode', () => ({
+  default: { toCanvas: vi.fn(() => Promise.resolve()) }
+}))
+
 vi.mock('@/api/client', () => ({
-  apiGet: vi.fn().mockResolvedValue({
-    items: [
-      {
-        id: 1,
-        phone: '+10000000000',
-        telegram_user_id: 42,
-        first_name: 'Ada',
-        last_name: 'Lovelace',
-        username: 'ada',
-        status: 'ONLINE',
-        last_online_at: '2026-06-08T02:00:00Z',
-        last_error: ''
-      },
-      {
-        id: 2,
-        phone: '+10000000001',
-        telegram_user_id: 43,
-        first_name: 'Grace',
-        last_name: 'Hopper',
-        username: 'grace',
-        status: 'LOGIN_REQUIRED',
-        last_online_at: '',
-        last_error: ''
-      }
-    ]
-  }),
-  apiPost: vi.fn((path: string) => {
-    if (path === '/api/telegram/login/sign-in') {
-      return Promise.resolve({
-        status: 'ONLINE',
-        account: { id: 2, phone: '+10000000001', status: 'ONLINE', last_error: '' },
-        metadata_sync: { status: 'succeeded', channel_count: 3 }
-      })
-    }
-    return Promise.resolve({
-      id: 1,
-      phone: '+10000000000',
-      status: 'LOGIN_REQUIRED',
-      last_error: ''
-    })
-  }),
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
   apiDelete: vi.fn().mockResolvedValue({ deleted: true })
 }))
 
@@ -73,6 +62,31 @@ describe('AccountsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.mocked(apiGet).mockResolvedValue({ items: defaultAccounts })
+    vi.mocked(apiPost).mockImplementation((path: string) => {
+      if (path === '/api/telegram/login/qr/start') {
+        return Promise.resolve({
+          login_id: 'login-1',
+          status: 'pending',
+          qr_url: 'tg://login?token=one',
+          expires_at: new Date(Date.now() + 60_000).toISOString()
+        })
+      }
+      if (path === '/api/telegram/login/sign-in') {
+        return Promise.resolve({
+          status: 'ONLINE',
+          account: { id: 2, phone: '+10000000001', status: 'ONLINE', last_error: '' },
+          metadata_sync: { status: 'succeeded', channel_count: 3 }
+        })
+      }
+      return Promise.resolve({
+        id: 1,
+        phone: '+10000000000',
+        status: 'LOGIN_REQUIRED',
+        last_error: ''
+      })
+    })
+    vi.mocked(apiDelete).mockResolvedValue({ deleted: true })
   })
 
   it('renders account columns', async () => {
@@ -99,7 +113,8 @@ describe('AccountsView', () => {
     await addButton!.trigger('click')
 
     expect(wrapper.text()).toContain('Telegram 登录')
-    expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('')
+    expect(wrapper.text()).toContain('扫码登录')
+    expect(wrapper.text()).toContain('生成二维码')
 
     const loginButton = wrapper.findAll('button').find((button) => button.text() === '登录')
     expect(loginButton).toBeTruthy()
@@ -107,6 +122,7 @@ describe('AccountsView', () => {
 
     expect(push).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Telegram 登录')
+    expect(wrapper.text()).toContain('验证码登录')
     expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+10000000001')
   })
 
@@ -115,6 +131,7 @@ describe('AccountsView', () => {
     await flushPromises()
 
     await wrapper.findAll('button').find((button) => button.text() === '添加账号')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '验证码登录')!.trigger('click')
 
     expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('请输入手机号码')
     expect(wrapper.get<HTMLInputElement>('input[autocomplete="one-time-code"]').element.placeholder).toBe('请输入验证码')
@@ -130,6 +147,58 @@ describe('AccountsView', () => {
 
     await wrapper.findAll('button').find((button) => button.text() === '取消')!.trigger('click')
     expect(wrapper.text()).not.toContain('Telegram 登录')
+  })
+
+  it('starts qr login from the account dialog and finishes after poll succeeds', async () => {
+    vi.mocked(apiGet).mockImplementation((path: string) => {
+      if (path === '/api/telegram/login/qr/login-1') {
+        return Promise.resolve({
+          login_id: 'login-1',
+          status: 'online',
+          account: { id: 3, phone: '+10000000002', status: 'ONLINE', last_error: '' },
+          metadata_sync: { status: 'succeeded', channel_count: 2 }
+        })
+      }
+      return Promise.resolve({ items: [] })
+    })
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '添加账号')!.trigger('click')
+    await wrapper.findAll('button').find((button) => button.text() === '生成二维码')!.trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/qr/start', {})
+    expect(apiGet).toHaveBeenCalledWith('/api/telegram/login/qr/login-1')
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
+    expect(messageSuccess).toHaveBeenCalledWith('Telegram 账号已连接')
+  })
+
+  it('paginates accounts on the account page', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({
+      items: Array.from({ length: 21 }, (_, index) => ({
+        id: index + 1,
+        phone: `+100000000${String(index).padStart(2, '0')}`,
+        telegram_user_id: index + 1,
+        first_name: `User${index + 1}`,
+        last_name: '',
+        username: '',
+        status: 'ONLINE',
+        last_error: ''
+      }))
+    })
+
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('+10000000000')
+    expect(wrapper.text()).not.toContain('+10000000020')
+
+    await wrapper.find('button[aria-label="下一页"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('+10000000020')
+    expect(wrapper.text()).not.toContain('+10000000000')
   })
 
   it('logs in from the account dialog without navigating to setup', async () => {
@@ -222,6 +291,9 @@ function mountAccountsView() {
         NButton: {
           emits: ['click'],
           template: '<button v-bind="$attrs" @click="$emit(\'click\', $event)"><slot /></button>'
+        },
+        NButtonGroup: {
+          template: '<div><slot /></div>'
         },
         NForm: {
           template: '<form><slot /></form>'

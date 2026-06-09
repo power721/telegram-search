@@ -96,6 +96,15 @@ require_cmd docker
 
 URL="http://127.0.0.1:$HOST_PORT"
 
+IP="$(ip a | awk '{ for (i = 1; i <= NF; i++) if ($i == "inet" && $(i + 1) ~ /^192\.168\./) { split($(i + 1), parts, "/"); print parts[1]; exit } }')"
+if [[ -z "$IP" ]]; then
+  IP="$(ip a | awk '{ for (i = 1; i <= NF; i++) if ($i == "inet" && $(i + 1) ~ /^10\./) { split($(i + 1), parts, "/"); print parts[1]; exit } }')"
+fi
+
+if [[ -n "$IP" ]]; then
+  URL="http://$IP:$HOST_PORT"
+fi
+
 docker pull "$IMAGE"
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true
 docker run -d \

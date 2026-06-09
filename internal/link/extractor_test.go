@@ -1,6 +1,9 @@
 package link
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestExtractProviderCorpus(t *testing.T) {
 	extractor := NewExtractor()
@@ -266,6 +269,654 @@ ed2k://|file|斗破苍穹.2017 - S05E202 - 第 202 集 - 2160p.WEB-DL.SDR.HEVC.A
 	}
 	if links[0].Note != "斗破苍穹 (2017) - S05E202" {
 		t.Fatalf("note = %q, want media title", links[0].Note)
+	}
+}
+
+func TestExtractAssignsMediaMetadataToCloudDriveLinks(t *testing.T) {
+	text := `名称：开始推理吧 第四季 (2026)  刘宇宁 金靖 张凌赫 程鑫  综艺  真人秀真人秀  0607期
+
+描述：又名: 开始推理吧 4
+
+链接：
+🔗 百度网盘：https://pan.baidu.com/s/1sQSU-e5CoYds6MeFEymS1A?pwd=3345
+🔑 提取码：3345
+🏷 标签：#刘宇宁 #金靖 #真人秀 #开始推理吧`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "开始推理吧 第四季" {
+		t.Fatalf("media title = %q, want 开始推理吧 第四季", link.MediaTitle)
+	}
+	if link.MediaYear != "2026" || link.MediaEpisode != "0607期" || link.MediaCategory != "综艺" {
+		t.Fatalf("metadata = %+v, want year 2026 episode 0607期 category 综艺", link)
+	}
+	if link.MediaTags != "刘宇宁 金靖 真人秀 开始推理吧" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataSkipsNearbyNoiseBeforeLink(t *testing.T) {
+	text := `憨婿
+4K S01E01 - E25 HiveWeb
+
+简介：理工高材生韦浩意外魂穿大庸朝
+分享：Pluto (https://hdhive.com/user/17888)
+大小：2.6GB
+链接：直达链接 (https://pan.baidu.com/s/1yHyPAA47gToHykEQfrn3Pw?pwd=t67z)
+标签：#憨婿 #剧情`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want hdhive fallback and baidu link: %+v", len(links), links)
+	}
+	link := links[1]
+	if link.Type != "baidu" || link.MediaTitle != "憨婿" || link.Note != "憨婿" {
+		t.Fatalf("baidu link = %+v, want media title 憨婿", link)
+	}
+	if link.MediaSeason != "S01" || link.MediaEpisode != "E01" || link.MediaQuality != "4K" || link.MediaSize != "2.6GB" {
+		t.Fatalf("metadata = %+v, want season/episode/quality/size", link)
+	}
+}
+
+func TestExtractMediaMetadataFromStructuredTVMessage(t *testing.T) {
+	text := `📺 电视剧：塬上风云 (2026) - S01E30
+🍿 TMDB ID: 323346
+🎭 类型: 剧情,War & Politics
+📂 分类: 国产剧
+🎞️ 质量: WEB-DL 2160p HDR10
+💾 大小: 3.23 GB
+
+🔗 链接: https://115cdn.com/s/swsznow33xj?password=q474`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "塬上风云" || link.MediaYear != "2026" || link.MediaSeason != "S01" || link.MediaEpisode != "E30" {
+		t.Fatalf("title/sequence metadata = %+v", link)
+	}
+	if link.MediaTMDBID != "323346" || link.MediaCategory != "国产剧" || link.MediaQuality != "WEB-DL 2160p HDR10" || link.MediaSize != "3.23 GB" {
+		t.Fatalf("structured metadata = %+v", link)
+	}
+}
+
+func TestExtractMediaMetadataFromShortDramaTitle(t *testing.T) {
+	text := `短剧-完了，这破农场来的全是祖宗第二季（80集）
+
+夸克：https://pan.quark.cn/s/8fd1235933b5
+度盘：https://pan.baidu.com/s/1idK69_EZ6stsf5ra1qPwjQ?pwd=3l6e`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "完了，这破农场来的全是祖宗第二季" || link.MediaEpisode != "80集" || link.MediaCategory != "短剧" {
+			t.Fatalf("link = %+v, want short drama metadata", link)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromMagnetAndED2KURL(t *testing.T) {
+	text := `资源
+magnet:?xt=urn:btih:abcdef&dn=维京传奇.2013.S01.2160p.WEB-DL.mkv
+ed2k://|file|刀.1995.USA.UHD.Blu-ray.2160p.DV.HDR.mkv|94070593331|ABCDEF0123456789|/`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	if links[0].MediaTitle != "维京传奇.2013.S01.2160p.WEB-DL" || links[0].MediaYear != "2013" || links[0].MediaSeason != "S01" {
+		t.Fatalf("magnet metadata = %+v", links[0])
+	}
+	if links[1].MediaTitle != "刀.1995.USA.UHD.Blu-ray.2160p.DV.HDR" || links[1].MediaYear != "1995" || links[1].MediaQuality == "" || links[1].MediaSize == "" {
+		t.Fatalf("ed2k metadata = %+v", links[1])
+	}
+}
+
+func TestExtractMediaMetadataFromResourceNameAndPikPak(t *testing.T) {
+	text := `资源名称：圆桌派
+
+描述：圆桌派全季全集，《圆桌派》，别名《圆桌π》是一档的聊天文化类网络电视节目。
+
+🧲 链接: https://mypikpak.com/s/VO
+
+👉使用 PikPak 秒存，立即在线观看👈 (https://toapp.mypikpak.com/toapp?__add_url=https://mypikpak.com/s/VO&source=pptg&__campaign=/s/VO)
+
+📁 文件大小：86.7GB
+🏷 文件类型：#脱口秀#综艺##文化节目#中国文化`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want only real pikpak resource: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "pikpak" || link.URL != "https://mypikpak.com/s/VO" {
+		t.Fatalf("link = %+v, want pikpak resource", link)
+	}
+	if link.MediaTitle != "圆桌派" || link.Note != "圆桌派" || link.MediaSize != "86.7GB" || link.MediaCategory != "综艺" {
+		t.Fatalf("metadata = %+v, want title/size/category", link)
+	}
+	if link.MediaTags != "脱口秀 综艺 文化节目 中国文化" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromPlainTVTitle(t *testing.T) {
+	text := `电视剧 超感迷宫 2025 4K 全20集
+链接：https://cloud.189.cn/t/Y7rUvynue6vm`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "超感迷宫" || link.MediaYear != "2025" || link.MediaQuality != "4K" || link.MediaEpisode != "20集" || link.MediaCategory != "电视剧" {
+		t.Fatalf("metadata = %+v, want plain tv title metadata", link)
+	}
+}
+
+func TestExtractMediaMetadataFromAngleBracketCategory(t *testing.T) {
+	text := `《国产剧》迷墙 (2026)  2160p WEB-DL H265 DDP5.1 主演: 郭京飞 / 任素汐 / 谷嘉诚 / 漆昱辰 / 温峥嵘
+
+123云盘：https://1856557151.share.123pan.cn/123pan/oJqrvd-YON9d
+
+百度网盘：https://pan.baidu.com/s/184SrcMA15CApBQsvjtLFVQ?pwd=x7hv`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "迷墙" || link.MediaYear != "2026" || link.MediaCategory != "国产剧" {
+			t.Fatalf("link = %+v, want title/year/category", link)
+		}
+		if link.MediaQuality != "2160p WEB-DL H265 DDP5.1" {
+			t.Fatalf("quality = %q", link.MediaQuality)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromInlineDriveLinksAndTags(t *testing.T) {
+	text := `海贼王合集 国语日语
+
+◎年  代 1999
+◎产  地 日本
+◎类  别 喜剧 / 动作 / 动画 / 奇幻 / 冒险
+◎豆  瓣 9.5
+
+大小：1.5T
+标签：#海贼王 #航海王 #ワンピース #OnePiece #动画 #动漫 #爷青回 阿里   https://www.aliyundrive.com/s/QyVTWdmGM1o 115     https://115cdn.com/s/swfx55h3ffc?password=s367#
+访问码：s367`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want aliyun and 115 links: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "海贼王合集 国语日语" || link.MediaYear != "1999" || link.MediaSize != "1.5T" {
+			t.Fatalf("link = %+v, want title/year/size", link)
+		}
+		if link.MediaTags != "海贼王 航海王 ワンピース OnePiece 动画 动漫 爷青回 阿里" {
+			t.Fatalf("tags = %q", link.MediaTags)
+		}
+	}
+	if links[1].Type != "115" || links[1].Password != "s367" {
+		t.Fatalf("second link = %+v, want 115 password", links[1])
+	}
+}
+
+func TestExtractMediaMetadataFromShortDramaDirectory(t *testing.T) {
+	text := `名称：2026年6月9日 短剧更新目录3
+
+描述：目录：
+1.白绫三尺惜红颜（63集）吴竹照＆觅七
+2.嫡女归京，我被狼群宠上天（73集）Ai短剧
+
+阿里：https://www.alipan.com/s/TTXfbCYaCgk
+夸克：https://pan.quark.cn/s/689d3b4512f2
+百度：https://pan.baidu.com/s/1eKVTQkEETVy1hIYS8YA5-A?pwd=tjyd
+
+📁 大小：N
+🏷 标签：#短剧 #最新短剧 #合集 #擦边短剧 #短剧榜 #热力榜`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "2026年6月9日 短剧更新目录3" || link.MediaCategory != "短剧" {
+			t.Fatalf("link = %+v, want directory metadata", link)
+		}
+		if link.MediaSize != "" {
+			t.Fatalf("media size = %q, want invalid size ignored", link.MediaSize)
+		}
+		if link.MediaTags != "短剧 最新短剧 合集 擦边短剧 短剧榜 热力榜" {
+			t.Fatalf("tags = %q", link.MediaTags)
+		}
+	}
+	if links[2].Type != "baidu" || links[2].Password != "tjyd" {
+		t.Fatalf("baidu link = %+v, want password", links[2])
+	}
+}
+
+func TestExtractMediaMetadataFromUpdatedEpisodeTitle(t *testing.T) {
+	text := `名称：迷墙 (2026) 更至06集 [4K][剧情][郭京飞/任素汐]
+
+描述：倒霉透顶的小夫妻。
+
+链接：https://pan.xunlei.com/s/VOuXNeFlYfJVnesX3zRR8IRiA1?pwd=3ypd#
+
+📁 大小：NG
+🏷 标签：#迷墙 #剧集 #4K #剧情 #郭京飞 #任素汐 #xunlei`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "迷墙" || link.MediaYear != "2026" || link.MediaEpisode != "更新06集" || link.MediaQuality != "4K" {
+		t.Fatalf("metadata = %+v, want updated episode metadata", link)
+	}
+	if link.MediaSize != "" {
+		t.Fatalf("media size = %q, want invalid size ignored", link.MediaSize)
+	}
+}
+
+func TestExtractMediaMetadataFromOneMessageMultipleTianyiTitles(t *testing.T) {
+	text := `日剧分享六
+麻烦一族.Involvement in Family Affairs.(2022) {tmdb-158896}
+链接：https://cloud.189.cn/t/q2yUJjR7Bjqm（访问码：5zk9）
+罗布奥特曼.Ultraman R／B.(2018) {tmdb-81959}
+链接：https://cloud.189.cn/t/2Q3Aban67fii（访问码：xmt5）
+恋爱何必认真？.What Do You Really Do About Love？.(2022) {tmdb-194854}
+链接：https://cloud.189.cn/t/aEnIBjaUbUVj（访问码：1wbv）
+
+标签  #剧集 #合集 #刮销 #4k
+
+大小：1t`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	want := []struct {
+		title string
+		year  string
+		tmdb  string
+		pass  string
+	}{
+		{"麻烦一族.Involvement in Family Affairs.", "2022", "158896", "5zk9"},
+		{"罗布奥特曼.Ultraman R／B.", "2018", "81959", "xmt5"},
+		{"恋爱何必认真？.What Do You Really Do About Love？.", "2022", "194854", "1wbv"},
+	}
+	for i, item := range want {
+		if links[i].MediaTitle != item.title || links[i].MediaYear != item.year || links[i].MediaTMDBID != item.tmdb || links[i].Password != item.pass {
+			t.Fatalf("link %d = %+v, want %+v", i, links[i], item)
+		}
+		if links[i].MediaSize != "1t" || links[i].MediaTags != "剧集 合集 刮销 4k" {
+			t.Fatalf("shared metadata for link %d = %+v", i, links[i])
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromBracketQualityAndSeasonRanges(t *testing.T) {
+	text := `名称：厂区日志（2026）【4K.HDR.50fps】【更12集】【剧情/喜剧】【王宁/尹贝希】
+.
+描述：在大城市工作的王美琳和唐甜。
+.
+链接：https://pan.quark.cn/s/096c12ad4222
+.
+📁 大小：NG
+🏷 标签：#国剧 #剧情 #喜剧 #厂区日志 #4K #HDR #50fps`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "厂区日志" || link.MediaYear != "2026" || link.MediaEpisode != "更新12集" {
+		t.Fatalf("metadata = %+v, want title/year/update episode", link)
+	}
+	if link.MediaQuality != "4K HDR 50fps" {
+		t.Fatalf("quality = %q", link.MediaQuality)
+	}
+}
+
+func TestExtractMediaMetadataFromStructuredTVWithBracketQuality(t *testing.T) {
+	text := `📺 电视剧：莫离 (2026) S01E01
+🍿 TMDB ID: 292696
+⭐️ 评分: 0.0
+🎭 题材: 剧情
+📂 地区: 大陆
+🎞️ 质量: [4K] [HDR10]
+💾 大小: 2.33 GB
+🔗 链接: https://115.com/s/swszh9233xj?password=q8e8`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "莫离" || link.MediaYear != "2026" || link.MediaSeason != "S01" || link.MediaEpisode != "E01" {
+		t.Fatalf("title/sequence metadata = %+v", link)
+	}
+	if link.MediaQuality != "[4K] [HDR10]" || link.MediaSize != "2.33 GB" || link.MediaTMDBID != "292696" {
+		t.Fatalf("structured metadata = %+v", link)
+	}
+}
+
+func TestExtractMediaMetadataFromLatestShortDramaMobileShare(t *testing.T) {
+	text := `最新擦边短剧：伪装的爱&疯狂试爱&情牵梦绕&危险同居&红唇温差&夜海沉沦&魂牵旧梦&深情蚀骨&秘爱成瘾&她影缠心（完整版）擦边短剧
+
+描述：喜欢就存 速存不补
+
+链接：https://yun.139.com/shareweb/#/w/i/2v3Ez1bGGYnpm
+
+📁 大小：N
+🏷 标签：#短剧 #最新短剧 #合集 #擦边短剧 #短剧榜 #热力榜`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.URL != "https://yun.139.com/shareweb/#/w/i/2v3Ez1bGGYnpm" {
+		t.Fatalf("link = %+v, want mobile yun share", link)
+	}
+	if link.MediaTitle != "伪装的爱&疯狂试爱&情牵梦绕&危险同居&红唇温差&夜海沉沦&魂牵旧梦&深情蚀骨&秘爱成瘾&她影缠心" || link.MediaCategory != "短剧" {
+		t.Fatalf("metadata = %+v, want short drama title/category", link)
+	}
+	if link.MediaSize != "" || link.MediaTags != "短剧 最新短剧 合集 擦边短剧 短剧榜 热力榜" {
+		t.Fatalf("size/tags = size:%q tags:%q", link.MediaSize, link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromMovieLabelAndBareMobileLink(t *testing.T) {
+	text := `电影：星河入梦 (2026) 王鹤棣 / 宋茜
+
+剧情：近未来，虚拟梦境系统“良梦”问世。
+
+链接：
+https://yun.139.com/shareweb/#/w/i/2uR1qyBjPmJnp
+
+🏷：#夸克网盘 #百度网盘 #迅雷网盘 #UC网盘 #电影`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.MediaTitle != "星河入梦" || link.MediaYear != "2026" || link.MediaCategory != "电影" {
+		t.Fatalf("metadata = %+v, want movie mobile metadata", link)
+	}
+	if link.MediaTags != "夸克网盘 百度网盘 迅雷网盘 UC网盘 电影" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromMultiProviderUpdatedAnime(t *testing.T) {
+	text := `名称：绝世战魂  更新至181集  4K
+.
+描述：四大宗门之首的玄灵宗。
+.
+UC：https://drive.uc.cn/s/ea0bc2d5c64e4?public=1
+夸克：https://pan.quark.cn/s/55e3d0a4e4cf
+百度：https://pan.baidu.com/s/1Sd0rWph5mLJFsVD6eAV5uA?pwd=yyds
+迅雷：https://pan.xunlei.com/s/VOu5JoqaMd-LhqsmowoScmfEA1?pwd=qaah
+
+🏷 标签：#绝世战魂 #多多影音 #ucquark #baidu #xunlei`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 4 {
+		t.Fatalf("len = %d, want 4: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "绝世战魂" || link.MediaEpisode != "更新181集" || link.MediaQuality != "4K" {
+			t.Fatalf("link = %+v, want title/update/quality", link)
+		}
+	}
+	if links[2].Password != "yyds" || links[3].Password != "qaah" {
+		t.Fatalf("passwords = baidu:%q xunlei:%q", links[2].Password, links[3].Password)
+	}
+}
+
+func TestExtractMediaMetadataFromDetailedMovieQualityLines(t *testing.T) {
+	text := `🎬 真人快打2 (2026)
+
+🎭 类型：电影
+⭐️ TMDB评分：7.5/10
+🖥 画质：1080p
+📹 视频：WEB-DL.H.264
+📦 大小：48.37GB
+
+1080P&4K WEB-DL DV/HDR/SDR DDP5.1 [英语][内封简繁字幕]
+
+🔗 链接：123网盘 (https://www.123pan.com/s/IpPUVv-M1Pdv?pwd=Ocat#)
+
+🏷 标签：#真人快打2 #动作 #奇幻 #冒险`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "真人快打2" || link.MediaYear != "2026" || link.MediaCategory != "电影" || link.MediaSize != "48.37GB" {
+		t.Fatalf("metadata = %+v, want movie fields", link)
+	}
+	for _, token := range []string{"1080p", "WEB-DL.H.264", "4K", "DV", "HDR", "SDR", "DDP5.1"} {
+		if !strings.Contains(link.MediaQuality, token) {
+			t.Fatalf("quality = %q, missing %s", link.MediaQuality, token)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromUpdateNotificationStatus(t *testing.T) {
+	text := `📺 影片更新通知~
+
+电视剧名：豺狼的日子 (2024)
+类型：#剧情 #动作冒险 #悬疑
+季数：第1季
+地区：#英国
+平台：#Sky_Atlantic #Sky_Showcase
+
+状态：更新至第2集(共10集)
+
+🔗 123盘地址：https://www.123pan.com/s/dU7jjv-cqUHA`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "豺狼的日子" || link.MediaYear != "2024" || link.MediaSeason != "第1季" || link.MediaEpisode != "更新2集" {
+		t.Fatalf("metadata = %+v, want tv update status", link)
+	}
+	if link.MediaCategory != "#剧情 #动作冒险 #悬疑" {
+		t.Fatalf("category = %q", link.MediaCategory)
+	}
+}
+
+func TestExtractMediaMetadataFromHDHiveResourceURL(t *testing.T) {
+	text := `白日飞升 (2026)
+S01E01-E08 4K SDR 内嵌简中 DDP.2.0 HiveWeb
+
+简介：万古仙王苏无病与上仙林宁雪历经三百年等待。
+
+分享：任秋叶卷起 (https://hdhive.com/user/31485)
+大小：1.59KB｜400MB/集
+链接：直达链接 (https://hdhive.com/resource/f3ffec8b2d394724a0b43aecaff1e5c0)
+网址：白日飞升 (2026) (https://hdhive.com/tv/e78e028399154625934aaa6a34515060)
+
+标签：#白日飞升 #剧情`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want user/resource/tv fallback URLs: %+v", len(links), links)
+	}
+	resource := links[1]
+	if resource.Type != "url" || resource.URL != "https://hdhive.com/resource/f3ffec8b2d394724a0b43aecaff1e5c0" {
+		t.Fatalf("resource link = %+v", resource)
+	}
+	if resource.MediaTitle != "白日飞升" || resource.MediaYear != "2026" || resource.MediaSeason != "S01" || resource.MediaEpisode != "E01" {
+		t.Fatalf("metadata = %+v, want hdhive title/season", resource)
+	}
+	if resource.MediaQuality != "4K SDR DDP.2.0" || resource.MediaSize != "1.59KB" {
+		t.Fatalf("quality/size = %q/%q", resource.MediaQuality, resource.MediaSize)
+	}
+}
+
+func TestExtractIgnoresCollectionAndTMDBReferenceLinks(t *testing.T) {
+	text := `🎥 迈克尔·杰克逊：巨星之路 (2026)
+
+🗂 所属合集：Michael Collection (https://telegra.ph/Michael-Collection-06-09)
+⭐️ 评分：7.7
+🏷 类型：音乐 / 剧情
+🔖 标签: #迈克尔杰克逊巨星之路 #电影 #22.61G #4K #DDP #DV #HEVC #WEB-DL #MichaelCollection`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 0 {
+		t.Fatalf("len = %d, want collection reference ignored: %+v", len(links), links)
+	}
+}
+
+func TestExtractMediaMetadataFromHDHiveBracketSeries(t *testing.T) {
+	text := `[剧集] 神探狄仁杰 (2004)
+S01 4K WEB-DL HQ HiveWeb 补E27
+
+简介：《神探狄仁杰》系列是由钱雁秋执导。
+
+分享：白可乐 (https://hdhive.com/user/2)
+TMDB: 44277 (https://www.themoviedb.org/tv/44277)
+大小：124.14GB
+字幕：内嵌简中
+
+直达链接 (https://hdhive.com/resource/115/01e82030dcab468697a8113343684ff9) ｜ 神探狄仁杰 (https://hdhive.com/tv/30bbc00cfa1811ed91ff0242c0a81003)
+
+标签：#神探狄仁杰 #剧情 #悬疑`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want user/resource/tv fallback URLs and TMDB ignored: %+v", len(links), links)
+	}
+	resource := links[1]
+	if resource.URL != "https://hdhive.com/resource/115/01e82030dcab468697a8113343684ff9" || resource.MediaTitle != "神探狄仁杰" {
+		t.Fatalf("resource = %+v", resource)
+	}
+	if resource.MediaYear != "2004" || resource.MediaSeason != "S01" || resource.MediaEpisode != "补E27" || resource.MediaSize != "124.14GB" {
+		t.Fatalf("metadata = %+v", resource)
+	}
+	if resource.MediaQuality != "4K WEB-DL" || resource.MediaCategory != "剧集" {
+		t.Fatalf("quality/category = %q/%q", resource.MediaQuality, resource.MediaCategory)
+	}
+}
+
+func TestExtractMediaMetadataFromMultiProviderMovieQualityTags(t *testing.T) {
+	text := `名称：迈克尔·杰克逊：巨星之路(2026)【4K.HDR10+】【高码率】【内封简繁英】【杜比全景声】
+
+描述：影片讲述迈克尔·杰克逊在音乐之外的人生旅程。
+
+夸克：https://pan.quark.cn/s/bc50d367da9f
+百度：https://pan.baidu.com/s/1Fpy0M0UecRQE0On6gZ3KUQ?pwd=Yu66
+迅雷：https://pan.xunlei.com/s/VOuermFOuYbi6feIHIIccebqA1?pwd=y2fz
+115：https://115cdn.com/s/swsznst3wwq?password=m2f2
+
+📁 大小：22.5GB
+🏷 标签：#迈克尔杰克逊 #巨星之路 #4K #HDR10 #高码率 #杜比全景声`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 4 {
+		t.Fatalf("len = %d, want 4: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "迈克尔·杰克逊：巨星之路" || link.MediaYear != "2026" || link.MediaSize != "22.5GB" {
+			t.Fatalf("link = %+v, want movie metadata", link)
+		}
+		for _, token := range []string{"4K", "HDR10", "高码率", "杜比全景声"} {
+			if !strings.Contains(link.MediaQuality, token) {
+				t.Fatalf("quality = %q, missing %s", link.MediaQuality, token)
+			}
+		}
+	}
+	if links[1].Password != "Yu66" || links[2].Password != "y2fz" || links[3].Password != "m2f2" {
+		t.Fatalf("passwords = %+v", links)
+	}
+}
+
+func TestExtractMediaMetadataFromAudioDramaMobileShare(t *testing.T) {
+	text := `名称：多人有声剧《无限辉煌图卷》主播：格蕾丝语 1507集完
+
+描述：神道魔法百界族，异能武斗狂歌度。
+
+链接：https://yun.139.com/shareweb/#/w/i/2v3EDrw9AeH0c
+
+📁 大小：12.9G
+🏷 标签：#有声书 #温茶米酒 #多人有声剧 #无限辉煌图卷 #格蕾丝语 #移动`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want mobile link: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.MediaTitle != "多人有声剧《无限辉煌图卷》主播：格蕾丝语" || link.MediaEpisode != "1507集" {
+		t.Fatalf("metadata = %+v, want audio drama title/episodes", link)
+	}
+	if link.MediaSize != "12.9G" || link.MediaTags != "有声书 温茶米酒 多人有声剧 无限辉煌图卷 格蕾丝语 移动" {
+		t.Fatalf("size/tags = %q/%q", link.MediaSize, link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromQuarkEmojiTitleWith60FPS(t *testing.T) {
+	text := `🗄 莫离（2026）【4K.HDR.60fps】【内封简中】【更05集】【爱情/古装】【白鹿/丞磊】
+
+📜介绍：
+叶府的长女叶璃，嫁去破败的定王府。
+
+💾夸克网盘 (https://pan.quark.cn/s/8b6e84fde0a5)
+
+📁 大小：NG
+🏷 标签：#国剧 #leoziyuan #爱情 #古装 #莫离 #4K #HDR #60fps`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want quark link: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "莫离" || link.MediaYear != "2026" || link.MediaEpisode != "更新05集" {
+		t.Fatalf("metadata = %+v, want title/year/update episode", link)
+	}
+	if link.MediaQuality != "4K HDR 60fps" {
+		t.Fatalf("quality = %q", link.MediaQuality)
+	}
+}
+
+func TestExtractMediaMetadataFromShortDramaMultipleLinks(t *testing.T) {
+	text := `名称：凡人百世书第二季 (94集) | 短剧
+
+描述：2026年06月09日最新热门抖音快手百度番茄红果等付费短剧推荐。
+
+链接：https://pan.quark.cn/s/72d151cb5d18
+https://pan.baidu.com/s/1bXhVcHMoVDhLZmfs0Q49Hg?pwd=8888
+https://drive.uc.cn/s/b3aa070e16134
+
+📁 大小：2.1 GB
+🏷 标签：#凡人百世书第二季 #短剧`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "凡人百世书第二季" || link.MediaEpisode != "94集" || link.MediaCategory != "短剧" || link.MediaSize != "2.1 GB" {
+			t.Fatalf("link = %+v, want short drama metadata", link)
+		}
+	}
+	if links[1].Password != "8888" {
+		t.Fatalf("baidu password = %q", links[1].Password)
 	}
 }
 

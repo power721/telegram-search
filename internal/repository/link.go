@@ -54,15 +54,30 @@ func (r *LinkRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, messageID 
 			link.Category = linkCategory(link)
 		}
 		err := tx.QueryRowContext(ctx, `
-INSERT INTO telegram_links (message_id, type, url, password, note, source_snippet, category, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO telegram_links (
+  message_id, type, url, password, note, source_snippet, category,
+  media_title, media_year, media_season, media_episode, media_quality, media_size, media_tmdb_id, media_category, media_tags,
+  created_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(message_id, type, url) DO UPDATE SET
   password = excluded.password,
   note = excluded.note,
   source_snippet = excluded.source_snippet,
-  category = excluded.category
+  category = excluded.category,
+  media_title = excluded.media_title,
+  media_year = excluded.media_year,
+  media_season = excluded.media_season,
+  media_episode = excluded.media_episode,
+  media_quality = excluded.media_quality,
+  media_size = excluded.media_size,
+  media_tmdb_id = excluded.media_tmdb_id,
+  media_category = excluded.media_category,
+  media_tags = excluded.media_tags
 RETURNING id, created_at`,
-			messageID, link.Type, link.URL, link.Password, link.Note, link.SourceSnippet, link.Category, now,
+			messageID, link.Type, link.URL, link.Password, link.Note, link.SourceSnippet, link.Category,
+			link.MediaTitle, link.MediaYear, link.MediaSeason, link.MediaEpisode, link.MediaQuality, link.MediaSize, link.MediaTMDBID, link.MediaCategory, link.MediaTags,
+			now,
 		).Scan(&link.ID, &link.CreatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("save link %s: %w", link.URL, err)
@@ -86,7 +101,10 @@ func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([
 	args = append(args, limit, params.Offset)
 	query := `
 SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
-       COALESCE(l.source_snippet, ''), COALESCE(l.category, ''), l.created_at,
+       COALESCE(l.source_snippet, ''), COALESCE(l.category, ''),
+       COALESCE(l.media_title, ''), COALESCE(l.media_year, ''), COALESCE(l.media_season, ''), COALESCE(l.media_episode, ''),
+       COALESCE(l.media_quality, ''), COALESCE(l.media_size, ''), COALESCE(l.media_tmdb_id, ''), COALESCE(l.media_category, ''), COALESCE(l.media_tags, ''),
+       l.created_at,
        mc.text, m.date, m.message_type, m.media_summary, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
@@ -103,7 +121,7 @@ LIMIT ? OFFSET ?`
 	var out []model.LinkResult
 	for rows.Next() {
 		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.MediaTitle, &item.MediaYear, &item.MediaSeason, &item.MediaEpisode, &item.MediaQuality, &item.MediaSize, &item.MediaTMDBID, &item.MediaCategory, &item.MediaTags, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -119,12 +137,19 @@ func (r *LinkRepository) SearchResources(ctx context.Context, params LinkSearchP
 	where, args := linkSearchWhere(params)
 	args = append(args, limit, params.Offset)
 	query := `
-SELECT id, message_id, type, url, password, note, source_snippet, category, created_at,
+SELECT id, message_id, type, url, password, note, source_snippet, category,
+       media_title, media_year, media_season, media_episode, media_quality, media_size, media_tmdb_id, media_category, media_tags,
+       created_at,
        message_text, message_date, message_type, media_summary, account_id, channel_id, telegram_channel_id, channel_title, channel_username, telegram_message_id
 FROM (
   SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, '') AS password,
          COALESCE(l.note, '') AS note, COALESCE(l.source_snippet, '') AS source_snippet,
          ` + linkResourceCategoryExpr + ` AS category,
+         COALESCE(l.media_title, '') AS media_title, COALESCE(l.media_year, '') AS media_year,
+         COALESCE(l.media_season, '') AS media_season, COALESCE(l.media_episode, '') AS media_episode,
+         COALESCE(l.media_quality, '') AS media_quality, COALESCE(l.media_size, '') AS media_size,
+         COALESCE(l.media_tmdb_id, '') AS media_tmdb_id, COALESCE(l.media_category, '') AS media_category,
+         COALESCE(l.media_tags, '') AS media_tags,
          l.created_at, mc.text AS message_text, m.date AS message_date, m.message_type, m.media_summary, m.account_id,
          m.channel_id, c.telegram_channel_id, c.title AS channel_title, c.username AS channel_username, m.telegram_message_id,
          row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
@@ -145,7 +170,7 @@ LIMIT ? OFFSET ?`
 	var out []model.LinkResult
 	for rows.Next() {
 		var item model.LinkResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.Type, &item.URL, &item.Password, &item.Note, &item.SourceSnippet, &item.Category, &item.MediaTitle, &item.MediaYear, &item.MediaSeason, &item.MediaEpisode, &item.MediaQuality, &item.MediaSize, &item.MediaTMDBID, &item.MediaCategory, &item.MediaTags, &item.CreatedAt, &item.MessageText, &item.MessageDate, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -246,8 +271,9 @@ func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 		args = append(args, params.ChannelID)
 	}
 	if params.Keyword != "" {
-		where = append(where, `mc.text LIKE ?`)
-		args = append(args, "%"+params.Keyword+"%")
+		where = append(where, `(mc.text LIKE ? OR COALESCE(l.note, '') LIKE ? OR COALESCE(l.media_title, '') LIKE ? OR COALESCE(l.media_tags, '') LIKE ?)`)
+		like := "%" + params.Keyword + "%"
+		args = append(args, like, like, like, like)
 	}
 	if params.DateFrom != nil {
 		where = append(where, `m.date >= ?`)
@@ -276,9 +302,9 @@ func (r *LinkRepository) SearchMerged(ctx context.Context, params MergedLinkSear
 		args = append(args, params.ChannelID)
 	}
 	if params.Keyword != "" {
-		where = append(where, `(mc.text LIKE ? OR COALESCE(l.note, '') LIKE ?)`)
+		where = append(where, `(mc.text LIKE ? OR COALESCE(l.note, '') LIKE ? OR COALESCE(l.media_title, '') LIKE ? OR COALESCE(l.media_tags, '') LIKE ?)`)
 		like := "%" + params.Keyword + "%"
-		args = append(args, like, like)
+		args = append(args, like, like, like, like)
 	}
 	if params.DateFrom != nil {
 		where = append(where, `m.date >= ?`)
@@ -290,6 +316,8 @@ func (r *LinkRepository) SearchMerged(ctx context.Context, params MergedLinkSear
 	}
 	query := `
 SELECT l.id, l.type, l.url, COALESCE(l.password, ''), COALESCE(l.note, ''),
+       COALESCE(l.media_title, ''), COALESCE(l.media_year, ''), COALESCE(l.media_season, ''), COALESCE(l.media_episode, ''),
+       COALESCE(l.media_quality, ''), COALESCE(l.media_size, ''), COALESCE(l.media_tmdb_id, ''), COALESCE(l.media_category, ''), COALESCE(l.media_tags, ''),
        m.date, m.channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
@@ -313,7 +341,7 @@ ORDER BY m.date DESC, l.id DESC`
 		var item candidate
 		var channelTitle string
 		var channelUsername string
-		if err := rows.Scan(&item.id, &item.typ, &item.URL, &item.Password, &item.Note, &item.Datetime, &item.ChannelID, &channelTitle, &channelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.id, &item.typ, &item.URL, &item.Password, &item.Note, &item.MediaTitle, &item.MediaYear, &item.MediaSeason, &item.MediaEpisode, &item.MediaQuality, &item.MediaSize, &item.MediaTMDBID, &item.MediaCategory, &item.MediaTags, &item.Datetime, &item.ChannelID, &channelTitle, &channelUsername, &item.TelegramMessageID); err != nil {
 			return model.MergedLinksResponse{}, err
 		}
 		item.Source = sourceFromChannel(channelTitle, channelUsername)

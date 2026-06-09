@@ -286,6 +286,22 @@ CREATE TABLE IF NOT EXISTS resource_group_counts (
 ALTER TABLE api_keys ADD COLUMN key_ciphertext TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 4,
+		name:    "link_media_metadata",
+		sql: `
+ALTER TABLE telegram_links ADD COLUMN media_title TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_year TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_season TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_episode TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_quality TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_size TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_tmdb_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_category TEXT NOT NULL DEFAULT '';
+ALTER TABLE telegram_links ADD COLUMN media_tags TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_telegram_links_media_title ON telegram_links(media_title);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

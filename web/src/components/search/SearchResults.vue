@@ -52,6 +52,30 @@ function messageHref(item: {
 function channelHref(item: { username?: string }) {
   return telegramChannelHref(item)
 }
+
+function linkTitle(item: { media_title?: string; note?: string; url?: string }) {
+  return item.media_title || item.note || item.url || '-'
+}
+
+function linkMetaParts(item: {
+  media_year?: string
+  media_season?: string
+  media_episode?: string
+  media_quality?: string
+  media_size?: string
+  media_category?: string
+  media_tmdb_id?: string
+}) {
+  return [
+    item.media_year,
+    item.media_season,
+    item.media_episode,
+    item.media_quality,
+    item.media_size,
+    item.media_category,
+    item.media_tmdb_id ? `TMDB ${item.media_tmdb_id}` : ''
+  ].filter(Boolean)
+}
 </script>
 
 <template>
@@ -156,13 +180,15 @@ function channelHref(item: { username?: string }) {
               rel="noopener noreferrer"
               target="_blank"
             >
-              {{ item.note || item.url }}
+              {{ linkTitle(item) }}
             </a>
-            <template v-else>{{ item.note || item.url }}</template>
+            <template v-else>{{ linkTitle(item) }}</template>
           </strong>
           <p>
             <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
           </p>
+          <p v-if="linkMetaParts(item).length > 0" class="link-meta">{{ linkMetaParts(item).join(' · ') }}</p>
+          <p v-if="item.media_tags" class="link-meta">{{ item.media_tags }}</p>
           <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
         </article>
       </template>
@@ -288,6 +314,11 @@ small {
 .result-row p {
   color: var(--app-text-muted);
   margin: 4px 0;
+}
+
+.link-meta {
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .loading-stack {

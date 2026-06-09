@@ -37,6 +37,15 @@ type Item struct {
 	Note              string           `json:"note,omitempty"`
 	Title             string           `json:"title,omitempty"`
 	SourceSnippet     string           `json:"source_snippet,omitempty"`
+	MediaTitle        string           `json:"media_title,omitempty"`
+	MediaYear         string           `json:"media_year,omitempty"`
+	MediaSeason       string           `json:"media_season,omitempty"`
+	MediaEpisode      string           `json:"media_episode,omitempty"`
+	MediaQuality      string           `json:"media_quality,omitempty"`
+	MediaSize         string           `json:"media_size,omitempty"`
+	MediaTMDBID       string           `json:"media_tmdb_id,omitempty"`
+	MediaCategory     string           `json:"media_category,omitempty"`
+	MediaTags         string           `json:"media_tags,omitempty"`
 	Datetime          time.Time        `json:"datetime"`
 	ChannelID         int64            `json:"channel_id"`
 	TelegramChannelID int64            `json:"telegram_channel_id"`
@@ -100,8 +109,17 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				URL:               link.URL,
 				Password:          link.Password,
 				Note:              link.Note,
-				Title:             firstNonEmpty(link.Note, link.URL),
+				Title:             firstNonEmpty(link.MediaTitle, link.Note, link.URL),
 				SourceSnippet:     link.SourceSnippet,
+				MediaTitle:        link.MediaTitle,
+				MediaYear:         link.MediaYear,
+				MediaSeason:       link.MediaSeason,
+				MediaEpisode:      link.MediaEpisode,
+				MediaQuality:      link.MediaQuality,
+				MediaSize:         link.MediaSize,
+				MediaTMDBID:       link.MediaTMDBID,
+				MediaCategory:     link.MediaCategory,
+				MediaTags:         link.MediaTags,
 				Datetime:          link.MessageDate,
 				ChannelID:         link.ChannelID,
 				TelegramChannelID: link.TelegramChannelID,

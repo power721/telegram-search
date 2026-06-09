@@ -40,6 +40,7 @@ async function submit() {
             type="password"
             autocomplete="current-password"
             placeholder="请输入密码"
+            @keyup.enter="submit"
           />
         </n-form-item>
         <n-button type="primary" block :loading="loading" @click="submit">登录</n-button>

@@ -145,6 +145,17 @@ WHERE `+strings.Join(where, " AND "), args...).Scan(&total); err != nil {
 	return total, nil
 }
 
+func (r *Repository) Delete(ctx context.Context, id int64) error {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM sync_tasks WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete task: %w", err)
+	}
+	if rows, err := res.RowsAffected(); err != nil || rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func taskListWhere(filter ListFilter) ([]string, []any) {
 	where := []string{"1=1"}
 	args := []any{}

@@ -102,13 +102,13 @@ func (p *Processor) enqueueGapRecovery(ctx context.Context, channel model.Channe
 	if cursor.LastMessageID <= 0 || event.MessageID <= cursor.LastMessageID+1 {
 		return nil
 	}
-	_, err = p.tasks.Enqueue(ctx, model.TaskTypeGapRecovery, map[string]any{
-		"account_id":       event.AccountID,
-		"channel_id":       channel.ID,
-		"from_message_id":  cursor.LastMessageID + 1,
-		"to_message_id":    event.MessageID - 1,
-		"trigger_message":  event.MessageID,
-		"telegram_channel": event.TelegramChannelID,
+	_, err = p.tasks.Enqueue(ctx, model.TaskTypeGapRecovery, taskpkg.GapRecoveryPayload{
+		AccountID:         event.AccountID,
+		ChannelID:         channel.ID,
+		FromMessageID:     cursor.LastMessageID + 1,
+		ToMessageID:       event.MessageID - 1,
+		TriggerMessageID:  event.MessageID,
+		TelegramChannelID: event.TelegramChannelID,
 	})
 	if err != nil {
 		return fmt.Errorf("enqueue gap recovery task: %w", err)

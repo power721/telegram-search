@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -138,6 +139,138 @@ func (s *Service) SyncChannelWithMaxMessages(ctx context.Context, channelID int6
 
 func (s *Service) SyncChannelWithProgress(ctx context.Context, channelID int64, profile string, progress taskpkg.ProgressSink) (SyncResult, error) {
 	return s.syncChannel(ctx, channelID, profile, 0, progress)
+}
+
+func (s *Service) RunGapRecoveryTask(ctx context.Context, item model.Task, progress taskpkg.ProgressSink) error {
+	var payload taskpkg.GapRecoveryPayload
+	if err := json.Unmarshal([]byte(item.PayloadJSON), &payload); err != nil {
+		return fmt.Errorf("decode gap recovery payload: %w", err)
+	}
+	_, err := s.RecoverGapWithProgress(ctx, payload, progress)
+	return err
+}
+
+func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.GapRecoveryPayload, progress taskpkg.ProgressSink) (SyncResult, error) {
+	if payload.ChannelID <= 0 || payload.FromMessageID <= 0 || payload.ToMessageID < payload.FromMessageID {
+		return SyncResult{}, fmt.Errorf("invalid gap recovery range %d..%d for channel %d", payload.FromMessageID, payload.ToMessageID, payload.ChannelID)
+	}
+	channel, err := s.channels.FindByID(ctx, payload.ChannelID)
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("load gap recovery channel: %w", err)
+	}
+	accountID := channel.AccountID
+	if payload.AccountID > 0 {
+		accountID = payload.AccountID
+	}
+	account, err := s.accounts.FindByID(ctx, accountID)
+	if err != nil {
+		return SyncResult{}, fmt.Errorf("load gap recovery account: %w", err)
+	}
+	sessionPath := ""
+	if s.sessions != nil {
+		sessionPath = s.sessions.PathForAccount(account.ID)
+	}
+	accountSession := telegram.AccountSession{
+		AccountID:   account.ID,
+		Phone:       account.Phone,
+		SessionPath: sessionPath,
+	}
+	ref := telegram.ChannelRef{
+		TelegramChannelID: channel.TelegramChannelID,
+		AccessHash:        channel.AccessHash,
+		Type:              channel.Type,
+	}
+	triggerID := payload.TriggerMessageID
+	if triggerID <= payload.ToMessageID {
+		triggerID = payload.ToMessageID + 1
+	}
+	total := int(payload.ToMessageID - payload.FromMessageID + 1)
+	offsetID := triggerID
+	var result SyncResult
+	var completed int64
+
+	for {
+		if err := checkTaskStatus(ctx, progress); err != nil {
+			return result, err
+		}
+		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
+		if err != nil {
+			return result, fmt.Errorf("fetch gap recovery history: %w", err)
+		}
+		if len(batch) == 0 {
+			break
+		}
+		minID := int64(0)
+		reachedLowerBound := false
+		modelMessages := make([]model.Message, 0, len(batch))
+		for _, item := range batch {
+			if item.TelegramMessageID <= 0 {
+				continue
+			}
+			if minID == 0 || item.TelegramMessageID < minID {
+				minID = item.TelegramMessageID
+			}
+			if item.TelegramMessageID < payload.FromMessageID {
+				reachedLowerBound = true
+				continue
+			}
+			if item.TelegramMessageID > payload.ToMessageID {
+				continue
+			}
+			modelMessages = append(modelMessages, model.Message{
+				AccountID:         account.ID,
+				ChannelID:         channel.ID,
+				TelegramMessageID: item.TelegramMessageID,
+				SenderID:          item.SenderID,
+				Text:              item.Text,
+				RawJSON:           item.RawJSON,
+				Date:              item.Date,
+				EditDate:          item.EditDate,
+				Files:             item.Files,
+			})
+		}
+		if len(modelMessages) > 0 {
+			links, err := s.storeBatch(ctx, account.ID, channel.ID, 0, time.Now().UTC(), modelMessages)
+			if err != nil {
+				return result, err
+			}
+			result.Messages += len(modelMessages)
+			result.Links += links
+		}
+		if minID > 0 {
+			switch {
+			case minID <= payload.FromMessageID:
+				completed = int64(total)
+			case minID <= payload.ToMessageID:
+				completed = payload.ToMessageID - minID + 1
+			}
+		}
+		if int64(result.Messages) > completed {
+			completed = int64(result.Messages)
+		}
+		if completed > int64(total) {
+			completed = int64(total)
+		}
+		if err := reportTaskProgress(ctx, progress, int(completed), total, "gap recovery batch stored"); err != nil {
+			return result, err
+		}
+		if reachedLowerBound || minID == 0 || minID == offsetID || minID <= payload.FromMessageID {
+			break
+		}
+		offsetID = minID
+	}
+	if _, err := s.storeBatch(ctx, account.ID, channel.ID, triggerID, time.Now().UTC(), nil); err != nil {
+		return result, err
+	}
+	if err := reportTaskProgress(ctx, progress, total, total, "gap recovery completed"); err != nil {
+		return result, err
+	}
+	if result.Messages > 0 {
+		if err := s.refreshResourceStats(ctx); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) syncChannel(ctx context.Context, channelID int64, profile string, maxMessages int, progress taskpkg.ProgressSink) (SyncResult, error) {

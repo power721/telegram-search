@@ -621,6 +621,53 @@ func (h handlers) task(c *gin.Context) {
 	c.JSON(http.StatusOK, item)
 }
 
+func (h handlers) deleteTask(c *gin.Context) {
+	if h.deps.Tasks == nil {
+		errorText(c, http.StatusServiceUnavailable, "tasks are unavailable")
+		return
+	}
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	if err := h.deps.Tasks.Delete(c.Request.Context(), id); err != nil {
+		if errors.Is(err, taskpkg.ErrTaskNotDeletable) {
+			errorJSON(c, http.StatusConflict, err)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h handlers) bulkDeleteTasks(c *gin.Context) {
+	if h.deps.Tasks == nil {
+		errorText(c, http.StatusServiceUnavailable, "tasks are unavailable")
+		return
+	}
+	var req struct {
+		IDs []int64 `json:"ids"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.IDs) == 0 {
+		errorText(c, http.StatusBadRequest, "ids are required")
+		return
+	}
+	result, err := h.deps.Tasks.DeleteMany(c.Request.Context(), req.IDs)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func (h handlers) retryTask(c *gin.Context) {
 	h.updateTask(c, func(ctx context.Context, id int64) error {
 		return h.deps.Tasks.Retry(ctx, id)

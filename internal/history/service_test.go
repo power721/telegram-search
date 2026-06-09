@@ -763,6 +763,86 @@ func TestHistorySyncTaskFloodWaitNotifiesSink(t *testing.T) {
 	}
 }
 
+func TestGapRecoveryTaskWorkerProcessesQueuedGap(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	cursors := repository.NewSyncCursorRepository(conn)
+	if err := cursors.Save(ctx, model.SyncCursor{
+		AccountID: accountID, ChannelID: channelID, CursorType: "history", LastMessageID: 10, Date: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("save cursor: %v", err)
+	}
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		15: {
+			{TelegramMessageID: 14, Text: "gap 14 https://pan.quark.cn/s/gap14", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 13, Text: "gap 13", RawJSON: "{}", Date: now},
+		},
+		13: {
+			{TelegramMessageID: 12, Text: "gap 12", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 11, Text: "gap 11", RawJSON: "{}", Date: now},
+		},
+		11: {
+			{TelegramMessageID: 10, Text: "old", RawJSON: "{}", Date: now},
+		},
+	}}
+	historyService := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Cursors: cursors,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 2,
+	})
+	taskRepo := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepo)
+	queued, err := taskService.Enqueue(ctx, model.TaskTypeGapRecovery, taskpkg.GapRecoveryPayload{
+		AccountID:         accountID,
+		ChannelID:         channelID,
+		FromMessageID:     11,
+		ToMessageID:       14,
+		TriggerMessageID:  15,
+		TelegramChannelID: 200,
+	})
+	if err != nil {
+		t.Fatalf("enqueue gap recovery task: %v", err)
+	}
+	worker := taskpkg.NewWorker(taskpkg.WorkerOptions{
+		Service:    taskService,
+		Repository: taskRepo,
+		Handlers: map[string]taskpkg.Handler{
+			model.TaskTypeGapRecovery: historyService.RunGapRecoveryTask,
+		},
+	})
+
+	processed, err := worker.ProcessOnce(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOnce returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1", processed)
+	}
+	finished, err := taskRepo.FindByID(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("find finished task: %v", err)
+	}
+	if finished.Status != model.TaskStatusSucceeded || finished.Progress != 4 || finished.Total != 4 {
+		t.Fatalf("finished task = %+v, want succeeded progress 4/4", finished)
+	}
+	latest, err := messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest messages: %v", err)
+	}
+	if len(latest) != 4 {
+		t.Fatalf("stored messages = %+v, want 4 recovered messages", latest)
+	}
+	cursor, err := cursors.Find(ctx, accountID, channelID, "history")
+	if err != nil {
+		t.Fatalf("find cursor: %v", err)
+	}
+	if cursor.LastMessageID != 15 {
+		t.Fatalf("cursor last message id = %d, want trigger message 15", cursor.LastMessageID)
+	}
+}
+
 type progressUpdate struct {
 	progress int64
 	total    int64

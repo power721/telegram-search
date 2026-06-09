@@ -127,6 +127,9 @@ func (e *Extractor) Extract(text string) []model.Link {
 		if url == "" {
 			continue
 		}
+		if isIgnoredURL(url) {
+			continue
+		}
 		if candidate.Type != "url" && overlapsSpan(candidate.MatchStart, candidate.MatchEnd, providerSpans) {
 			continue
 		}
@@ -221,6 +224,18 @@ func sourceSnippet(text string, start int, end int) string {
 
 func trimTrailingPunctuation(raw string) string {
 	return strings.TrimRight(raw, ".,;:!?)]}）】》\"'，#")
+}
+
+func isIgnoredURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), "t.me")
 }
 
 func queryPassword(typ string, raw string) string {

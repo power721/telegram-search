@@ -38,6 +38,16 @@ vi.mock('@/api/client', () => ({
         update_available: false
       })
     }
+    if (path === '/api/settings/system-info') {
+      return Promise.resolve({
+        name: 'Linux',
+        version: '6.8.0-124-generic',
+        architecture: 'amd64',
+        go_version: 'go1.25.0',
+        cpu_count: 8,
+        hostname: 'tg-search-host'
+      })
+    }
     if (path === '/api/settings/version?check_update=true') {
       return Promise.resolve({
         current_version: 'v1.2.3',
@@ -210,6 +220,23 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('发现新版本 v1.2.4')
   })
 
+  it('renders system information from the settings API', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/settings/system-info')
+    expect(wrapper.get('[data-testid="system-name"]').text()).toBe('Linux')
+    expect(wrapper.text()).toContain('6.8.0-124-generic')
+    expect(wrapper.text()).toContain('amd64')
+    expect(wrapper.text()).toContain('tg-search-host')
+    expect(wrapper.text()).toContain('8')
+    expect(wrapper.text()).toContain('go1.25.0')
+  })
+
   it('updates Telegram API credentials from the settings page', async () => {
     const wrapper = mount(SettingsView, {
       global: {
@@ -256,6 +283,16 @@ describe('SettingsView', () => {
         return Promise.resolve({
           current_version: 'dev',
           update_available: false
+        })
+      }
+      if (path === '/api/settings/system-info') {
+        return Promise.resolve({
+          name: 'Linux',
+          version: '6.8.0-124-generic',
+          architecture: 'amd64',
+          go_version: 'go1.25.0',
+          cpu_count: 8,
+          hostname: 'tg-search-host'
         })
       }
       if (path === '/api/settings/version?check_update=true') {

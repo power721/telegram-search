@@ -112,6 +112,15 @@ type VersionInfoResponse struct {
 	UpdateAvailable bool   `json:"update_available"`
 }
 
+type SystemInfoResponse struct {
+	Name         string `json:"name"`
+	Version      string `json:"version"`
+	Architecture string `json:"architecture"`
+	GoVersion    string `json:"go_version"`
+	CPUCount     int    `json:"cpu_count"`
+	Hostname     string `json:"hostname"`
+}
+
 type Channel struct {
 	ID                  int64      `json:"id"`
 	AccountID           int64      `json:"account_id"`

@@ -2,7 +2,7 @@
 import { useMessage } from 'naive-ui'
 import { onMounted, ref, watch } from 'vue'
 import { apiGet, apiPut } from '@/api/client'
-import type { StorageUsage, TelegramAPISettingsResponse, VersionInfoResponse } from '@/api/types'
+import type { StorageUsage, SystemInfoResponse, TelegramAPISettingsResponse, VersionInfoResponse } from '@/api/types'
 import { useAPIKeyStore } from '@/stores/apiKey'
 import { useAuthStore } from '@/stores/auth'
 
@@ -23,6 +23,7 @@ const telegramLoading = ref(false)
 const versionInfo = ref<VersionInfoResponse | null>(null)
 const versionLoading = ref(false)
 const versionError = ref('')
+const systemInfo = ref<SystemInfoResponse | null>(null)
 
 onMounted(() => {
   apiKey.load().catch((error) => {
@@ -31,6 +32,7 @@ onMounted(() => {
   loadStorageUsage()
   loadTelegramSettings()
   loadVersionInfo(false)
+  loadSystemInfo()
   if (!auth.loaded) {
     auth.loadMe().catch(() => {
       message.error('无法加载当前管理员')
@@ -106,6 +108,14 @@ async function loadVersionInfo(checkUpdate = true) {
     message.error(versionError.value)
   } finally {
     versionLoading.value = false
+  }
+}
+
+async function loadSystemInfo() {
+  try {
+    systemInfo.value = await apiGet<SystemInfoResponse>('/api/settings/system-info')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载系统信息')
   }
 }
 
@@ -274,6 +284,35 @@ function versionStatusText() {
             查看 GitHub Release
           </a>
         </section>
+        <section class="panel system-panel">
+          <h2>系统</h2>
+          <dl>
+            <div>
+              <dt>名称</dt>
+              <dd data-testid="system-name">{{ systemInfo?.name || '-' }}</dd>
+            </div>
+            <div>
+              <dt>版本</dt>
+              <dd>{{ systemInfo?.version || '-' }}</dd>
+            </div>
+            <div>
+              <dt>架构</dt>
+              <dd>{{ systemInfo?.architecture || '-' }}</dd>
+            </div>
+            <div>
+              <dt>主机名</dt>
+              <dd>{{ systemInfo?.hostname || '-' }}</dd>
+            </div>
+            <div>
+              <dt>CPU</dt>
+              <dd>{{ systemInfo?.cpu_count ?? '-' }}</dd>
+            </div>
+            <div>
+              <dt>Go 版本</dt>
+              <dd>{{ systemInfo?.go_version || '-' }}</dd>
+            </div>
+          </dl>
+        </section>
       </div>
       <div class="settings-column settings-column-right">
         <section class="panel api-key-panel">
@@ -397,6 +436,11 @@ function versionStatusText() {
   gap: 12px;
 }
 
+.system-panel {
+  display: grid;
+  gap: 12px;
+}
+
 .version-link {
   color: var(--app-primary);
   font-weight: 600;
@@ -482,6 +526,10 @@ dd {
 
   .version-panel {
     order: 5;
+  }
+
+  .system-panel {
+    order: 6;
   }
 }
 

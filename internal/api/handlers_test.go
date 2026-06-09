@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1718,6 +1719,36 @@ func TestVersionSettingsDoesNotClaimUpdateForDevVersion(t *testing.T) {
 	}
 	if body.CurrentVersion != "dev" || body.LatestVersion != "v9.9.9" || body.UpdateAvailable {
 		t.Fatalf("version response = %+v", body)
+	}
+}
+
+func TestSystemInfoSettingsReportsRuntimeSystemDetails(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/system-info", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.SystemInfoResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Name == "" {
+		t.Fatalf("system name is empty: %+v", body)
+	}
+	if body.Architecture != runtime.GOARCH {
+		t.Fatalf("architecture = %q, want %q", body.Architecture, runtime.GOARCH)
+	}
+	if body.GoVersion != runtime.Version() {
+		t.Fatalf("go version = %q, want %q", body.GoVersion, runtime.Version())
+	}
+	if body.CPUCount <= 0 {
+		t.Fatalf("cpu count = %d, want positive", body.CPUCount)
 	}
 }
 

@@ -21,7 +21,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"tg-search/internal/adminauth"
-	"tg-search/internal/apikey"
 	"tg-search/internal/channel"
 	"tg-search/internal/config"
 	"tg-search/internal/db"
@@ -67,7 +66,7 @@ func TestCoreReadAPIs(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s status = %d body=%s", tc.path, w.Code, w.Body.String())
@@ -96,7 +95,7 @@ func TestLogsAPIListsAndDownloadsLogFiles(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/logs?file=app.log&q=boot&order=asc&limit=20", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list logs status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -126,7 +125,7 @@ func TestLogsAPIListsAndDownloadsLogFiles(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/logs/app.log/download", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("download log status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -162,7 +161,7 @@ func TestGlobalSearchAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=ubuntu", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -191,7 +190,7 @@ func TestGlobalSearchAPIEncodesEmptyGroupItemsAsArray(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=%E6%8E%A8%E7%90%86&limit=50", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -233,7 +232,7 @@ func TestResourcesAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -285,7 +284,7 @@ func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/resources/grouped", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -334,7 +333,7 @@ func TestLinksGroupedReturnsCountsByLinkType(t *testing.T) {
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/links/grouped", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -388,7 +387,7 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/resources?limit=50&offset=100", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -446,7 +445,7 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithKeyword(t *testing.T) {
 	router := NewRouter(deps)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu&limit=50", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -751,7 +750,7 @@ func TestAPIKeySettingsViewAndRegenerate(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/resources", nil)
 	req.Header.Set("X-API-Key", first)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -759,7 +758,7 @@ func TestAPIKeySettingsViewAndRegenerate(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/resources", nil)
 	req.Header.Set("X-API-Key", regenerated.Key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -867,23 +866,18 @@ func createAdminSession(t *testing.T, router *gin.Engine) *http.Cookie {
 	return cookies[0]
 }
 
-func withAPIKey(t *testing.T, deps Dependencies, req *http.Request) *http.Request {
+func withAdminSession(t *testing.T, deps Dependencies, req *http.Request) *http.Request {
 	t.Helper()
-	req.Header.Set("X-API-Key", testAPIKey(t, deps))
-	return req
-}
-
-func testAPIKey(t *testing.T, deps Dependencies) string {
-	t.Helper()
-	service := deps.APIKeyService
-	if service == nil {
-		service = apikey.NewService(deps.APIKeys, deps.Settings)
-	}
-	resp, err := service.EnsureActive(context.Background())
+	token, err := deps.AdminAuth.CreateSession(model.User{
+		ID:       1,
+		Username: "admin",
+		Role:     model.UserRoleAdmin,
+	})
 	if err != nil {
-		t.Fatalf("ensure test api key: %v", err)
+		t.Fatalf("create admin session: %v", err)
 	}
-	return resp.Key
+	req.AddCookie(&http.Cookie{Name: adminSessionCookie, Value: token})
+	return req
 }
 
 func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
@@ -987,7 +981,7 @@ func TestStorageUsageAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/storage/usage", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("storage usage code = %d body=%s", w.Code, w.Body.String())
@@ -1061,7 +1055,7 @@ func TestTaskAPIReturnsEmptyItemsArray(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1097,7 +1091,7 @@ func TestTaskAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/tasks", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1118,7 +1112,7 @@ func TestTaskAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/tasks/"+strconv.FormatInt(failed.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("detail status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1133,7 +1127,7 @@ func TestTaskAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/tasks/"+strconv.FormatInt(failed.ID, 10)+"/retry", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("retry status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1148,7 +1142,7 @@ func TestTaskAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/tasks/"+strconv.FormatInt(running.ID, 10)+"/cancel", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1173,7 +1167,7 @@ func TestTaskAPI(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/tasks/"+strconv.FormatInt(deletable.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("delete status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1184,7 +1178,7 @@ func TestTaskAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/tasks/"+strconv.FormatInt(running.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusConflict {
 		t.Fatalf("delete running status = %d body=%s, want 409", w.Code, w.Body.String())
@@ -1212,7 +1206,7 @@ func TestTaskAPI(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/tasks/bulk-delete", bytes.NewBufferString(fmt.Sprintf(`{"ids":[%d,%d,%d,9999]}`, bulkFailed.ID, bulkSucceeded.ID, running.ID)))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1244,7 +1238,8 @@ func TestEventsAPI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/events?api_key="+url.QueryEscape(testAPIKey(t, deps)), nil).WithContext(ctx)
+	req := httptest.NewRequest(http.MethodGet, "/api/events", nil).WithContext(ctx)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -1272,7 +1267,7 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["link","text"],"link_types":["cloud_drive","magnet"]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1291,7 +1286,7 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/listen-rules", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1307,7 +1302,7 @@ func TestGlobalListenRulesAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/listen-rules", bytes.NewBufferString(`{"message_types":[],"link_types":["cloud_drive"]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -1324,7 +1319,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"includes":[" 庆余年 "],"excludes":["预告"],"message_types":["text","file"],"link_types":["cloud_drive","magnet"]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -1343,7 +1338,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"enabled":false,"includes":["三体"],"excludes":["花絮"],"message_types":["text"],"link_types":["http"]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1352,7 +1347,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1368,7 +1363,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/watch-rules", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK || !bytes.Contains(w.Body.Bytes(), []byte(`"items"`)) {
 		t.Fatalf("list status=%d body=%s, want items", w.Code, w.Body.String())
@@ -1376,7 +1371,7 @@ func TestWatchRuleAPICRUD(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/watch-rules/"+strconv.FormatInt(created.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("delete status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1397,7 +1392,7 @@ func TestWatchRuleAPIRejectsInvalidRequests(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(body))
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
@@ -1407,7 +1402,7 @@ func TestWatchRuleAPIRejectsInvalidRequests(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -1415,7 +1410,7 @@ func TestWatchRuleAPIRejectsInvalidRequests(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/watch-rules", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusConflict {
@@ -1429,7 +1424,7 @@ func TestSearchRequiresQuery(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusBadRequest {
@@ -1472,11 +1467,11 @@ func TestAPIErrorMessagesAreLocalized(t *testing.T) {
 		wantMsg    string
 	}{
 		{
-			name:       "missing api key",
+			name:       "missing admin session",
 			method:     http.MethodGet,
 			path:       "/api/accounts",
 			wantStatus: http.StatusUnauthorized,
-			wantMsg:    "缺少 API Key",
+			wantMsg:    "请先登录",
 		},
 		{
 			name:       "invalid json",
@@ -1537,7 +1532,7 @@ func TestAPIErrorMessagesAreLocalized(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 			}
 			if tc.auth {
-				withAPIKey(t, deps, req)
+				withAdminSession(t, deps, req)
 			}
 			router.ServeHTTP(w, req)
 			if w.Code != tc.wantStatus {
@@ -1558,7 +1553,7 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
@@ -1582,7 +1577,7 @@ func TestTelegramLoginRoutes(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1592,7 +1587,7 @@ func TestTelegramLoginRoutes(t *testing.T) {
 	deps.CodeStore.Save("+10000000000", "hash")
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1604,7 +1599,7 @@ func TestTelegramLoginRoutes(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/password", bytes.NewBufferString(`{"phone":"+10000000001","password":"secret"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1632,7 +1627,7 @@ func TestTelegramQRLoginStartAndPendingPoll(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1659,7 +1654,7 @@ func TestTelegramQRLoginStartAndPendingPoll(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("poll status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1689,7 +1684,7 @@ func TestTelegramQRLoginCancelStopsSession(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("start status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1703,7 +1698,7 @@ func TestTelegramQRLoginCancelStopsSession(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/telegram/login/qr/"+started.LoginID, nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("cancel status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1714,7 +1709,7 @@ func TestTelegramQRLoginCancelStopsSession(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("poll canceled status = %d body=%s, want 404", w.Code, w.Body.String())
@@ -1733,7 +1728,7 @@ func TestTelegramQRLoginPollFinalizesConfirmedAccount(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/qr/start", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	var started struct {
 		LoginID string `json:"login_id"`
@@ -1751,7 +1746,7 @@ func TestTelegramQRLoginPollFinalizesConfirmedAccount(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/telegram/login/qr/"+started.LoginID, nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("poll status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1813,7 +1808,7 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1823,7 +1818,7 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	deps.CodeStore.Save("+10000000000", "hash")
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1903,7 +1898,7 @@ func TestTelegramSignInQueuesMetadataSyncWhenRetryQueueAvailable(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1913,7 +1908,7 @@ func TestTelegramSignInQueuesMetadataSyncWhenRetryQueueAvailable(t *testing.T) {
 	deps.CodeStore.Save("+10000000000", "hash")
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1973,7 +1968,7 @@ func TestTelegramSignInQueuedMetadataSyncChecksWebAccess(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -1983,7 +1978,7 @@ func TestTelegramSignInQueuedMetadataSyncChecksWebAccess(t *testing.T) {
 	deps.CodeStore.Save("+10000000000", "hash")
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2033,7 +2028,7 @@ func TestTelegramSignInKeepsAccountOnlineWhenMetadataSyncFails(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2043,7 +2038,7 @@ func TestTelegramSignInKeepsAccountOnlineWhenMetadataSyncFails(t *testing.T) {
 	deps.CodeStore.Save("+10000000000", "hash")
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2095,7 +2090,7 @@ func TestDeleteAccountStopsRuntimeAndRemovesSession(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/accounts/"+strconv.FormatInt(accountID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -2132,7 +2127,7 @@ func TestLogoutAccountStopsRuntimeRemovesSessionAndKeepsAccount(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/logout", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -2169,7 +2164,7 @@ func TestStatusIncludesAccountStateSummary(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {
@@ -2208,7 +2203,7 @@ func TestReadAPIsFilterByAccount(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("%s status = %d body=%s", path, w.Code, w.Body.String())
@@ -2250,7 +2245,7 @@ func TestLatestAPIOmitsAccountFields(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/messages/latest?limit=10", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -2297,7 +2292,7 @@ func TestSearchAPIFiltersByLinkType(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=shared&link_type=aliyun", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2327,7 +2322,7 @@ func TestLinksAPIFiltersByDateRangeAndRejectsInvalidDate(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/links?type=aliyun&date_from=2026-01-01&date_to=2026-01-31", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2338,7 +2333,7 @@ func TestLinksAPIFiltersByDateRangeAndRejectsInvalidDate(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/links?date_from=not-a-date", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid date status = %d body=%s, want 400", w.Code, w.Body.String())
@@ -2364,7 +2359,7 @@ func TestMergedLinksAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/links/merged?q=庆余年&limit=10", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -2399,7 +2394,7 @@ func TestSearchAPIFiltersByDateRange(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search?q=shared&date_from=2026-01-01&date_to=2026-01-31", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2430,7 +2425,7 @@ func TestReadAPIsRejectInvalidQueryParameters(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
 			t.Fatalf("%s status = %d body=%s, want 400", path, w.Code, w.Body.String())
@@ -2454,7 +2449,7 @@ func TestSearchAPICursorReturnsOlderRows(t *testing.T) {
 	path := "/api/search?q=shared&before_date=" + url.QueryEscape(newer.Format(time.RFC3339)) + "&before_id=" + strconv.FormatInt(stored[0].ID, 10)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2470,7 +2465,7 @@ func TestMaintenanceSQLiteAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/sqlite", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2486,7 +2481,7 @@ func TestMaintenanceBackupAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/backup", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
@@ -2516,7 +2511,7 @@ func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(body))
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
@@ -2534,7 +2529,7 @@ func TestBatchSyncAPIValidatesMaxMessages(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(body))
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
@@ -2564,7 +2559,7 @@ func TestChannelsAPIIncludesIndexedMessageCount(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -2603,7 +2598,7 @@ func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2624,7 +2619,7 @@ func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/channels", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -2657,7 +2652,7 @@ func TestChannelWebAccessCheckAPIStoresErrors(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2694,7 +2689,7 @@ func TestChannelWebAccessCheckAPIValidatesChannelIDs(t *testing.T) {
 	} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(body))
-		withAPIKey(t, deps, req)
+		withAdminSession(t, deps, req)
 		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusBadRequest {
@@ -2720,7 +2715,7 @@ func TestChannelWebAccessCheckAPIRejectsMissingWithoutPartialUpdates(t *testing.
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/channels/web-access/check", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`,999999]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusNotFound {
@@ -2757,7 +2752,7 @@ func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
 		"listen_enabled": true,
 		"remote_search_allowed": false
 	}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2814,7 +2809,7 @@ func TestBatchChannelControlAPIUpdatesSelectedChannels(t *testing.T) {
 			"remote_search_allowed": true
 		}
 	}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2861,7 +2856,7 @@ func TestChannelControlAPIRejectsInvalidProfile(t *testing.T) {
 		"listen_enabled": false,
 		"remote_search_allowed": true
 	}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
@@ -2896,7 +2891,7 @@ func TestChannelControlAPIDeepProfileChecksStorageQuota(t *testing.T) {
 		"listen_enabled": false,
 		"remote_search_allowed": true
 	}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusConflict {
@@ -2944,7 +2939,7 @@ func TestChannelAnalyze(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/analyze", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -3011,7 +3006,7 @@ func TestRemoteSearchEntry(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(tc.body))
-			withAPIKey(t, deps, req)
+			withAdminSession(t, deps, req)
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
 			if w.Code != tc.code {
@@ -3035,7 +3030,7 @@ func TestRemoteSearchEntry(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(allowedID, 10)+`,"query":"ubuntu iso"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
@@ -3078,7 +3073,7 @@ func TestRemoteSearchResultAPI(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"query":"ubuntu"}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
@@ -3091,7 +3086,7 @@ func TestRemoteSearchResultAPI(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/search/remote/"+strconv.FormatInt(task.ID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("result status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -3124,7 +3119,7 @@ func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/channels/sync", bytes.NewBufferString(`{"channel_ids":[`+strconv.FormatInt(channelID, 10)+`]}`))
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
@@ -3164,7 +3159,7 @@ func TestAccountChannelSyncAPIReturnsAsyncJob(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/accounts/"+strconv.FormatInt(accountID, 10)+"/channels/sync-metadata", nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusAccepted {
 		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())

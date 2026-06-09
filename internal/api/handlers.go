@@ -466,7 +466,18 @@ func (h handlers) authMe(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-func (h handlers) requireAPIKey() gin.HandlerFunc {
+func (h handlers) requireAdminSession() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if h.hasAdminSession(c) {
+			c.Next()
+			return
+		}
+		errorText(c, http.StatusUnauthorized, "not authenticated")
+		c.Abort()
+	}
+}
+
+func (h handlers) requireResourceAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if h.hasAdminSession(c) {
 			c.Next()

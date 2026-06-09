@@ -38,4 +38,11 @@ func TestUserRepositoryCreatesAndFindsAdmin(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("count = %d, want 1", count)
 	}
+	updated, err := repo.UpdateCredentials(ctx, id, "root", "new-hash")
+	if err != nil {
+		t.Fatalf("update credentials: %v", err)
+	}
+	if updated.Username != "root" || updated.PasswordHash != "new-hash" || updated.ID != id {
+		t.Fatalf("updated user = %+v", updated)
+	}
 }

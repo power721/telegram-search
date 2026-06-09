@@ -191,6 +191,34 @@ func (h handlers) regenerateAPIKey(c *gin.Context) {
 	c.JSON(http.StatusCreated, resp)
 }
 
+func (h handlers) updateAdminSettings(c *gin.Context) {
+	cookie, user, ok := h.adminSession(c)
+	if !ok {
+		errorText(c, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var req struct {
+		Username        string `json:"username"`
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	updated, err := h.deps.AdminAuth.UpdateCredentials(c.Request.Context(), user.ID, req.Username, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		if errors.Is(err, adminauth.ErrInvalidCredentials) {
+			errorText(c, http.StatusUnauthorized, "current password is invalid")
+			return
+		}
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
+	h.deps.AdminAuth.UpdateSession(cookie, updated)
+	updated.PasswordHash = ""
+	c.JSON(http.StatusOK, updated)
+}
+
 func (h handlers) setupListenRules(c *gin.Context) {
 	var req model.ListenRules
 	if !bindJSON(c, &req) {
@@ -465,12 +493,17 @@ func (h handlers) requireAPIKey() gin.HandlerFunc {
 }
 
 func (h handlers) hasAdminSession(c *gin.Context) bool {
+	_, _, ok := h.adminSession(c)
+	return ok
+}
+
+func (h handlers) adminSession(c *gin.Context) (string, model.User, bool) {
 	cookie, err := c.Cookie(adminSessionCookie)
 	if err != nil {
-		return false
+		return "", model.User{}, false
 	}
-	_, ok := h.deps.AdminAuth.UserForSession(cookie)
-	return ok
+	user, ok := h.deps.AdminAuth.UserForSession(cookie)
+	return cookie, user, ok
 }
 
 func apiKeyFromRequest(r *http.Request) string {

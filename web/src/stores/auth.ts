@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPost } from '@/api/client'
+import { apiGet, apiPost, apiPut } from '@/api/client'
 import type { User } from '@/api/types'
 
 export const useAuthStore = defineStore('auth', {
@@ -26,6 +26,15 @@ export const useAuthStore = defineStore('auth', {
     async login(username: string, password: string) {
       this.user = await apiPost<User>('/api/auth/login', { username, password })
       this.loaded = true
+    },
+    async updateCredentials(username: string, currentPassword: string, newPassword: string) {
+      this.user = await apiPut<User>('/api/settings/admin', {
+        username,
+        current_password: currentPassword,
+        new_password: newPassword
+      })
+      this.loaded = true
+      return this.user
     },
     async logout() {
       await apiPost('/api/auth/logout')

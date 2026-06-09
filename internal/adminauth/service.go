@@ -50,6 +50,32 @@ func (s *Service) CreateAdmin(ctx context.Context, username string, password str
 	})
 }
 
+func (s *Service) UpdateCredentials(ctx context.Context, userID int64, username string, currentPassword string, newPassword string) (model.User, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return model.User{}, fmt.Errorf("username is required")
+	}
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return model.User{}, err
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		return model.User{}, ErrInvalidCredentials
+	}
+	passwordHash := user.PasswordHash
+	if newPassword != "" {
+		if len(newPassword) < 8 {
+			return model.User{}, fmt.Errorf("password must be at least 8 characters")
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return model.User{}, fmt.Errorf("hash password: %w", err)
+		}
+		passwordHash = string(hash)
+	}
+	return s.users.UpdateCredentials(ctx, userID, username, passwordHash)
+}
+
 func (s *Service) Authenticate(ctx context.Context, username string, password string) (model.User, error) {
 	user, err := s.users.FindByUsername(ctx, strings.TrimSpace(username))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -74,6 +100,14 @@ func (s *Service) CreateSession(user model.User) (string, error) {
 	defer s.mu.Unlock()
 	s.sessions[token] = user
 	return token, nil
+}
+
+func (s *Service) UpdateSession(token string, user model.User) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.sessions[token]; ok {
+		s.sessions[token] = user
+	}
 }
 
 func (s *Service) UserForSession(token string) (model.User, bool) {

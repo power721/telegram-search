@@ -1,17 +1,70 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useAPIKeyStore } from '@/stores/apiKey'
+import { useAuthStore } from '@/stores/auth'
 
 const message = useMessage()
 const apiKey = useAPIKeyStore()
+const auth = useAuthStore()
 const showAPIKey = ref(false)
+const credentialsUsername = ref('')
+const currentPassword = ref('')
+const newPassword = ref('')
+const confirmPassword = ref('')
+const credentialsLoading = ref(false)
 
 onMounted(() => {
   apiKey.load().catch((error) => {
     message.error(error instanceof Error ? error.message : '无法加载 API 密钥')
   })
+  if (!auth.loaded) {
+    auth.loadMe().catch(() => {
+      message.error('无法加载当前管理员')
+    })
+  }
 })
+
+watch(
+  () => auth.user?.username,
+  (username) => {
+    credentialsUsername.value = username ?? credentialsUsername.value
+  },
+  { immediate: true }
+)
+
+async function updateCredentials() {
+  const username = credentialsUsername.value.trim()
+  if (!username) {
+    message.error('用户名不能为空')
+    return
+  }
+  if (!currentPassword.value) {
+    message.error('请输入当前密码')
+    return
+  }
+  if (newPassword.value && newPassword.value.length < 8) {
+    message.error('新密码至少 8 位')
+    return
+  }
+  if (newPassword.value !== confirmPassword.value) {
+    message.error('两次输入的新密码不一致')
+    return
+  }
+  credentialsLoading.value = true
+  try {
+    await auth.updateCredentials(username, currentPassword.value, newPassword.value)
+    credentialsUsername.value = auth.user?.username ?? username
+    currentPassword.value = ''
+    newPassword.value = ''
+    confirmPassword.value = ''
+    message.success('管理员账号已更新')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法更新管理员账号')
+  } finally {
+    credentialsLoading.value = false
+  }
+}
 
 async function regenerate() {
   try {
@@ -38,10 +91,58 @@ function formatTime(value?: string) {
       <div>
         <p class="page-kicker">配置</p>
         <h1 class="page-title">设置</h1>
-        <p class="page-subtitle">管理存储限额和浏览器 API 密钥。</p>
+        <p class="page-subtitle">管理管理员账号、存储限额和浏览器 API 密钥。</p>
       </div>
     </div>
     <div class="settings-grid">
+      <section class="panel admin-panel">
+        <h2>管理员账号</h2>
+        <n-form class="credential-form" @submit.prevent="updateCredentials">
+          <n-form-item label="用户名">
+            <n-input
+              v-model:value="credentialsUsername"
+              data-testid="admin-username-input"
+              autocomplete="username"
+            />
+          </n-form-item>
+          <n-form-item label="当前密码">
+            <n-input
+              v-model:value="currentPassword"
+              data-testid="current-password-input"
+              type="password"
+              autocomplete="current-password"
+            />
+          </n-form-item>
+          <n-form-item label="新密码">
+            <n-input
+              v-model:value="newPassword"
+              data-testid="new-password-input"
+              type="password"
+              autocomplete="new-password"
+              placeholder="留空则不修改"
+            />
+          </n-form-item>
+          <n-form-item label="确认新密码">
+            <n-input
+              v-model:value="confirmPassword"
+              data-testid="confirm-password-input"
+              type="password"
+              autocomplete="new-password"
+              placeholder="留空则不修改"
+            />
+          </n-form-item>
+          <div class="form-actions">
+            <n-button
+              data-testid="save-admin-credentials"
+              type="primary"
+              :loading="credentialsLoading"
+              @click="updateCredentials"
+            >
+              保存
+            </n-button>
+          </div>
+        </n-form>
+      </section>
       <section class="panel">
         <h2>存储</h2>
         <dl>
@@ -101,9 +202,19 @@ function formatTime(value?: string) {
 
 <style scoped>
 .settings-grid {
+  align-items: start;
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.credential-form {
+  display: grid;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .panel-header h2 {

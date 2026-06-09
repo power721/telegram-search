@@ -51,6 +51,22 @@ SELECT id, username, password_hash, role, last_login_at, created_at, updated_at
 FROM users WHERE id = ?`, id))
 }
 
+func (r *UserRepository) UpdateCredentials(ctx context.Context, id int64, username string, passwordHash string) (model.User, error) {
+	now := time.Now().UTC()
+	res, err := r.db.ExecContext(ctx, `
+UPDATE users
+SET username = ?, password_hash = ?, updated_at = ?
+WHERE id = ?`,
+		username, passwordHash, now, id)
+	if err != nil {
+		return model.User{}, fmt.Errorf("update user credentials: %w", err)
+	}
+	if err := requireRows(res, "user not found"); err != nil {
+		return model.User{}, err
+	}
+	return r.FindByID(ctx, id)
+}
+
 func (r *UserRepository) Count(ctx context.Context) (int64, error) {
 	var count int64
 	if err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM users`).Scan(&count); err != nil {

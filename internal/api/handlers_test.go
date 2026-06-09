@@ -646,6 +646,68 @@ func TestAPIKeySettingsViewAndRegenerate(t *testing.T) {
 	}
 }
 
+func TestAdminSettingsUpdatesCredentialsAndSessionUser(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/admin", bytes.NewBufferString(`{"username":"root","current_password":"wrong","new_password":"newpassword123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong current password code = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/admin", bytes.NewBufferString(`{"username":"root","current_password":"password123","new_password":"newpassword123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update admin settings code = %d body=%s", w.Code, w.Body.String())
+	}
+	var updated model.User
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated user: %v", err)
+	}
+	if updated.Username != "root" || updated.PasswordHash != "" {
+		t.Fatalf("updated user = %+v, want root without password hash", updated)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("me after update code = %d body=%s", w.Code, w.Body.String())
+	}
+	var me model.User
+	if err := json.Unmarshal(w.Body.Bytes(), &me); err != nil {
+		t.Fatalf("decode me after update: %v", err)
+	}
+	if me.Username != "root" {
+		t.Fatalf("me username = %q, want root", me.Username)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"admin","password":"password123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("old credentials login code = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"root","password":"newpassword123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("new credentials login code = %d body=%s", w.Code, w.Body.String())
+	}
+}
+
 func createTestAPIKey(t *testing.T, router *gin.Engine) string {
 	t.Helper()
 	w := httptest.NewRecorder()

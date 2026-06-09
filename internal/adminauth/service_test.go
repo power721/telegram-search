@@ -35,4 +35,20 @@ func TestServiceCreatesAdminAndAuthenticates(t *testing.T) {
 	if _, err := service.Authenticate(ctx, "admin", "wrong"); err == nil {
 		t.Fatal("Authenticate with wrong password returned nil error")
 	}
+	updated, err := service.UpdateCredentials(ctx, user.ID, "root", "secret123", "newsecret123")
+	if err != nil {
+		t.Fatalf("update credentials: %v", err)
+	}
+	if updated.Username != "root" || updated.PasswordHash == user.PasswordHash {
+		t.Fatalf("updated user = %+v", updated)
+	}
+	if _, err := service.Authenticate(ctx, "admin", "secret123"); err == nil {
+		t.Fatal("Authenticate with old credentials returned nil error")
+	}
+	if _, err := service.Authenticate(ctx, "root", "newsecret123"); err != nil {
+		t.Fatalf("authenticate updated credentials: %v", err)
+	}
+	if _, err := service.UpdateCredentials(ctx, user.ID, "root", "wrong", "anothersecret"); err != ErrInvalidCredentials {
+		t.Fatalf("update with wrong password error = %v, want ErrInvalidCredentials", err)
+	}
 }

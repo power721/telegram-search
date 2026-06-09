@@ -67,8 +67,17 @@ describe('LogsView', () => {
 
     const selects = wrapper.findAll('select')
     await selects[0].setValue('app.log')
+    await flushPromises()
+    expect(apiGet).toHaveBeenCalledWith('/api/logs?file=app.log&order=desc&limit=200')
+
     await selects[1].setValue('info')
+    await flushPromises()
+    expect(apiGet).toHaveBeenCalledWith('/api/logs?file=app.log&level=info&order=desc&limit=200')
+
     await selects[2].setValue('asc')
+    await flushPromises()
+    expect(apiGet).toHaveBeenCalledWith('/api/logs?file=app.log&level=info&order=asc&limit=200')
+
     await wrapper.find('input').setValue('boot')
     await wrapper.find('form').trigger('submit')
     await flushPromises()

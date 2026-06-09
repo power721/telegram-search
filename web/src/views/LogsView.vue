@@ -50,6 +50,21 @@ async function resetAndLoad() {
   await load()
 }
 
+function selectFile(value: string) {
+  file.value = value
+  void resetAndLoad()
+}
+
+function selectLevel(value: string) {
+  level.value = value
+  void resetAndLoad()
+}
+
+function selectOrder(value: 'asc' | 'desc') {
+  order.value = value
+  void resetAndLoad()
+}
+
 async function changePage(pageNumber: number) {
   offset.value = (pageNumber - 1) * pageSize.value
   await load()
@@ -141,11 +156,11 @@ onMounted(() => {
     <form class="log-filters" @submit.prevent="resetAndLoad">
       <label>
         <span class="filter-label">日志文件</span>
-        <n-select v-model:value="file" :options="fileOptions" />
+        <n-select :value="file" :options="fileOptions" @update:value="selectFile" />
       </label>
       <label>
         <span class="filter-label">级别</span>
-        <n-select v-model:value="level" :options="levelOptions" />
+        <n-select :value="level" :options="levelOptions" @update:value="selectLevel" />
       </label>
       <label>
         <span class="filter-label">关键词</span>
@@ -153,7 +168,7 @@ onMounted(() => {
       </label>
       <label>
         <span class="filter-label">顺序</span>
-        <n-select v-model:value="order" :options="orderOptions" />
+        <n-select :value="order" :options="orderOptions" @update:value="selectOrder" />
       </label>
       <n-button attr-type="submit" type="primary">搜索</n-button>
     </form>

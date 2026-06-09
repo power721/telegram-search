@@ -39,13 +39,13 @@ API keys are limited external credentials. They can access only:
 Send API keys with one of:
 
 ```text
-Authorization: Bearer <api-key>
 X-API-Key: <api-key>
+Authorization: <api-key>
 ```
 
-The `api_key` query parameter is accepted by `/api/search`. Media proxy endpoints accept API keys in request headers, and signed media URLs use `exp` and `sig` query parameters.
+API keys are not accepted in query parameters. Media proxy endpoints accept API keys in request headers, and signed media URLs use `exp` and `sig` query parameters.
 
-Health, readiness, first-run setup, and admin login/session endpoints remain available without an API key where required for bootstrap. API key management requires an authenticated admin session.
+Health, readiness, first-run setup, and admin login/session endpoints remain available without an API key where required for bootstrap. If `GET /api/health` receives an API key header, it validates the key and returns the current service version when valid. API key management requires an authenticated admin session.
 
 ## Setup
 
@@ -754,11 +754,20 @@ Returns local storage usage and quota state.
 
 ### `GET /api/health`
 
-Returns process health without checking downstream readiness.
+Returns process health without checking downstream readiness. If an API key is provided in `X-API-Key` or `Authorization`, the key is validated. A valid key adds the current service version to the response; an invalid key returns `401`.
 
 ```json
 {
   "service": "ok"
+}
+```
+
+Authenticated response:
+
+```json
+{
+  "service": "ok",
+  "version": "1.2.3"
 }
 ```
 

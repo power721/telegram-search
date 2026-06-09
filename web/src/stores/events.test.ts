@@ -1,6 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet, setAPIKey } from '@/api/client'
 import { useEventsStore } from './events'
 import { useTasksStore } from './tasks'
 
@@ -34,16 +33,6 @@ class FakeEventSource {
   }
 }
 
-vi.mock('@/api/client', () => ({
-  apiGet: vi.fn().mockResolvedValue({
-    id: 1,
-    name: 'default',
-    prefix: '12345678',
-    key: '12345678123456781234567812345678'
-  }),
-  setAPIKey: vi.fn()
-}))
-
 describe('events store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -52,7 +41,7 @@ describe('events store', () => {
     vi.clearAllMocks()
   })
 
-  it('opens the events stream with api key and applies task updates', async () => {
+  it('opens the admin session events stream and applies task updates', async () => {
     const tasks = useTasksStore()
     tasks.items = [{ id: 1, type: 'history_sync', status: 'running', progress: 1, total: 100 } as never]
     const events = useEventsStore()
@@ -65,9 +54,7 @@ describe('events store', () => {
       created_at: '2026-06-08T12:00:00Z'
     })
 
-    expect(apiGet).toHaveBeenCalledWith('/api/settings/api-key')
-    expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
-    expect(source.url).toBe('/api/events?api_key=12345678123456781234567812345678')
+    expect(source.url).toBe('/api/events')
     expect(tasks.items[0].status).toBe('succeeded')
     events.disconnect()
     expect(source.closed).toBe(true)

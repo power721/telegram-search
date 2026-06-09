@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import type { RuntimeEvent, Task } from '@/api/types'
-import { useAPIKeyStore } from '@/stores/apiKey'
 import { useTasksStore } from '@/stores/tasks'
 
 export const useEventsStore = defineStore('events', {
@@ -13,9 +12,7 @@ export const useEventsStore = defineStore('events', {
     async connect() {
       if (this.source) return
       if (typeof EventSource === 'undefined') return
-      const apiKey = useAPIKeyStore()
-      const current = apiKey.current ?? (await apiKey.load())
-      const source = new EventSource(`/api/events?api_key=${encodeURIComponent(current.key)}`)
+      const source = new EventSource('/api/events')
       source.addEventListener('task.updated', (event) => {
         const parsed = JSON.parse(event.data) as RuntimeEvent<Task>
         if (parsed.payload) {

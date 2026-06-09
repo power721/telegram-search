@@ -191,7 +191,7 @@ API Key 可跳过。
 API 调用认证方式：
 
 ```http
-Authorization: Bearer <API_KEY>
+Authorization: <API_KEY>
 ```
 
 ---

@@ -919,6 +919,8 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 		{name: "missing api key", wantStatus: http.StatusUnauthorized},
 		{name: "admin cookie without api key", configure: func(req *http.Request) { req.AddCookie(cookie) }, wantStatus: http.StatusUnauthorized},
 		{name: "invalid api key", configure: func(req *http.Request) { req.Header.Set("X-API-Key", "invalid") }, wantStatus: http.StatusUnauthorized},
+		{name: "query api key rejected", configure: func(req *http.Request) { req.URL.RawQuery = "kw=ubuntu&api_key=" + url.QueryEscape(key) }, wantStatus: http.StatusUnauthorized},
+		{name: "bearer authorization rejected", configure: func(req *http.Request) { req.Header.Set("Authorization", "Bearer "+key) }, wantStatus: http.StatusUnauthorized},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -935,7 +937,7 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu", nil)
-	req.Header.Set("X-API-Key", key)
+	req.Header.Set("Authorization", key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("external search status = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1281,7 +1283,7 @@ func TestResourceDetailRequiresAdminSession(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/resources/"+url.PathEscape(list.Items[0].ID), nil)
-	req.Header.Set("Authorization", "Bearer "+key)
+	req.Header.Set("Authorization", key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("resource detail with api key code = %d body=%s, want 401", w.Code, w.Body.String())
@@ -1685,6 +1687,35 @@ func TestHealthAndReadyEndpoints(t *testing.T) {
 		if _, ok := body[tc.key]; !ok {
 			t.Fatalf("%s response missing key %q: %s", tc.path, tc.key, w.Body.String())
 		}
+	}
+}
+
+func TestHealthValidatesProvidedAPIKeyAndReturnsVersion(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req.Header.Set("Authorization", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("health with api key status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("health with api key invalid JSON: %v", err)
+	}
+	if body["service"] != "ok" || body["version"] == "" {
+		t.Fatalf("health with api key response = %+v, want service ok and version", body)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/health", nil)
+	req.Header.Set("X-API-Key", "invalid")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("health with invalid api key status = %d body=%s, want 401", w.Code, w.Body.String())
 	}
 }
 

@@ -18,8 +18,7 @@ const copiedKey = ref('')
 
 const authOptions = [
   { label: '请求头', value: 'X-API-Key: YOUR_API_KEY' },
-  { label: 'Bearer', value: 'Authorization: Bearer YOUR_API_KEY' },
-  { label: '查询参数', value: 'api_key=YOUR_API_KEY' }
+  { label: 'Authorization', value: 'Authorization: YOUR_API_KEY' }
 ]
 
 const searchParams: ParamRow[] = [
@@ -44,7 +43,8 @@ const searchFields: FieldRow[] = [
 ]
 
 const healthFields: FieldRow[] = [
-  { name: 'service', type: 'string', description: '服务状态。正常时为 ok。' }
+  { name: 'service', type: 'string', description: '服务状态。正常时为 ok。' },
+  { name: 'version', type: 'string', description: '携带有效 API Key 时返回当前服务版本。' }
 ]
 
 const mediaParams: ParamRow[] = [
@@ -63,7 +63,7 @@ const getSearchExample = `curl -G 'http://localhost:9900/api/search' \\
 
 const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
   -H 'Content-Type: application/json' \\
-  -H 'Authorization: Bearer YOUR_API_KEY' \\
+  -H 'Authorization: YOUR_API_KEY' \\
   -d '{
     "kw": "ubuntu",
     "res": "all",
@@ -74,7 +74,8 @@ const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
     "offset": 0
   }'`
 
-const healthExample = `curl 'http://localhost:9900/api/health'`
+const healthExample = `curl 'http://localhost:9900/api/health' \\
+  -H 'X-API-Key: YOUR_API_KEY'`
 
 const videoExample = `curl 'http://localhost:9900/v/202001' \\
   -H 'X-API-Key: YOUR_API_KEY' \\
@@ -154,7 +155,8 @@ async function copyCode(key: string, value: string) {
         </div>
       </div>
       <p class="doc-text">
-        <code>/api/search</code> 必须携带 API Key。<code>/v</code> 和 <code>/i</code> 可以携带 API Key，
+        <code>/api/search</code> 必须通过请求头携带 API Key。<code>/api/health</code> 可携带 API Key 校验密钥并返回版本。
+        <code>/v</code> 和 <code>/i</code> 可以通过请求头携带 API Key，
         也可以直接使用搜索结果中返回的带 <code>exp</code> 与 <code>sig</code> 的签名媒体 URL。
       </p>
       <div class="auth-grid">

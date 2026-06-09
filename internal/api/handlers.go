@@ -20,6 +20,7 @@ import (
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
+	"tg-search/internal/build"
 	channelpkg "tg-search/internal/channel"
 	"tg-search/internal/config"
 	"tg-search/internal/logviewer"
@@ -44,9 +45,26 @@ const (
 )
 
 func (h handlers) health(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"service": "ok",
-	})
+	}
+	if key := apiKeyFromRequestHeader(c.Request); key != "" {
+		if h.deps.APIKeyService == nil {
+			errorText(c, http.StatusServiceUnavailable, "api key service is unavailable")
+			return
+		}
+		_, ok, err := h.deps.APIKeyService.Verify(c.Request.Context(), key)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+		if !ok {
+			errorText(c, http.StatusUnauthorized, "invalid api key")
+			return
+		}
+		resp["version"] = build.Version
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h handlers) ready(c *gin.Context) {
@@ -517,21 +535,14 @@ func (h handlers) adminSession(c *gin.Context) (string, model.User, bool) {
 }
 
 func apiKeyFromRequest(r *http.Request) string {
-	if key := apiKeyFromRequestHeader(r); key != "" {
-		return key
-	}
-	return strings.TrimSpace(r.URL.Query().Get("api_key"))
+	return apiKeyFromRequestHeader(r)
 }
 
 func apiKeyFromRequestHeader(r *http.Request) string {
-	auth := strings.TrimSpace(r.Header.Get("Authorization"))
-	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
-		return strings.TrimSpace(auth[7:])
-	}
 	if key := strings.TrimSpace(r.Header.Get("X-API-Key")); key != "" {
 		return key
 	}
-	return ""
+	return strings.TrimSpace(r.Header.Get("Authorization"))
 }
 
 func (h handlers) storageUsage(c *gin.Context) {

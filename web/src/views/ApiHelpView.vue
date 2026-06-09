@@ -53,14 +53,14 @@ const mediaParams: ParamRow[] = [
   { name: 'sig', type: 'string', required: '签名访问必填', description: '媒体 URL 签名，由搜索结果里的媒体 URL 自动携带。' }
 ]
 
-const getSearchExample = `curl -G 'http://localhost:8080/api/search' \\
+const getSearchExample = `curl -G 'http://localhost:9900/api/search' \\
   -H 'X-API-Key: YOUR_API_KEY' \\
   --data-urlencode 'kw=ubuntu' \\
   --data-urlencode 'res=merge' \\
   --data-urlencode 'cloud_types=quark,aliyun' \\
   --data-urlencode 'limit=50'`
 
-const postSearchExample = `curl -X POST 'http://localhost:8080/api/search' \\
+const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
   -H 'Content-Type: application/json' \\
   -H 'Authorization: Bearer YOUR_API_KEY' \\
   -d '{
@@ -72,13 +72,13 @@ const postSearchExample = `curl -X POST 'http://localhost:8080/api/search' \\
     "offset": 0
   }'`
 
-const healthExample = `curl 'http://localhost:8080/api/health'`
+const healthExample = `curl 'http://localhost:9900/api/health'`
 
-const videoExample = `curl 'http://localhost:8080/v/media_channel/102' \\
+const videoExample = `curl 'http://localhost:9900/v/media_channel/102' \\
   -H 'X-API-Key: YOUR_API_KEY' \\
   -H 'Range: bytes=0-'`
 
-const imageExample = `curl 'http://localhost:8080/i/media_channel/101' \\
+const imageExample = `curl 'http://localhost:9900/i/media_channel/101' \\
   -H 'X-API-Key: YOUR_API_KEY'`
 
 const signedMediaExample = `<video

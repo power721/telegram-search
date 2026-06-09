@@ -37,4 +37,12 @@ describe('ApiHelpView', () => {
     expect(text).toContain('"links"')
     expect(text).toContain('"work_title": "迷墙 更新07集 国语中字 2026 4K【国剧】"')
   })
+
+  it('lays out the two search response examples side by side', () => {
+    const wrapper = mount(ApiHelpView)
+    const responseGrid = wrapper.find('.response-example-grid')
+
+    expect(responseGrid.exists()).toBe(true)
+    expect(responseGrid.findAll('.code-card')).toHaveLength(2)
+  })
 })

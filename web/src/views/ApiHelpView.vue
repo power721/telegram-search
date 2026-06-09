@@ -289,24 +289,25 @@ async function copyCode(key: string, value: string) {
         </table>
       </div>
 
-      <div class="code-card single-code">
-        <div class="code-title">
-          <strong>返回示例（merge）</strong>
-          <button type="button" @click="copyCode('search-response', searchResponseExample)">
-            {{ copiedKey === 'search-response' ? '已复制' : '复制' }}
-          </button>
+      <div class="code-grid response-example-grid">
+        <div class="code-card">
+          <div class="code-title">
+            <strong>返回示例（merge）</strong>
+            <button type="button" @click="copyCode('search-response', searchResponseExample)">
+              {{ copiedKey === 'search-response' ? '已复制' : '复制' }}
+            </button>
+          </div>
+          <pre><code>{{ searchResponseExample }}</code></pre>
         </div>
-        <pre><code>{{ searchResponseExample }}</code></pre>
-      </div>
-
-      <div class="code-card single-code">
-        <div class="code-title">
-          <strong>返回示例（results）</strong>
-          <button type="button" @click="copyCode('search-results-response', searchResultsResponseExample)">
-            {{ copiedKey === 'search-results-response' ? '已复制' : '复制' }}
-          </button>
+        <div class="code-card">
+          <div class="code-title">
+            <strong>返回示例（results）</strong>
+            <button type="button" @click="copyCode('search-results-response', searchResultsResponseExample)">
+              {{ copiedKey === 'search-results-response' ? '已复制' : '复制' }}
+            </button>
+          </div>
+          <pre><code>{{ searchResultsResponseExample }}</code></pre>
         </div>
-        <pre><code>{{ searchResultsResponseExample }}</code></pre>
       </div>
     </section>
 

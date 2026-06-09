@@ -121,7 +121,7 @@ describe('ResourceTable', () => {
             title: 'Course Pack',
             url: 'https://example.com/course',
             media: {
-              image_url: '/i/resources/77'
+              image_url: '/i/77'
             }
           }
         ]
@@ -130,7 +130,7 @@ describe('ResourceTable', () => {
 
     const image = wrapper.find('img.resource-thumb')
     expect(image.exists()).toBe(true)
-    expect(image.attributes('src')).toBe('/i/resources/77')
+    expect(image.attributes('src')).toBe('/i/77')
   })
 
   it('renders an enlarged hover preview for image thumbnails', () => {
@@ -143,7 +143,7 @@ describe('ResourceTable', () => {
             category: 'cloud_drive',
             title: 'Course Pack',
             media: {
-              image_url: '/i/resources/77'
+              image_url: '/i/77'
             }
           }
         ]
@@ -152,7 +152,7 @@ describe('ResourceTable', () => {
 
     const preview = wrapper.find('.resource-thumb-frame img.resource-thumb-preview')
     expect(preview.exists()).toBe(true)
-    expect(preview.attributes('src')).toBe('/i/resources/77')
+    expect(preview.attributes('src')).toBe('/i/77')
     expect(preview.attributes('aria-hidden')).toBe('true')
     expect(resourceTableSource).toMatch(/--resource-thumb-preview-width:\s*600px;/)
     expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
@@ -168,7 +168,7 @@ describe('ResourceTable', () => {
             category: 'files',
             file_name: 'clip.mp4',
             media: {
-              video_url: '/v/resources/77'
+              video_url: '/v/77'
             }
           }
         ]
@@ -177,7 +177,7 @@ describe('ResourceTable', () => {
 
     const video = wrapper.find('video.resource-thumb')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/v/resources/77')
+    expect(video.attributes('src')).toBe('/v/77')
     expect(video.attributes('preload')).toBe('metadata')
   })
 
@@ -191,8 +191,8 @@ describe('ResourceTable', () => {
             category: 'files',
             file_name: 'clip.mp4',
             media: {
-              image_url: '/i/resources/77',
-              video_url: '/v/resources/77'
+              image_url: '/i/77',
+              video_url: '/v/77'
             }
           }
         ]
@@ -203,7 +203,7 @@ describe('ResourceTable', () => {
 
     const video = wrapper.find('video.resource-thumb')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/v/resources/77')
-    expect(video.attributes('poster')).toBe('/i/resources/77')
+    expect(video.attributes('src')).toBe('/v/77')
+    expect(video.attributes('poster')).toBe('/i/77')
   })
 })

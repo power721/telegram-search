@@ -231,7 +231,10 @@ func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save messages: %v", err)
 	}
-	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 201001, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: 500}}); err != nil {
+		t.Fatalf("save photo file: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{TelegramFileID: 202001, FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save file: %v", err)
 	}
 	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/media-trailer", Note: "media trailer"}}); err != nil {
@@ -254,16 +257,23 @@ func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
 	for _, item := range body.Messages.Items {
 		messages[item.TelegramMessageID] = item
 	}
-	if messages[101].Media == nil || messages[101].Media.ImageURL != "/i/media_channel/101" || messages[101].Media.VideoURL != "" {
+	if messages[101].Media == nil || messages[101].Media.ImageURL != "/i/201001" || messages[101].Media.VideoURL != "" {
 		t.Fatalf("photo media = %+v", messages[101].Media)
 	}
-	if messages[102].Media == nil || messages[102].Media.ImageURL != "/i/media_channel/102" || messages[102].Media.VideoURL != "/v/media_channel/102" {
+	if messages[102].Media == nil || messages[102].Media.ImageURL != "/i/202001" || messages[102].Media.VideoURL != "/v/202001" {
 		t.Fatalf("video message media = %+v", messages[102].Media)
 	}
-	if len(body.Links.Items) != 1 || body.Links.Items[0].Media == nil || body.Links.Items[0].Media.ImageURL != "/i/media_channel/102" || body.Links.Items[0].Media.VideoURL != "/v/media_channel/102" {
+	if len(body.Links.Items) != 1 || body.Links.Items[0].Media == nil || body.Links.Items[0].Media.ImageURL != "/i/202001" || body.Links.Items[0].Media.VideoURL != "/v/202001" {
 		t.Fatalf("link media = %+v", body.Links.Items)
 	}
-	if len(body.Files.Items) != 1 || body.Files.Items[0].Media == nil || body.Files.Items[0].Media.VideoURL != "/v/media_channel/102" {
+	var trailerFile *model.FileResult
+	for i := range body.Files.Items {
+		if body.Files.Items[i].TelegramFileID == 202001 {
+			trailerFile = &body.Files.Items[i]
+			break
+		}
+	}
+	if trailerFile == nil || trailerFile.Media == nil || trailerFile.Media.VideoURL != "/v/202001" {
 		t.Fatalf("file media = %+v", body.Files.Items)
 	}
 }
@@ -358,7 +368,7 @@ func TestResourcesAPIMediaURLsRequireAdminSession(t *testing.T) {
 	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/poster", Note: "poster link"}}); err != nil {
 		t.Fatalf("save link: %v", err)
 	}
-	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{TelegramFileID: 202001, FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save file: %v", err)
 	}
 	router := NewRouter(deps)
@@ -375,7 +385,7 @@ func TestResourcesAPIMediaURLsRequireAdminSession(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &adminBody); err != nil {
 		t.Fatalf("invalid admin JSON: %v", err)
 	}
-	if len(adminBody.Items) != 1 || adminBody.Items[0].Media == nil || adminBody.Items[0].Media.ImageURL != "/i/media_channel/202" || adminBody.Items[0].Media.VideoURL != "/v/media_channel/202" {
+	if len(adminBody.Items) != 1 || adminBody.Items[0].Media == nil || adminBody.Items[0].Media.ImageURL != "/i/202001" || adminBody.Items[0].Media.VideoURL != "/v/202001" {
 		t.Fatalf("admin resource media = %+v", adminBody.Items)
 	}
 
@@ -810,7 +820,7 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if _, err := deps.BackupDB.ExecContext(ctx, `UPDATE telegram_links SET category = '' WHERE type IN ('quark', 'magnet', 'ed2k')`); err != nil {
 		t.Fatalf("clear legacy link categories: %v", err)
 	}
-	if _, err := files.SaveBatch(ctx, stored[3].ID, []model.File{{FileName: "ubuntu-trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+	if _, err := files.SaveBatch(ctx, stored[3].ID, []model.File{{TelegramFileID: 104001, FileName: "ubuntu-trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save video file: %v", err)
 	}
 	if _, err := deps.Links.SaveBatch(ctx, stored[4].ID, []model.Link{{Type: "url", URL: "https://example.com/ubuntu", Note: "Ubuntu HTTP"}}); err != nil {
@@ -4117,7 +4127,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		RuntimeConfig: runtimeConfig,
 		StorageUsage:  storage.NewUsageService(runtimeConfig),

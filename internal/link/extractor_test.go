@@ -770,6 +770,156 @@ S01E01-E08 4K SDR 内嵌简中 DDP.2.0 HiveWeb
 	}
 }
 
+func TestExtractIgnoresCollectionAndTMDBReferenceLinks(t *testing.T) {
+	text := `🎥 迈克尔·杰克逊：巨星之路 (2026)
+
+🗂 所属合集：Michael Collection (https://telegra.ph/Michael-Collection-06-09)
+⭐️ 评分：7.7
+🏷 类型：音乐 / 剧情
+🔖 标签: #迈克尔杰克逊巨星之路 #电影 #22.61G #4K #DDP #DV #HEVC #WEB-DL #MichaelCollection`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 0 {
+		t.Fatalf("len = %d, want collection reference ignored: %+v", len(links), links)
+	}
+}
+
+func TestExtractMediaMetadataFromHDHiveBracketSeries(t *testing.T) {
+	text := `[剧集] 神探狄仁杰 (2004)
+S01 4K WEB-DL HQ HiveWeb 补E27
+
+简介：《神探狄仁杰》系列是由钱雁秋执导。
+
+分享：白可乐 (https://hdhive.com/user/2)
+TMDB: 44277 (https://www.themoviedb.org/tv/44277)
+大小：124.14GB
+字幕：内嵌简中
+
+直达链接 (https://hdhive.com/resource/115/01e82030dcab468697a8113343684ff9) ｜ 神探狄仁杰 (https://hdhive.com/tv/30bbc00cfa1811ed91ff0242c0a81003)
+
+标签：#神探狄仁杰 #剧情 #悬疑`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want user/resource/tv fallback URLs and TMDB ignored: %+v", len(links), links)
+	}
+	resource := links[1]
+	if resource.URL != "https://hdhive.com/resource/115/01e82030dcab468697a8113343684ff9" || resource.MediaTitle != "神探狄仁杰" {
+		t.Fatalf("resource = %+v", resource)
+	}
+	if resource.MediaYear != "2004" || resource.MediaSeason != "S01" || resource.MediaEpisode != "补E27" || resource.MediaSize != "124.14GB" {
+		t.Fatalf("metadata = %+v", resource)
+	}
+	if resource.MediaQuality != "4K WEB-DL" || resource.MediaCategory != "剧集" {
+		t.Fatalf("quality/category = %q/%q", resource.MediaQuality, resource.MediaCategory)
+	}
+}
+
+func TestExtractMediaMetadataFromMultiProviderMovieQualityTags(t *testing.T) {
+	text := `名称：迈克尔·杰克逊：巨星之路(2026)【4K.HDR10+】【高码率】【内封简繁英】【杜比全景声】
+
+描述：影片讲述迈克尔·杰克逊在音乐之外的人生旅程。
+
+夸克：https://pan.quark.cn/s/bc50d367da9f
+百度：https://pan.baidu.com/s/1Fpy0M0UecRQE0On6gZ3KUQ?pwd=Yu66
+迅雷：https://pan.xunlei.com/s/VOuermFOuYbi6feIHIIccebqA1?pwd=y2fz
+115：https://115cdn.com/s/swsznst3wwq?password=m2f2
+
+📁 大小：22.5GB
+🏷 标签：#迈克尔杰克逊 #巨星之路 #4K #HDR10 #高码率 #杜比全景声`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 4 {
+		t.Fatalf("len = %d, want 4: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "迈克尔·杰克逊：巨星之路" || link.MediaYear != "2026" || link.MediaSize != "22.5GB" {
+			t.Fatalf("link = %+v, want movie metadata", link)
+		}
+		for _, token := range []string{"4K", "HDR10", "高码率", "杜比全景声"} {
+			if !strings.Contains(link.MediaQuality, token) {
+				t.Fatalf("quality = %q, missing %s", link.MediaQuality, token)
+			}
+		}
+	}
+	if links[1].Password != "Yu66" || links[2].Password != "y2fz" || links[3].Password != "m2f2" {
+		t.Fatalf("passwords = %+v", links)
+	}
+}
+
+func TestExtractMediaMetadataFromAudioDramaMobileShare(t *testing.T) {
+	text := `名称：多人有声剧《无限辉煌图卷》主播：格蕾丝语 1507集完
+
+描述：神道魔法百界族，异能武斗狂歌度。
+
+链接：https://yun.139.com/shareweb/#/w/i/2v3EDrw9AeH0c
+
+📁 大小：12.9G
+🏷 标签：#有声书 #温茶米酒 #多人有声剧 #无限辉煌图卷 #格蕾丝语 #移动`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want mobile link: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.MediaTitle != "多人有声剧《无限辉煌图卷》主播：格蕾丝语" || link.MediaEpisode != "1507集" {
+		t.Fatalf("metadata = %+v, want audio drama title/episodes", link)
+	}
+	if link.MediaSize != "12.9G" || link.MediaTags != "有声书 温茶米酒 多人有声剧 无限辉煌图卷 格蕾丝语 移动" {
+		t.Fatalf("size/tags = %q/%q", link.MediaSize, link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromQuarkEmojiTitleWith60FPS(t *testing.T) {
+	text := `🗄 莫离（2026）【4K.HDR.60fps】【内封简中】【更05集】【爱情/古装】【白鹿/丞磊】
+
+📜介绍：
+叶府的长女叶璃，嫁去破败的定王府。
+
+💾夸克网盘 (https://pan.quark.cn/s/8b6e84fde0a5)
+
+📁 大小：NG
+🏷 标签：#国剧 #leoziyuan #爱情 #古装 #莫离 #4K #HDR #60fps`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want quark link: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "莫离" || link.MediaYear != "2026" || link.MediaEpisode != "更新05集" {
+		t.Fatalf("metadata = %+v, want title/year/update episode", link)
+	}
+	if link.MediaQuality != "4K HDR 60fps" {
+		t.Fatalf("quality = %q", link.MediaQuality)
+	}
+}
+
+func TestExtractMediaMetadataFromShortDramaMultipleLinks(t *testing.T) {
+	text := `名称：凡人百世书第二季 (94集) | 短剧
+
+描述：2026年06月09日最新热门抖音快手百度番茄红果等付费短剧推荐。
+
+链接：https://pan.quark.cn/s/72d151cb5d18
+https://pan.baidu.com/s/1bXhVcHMoVDhLZmfs0Q49Hg?pwd=8888
+https://drive.uc.cn/s/b3aa070e16134
+
+📁 大小：2.1 GB
+🏷 标签：#凡人百世书第二季 #短剧`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "凡人百世书第二季" || link.MediaEpisode != "94集" || link.MediaCategory != "短剧" || link.MediaSize != "2.1 GB" {
+			t.Fatalf("link = %+v, want short drama metadata", link)
+		}
+	}
+	if links[1].Password != "8888" {
+		t.Fatalf("baidu password = %q", links[1].Password)
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

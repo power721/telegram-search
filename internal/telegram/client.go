@@ -11,6 +11,7 @@ import (
 
 var ErrUnavailable = errors.New("telegram client is unavailable")
 var ErrPasswordRequired = errors.New("telegram password required")
+var ErrCredentialsNotConfigured = errors.New("telegram api settings are not configured")
 
 const (
 	QRLoginStatusPending = "pending"
@@ -88,6 +89,26 @@ type Client interface {
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
 	SearchMessages(ctx context.Context, session AccountSession, channel ChannelRef, query string, limit int) ([]Message, error)
+}
+
+type Credentials struct {
+	APIID   int
+	APIHash string
+}
+
+type CredentialsProvider interface {
+	TelegramCredentials(context.Context) (Credentials, error)
+}
+
+type StaticCredentialsProvider struct {
+	Credentials Credentials
+}
+
+func (p StaticCredentialsProvider) TelegramCredentials(context.Context) (Credentials, error) {
+	if p.Credentials.APIID <= 0 || p.Credentials.APIHash == "" {
+		return Credentials{}, ErrCredentialsNotConfigured
+	}
+	return p.Credentials, nil
 }
 
 type CodeStore struct {

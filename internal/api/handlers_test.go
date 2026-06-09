@@ -483,23 +483,6 @@ func TestSetupAndAuthAPIs(t *testing.T) {
 		t.Fatalf("admin_configured = true, want false")
 	}
 
-	depsWithRuntimeTelegram := testDeps(t)
-	depsWithRuntimeTelegram.RuntimeConfig.Telegram.APIID = config.DefaultTelegramAPIID
-	depsWithRuntimeTelegram.RuntimeConfig.Telegram.APIHash = config.DefaultTelegramAPIHash
-	routerWithRuntimeTelegram := NewRouter(depsWithRuntimeTelegram)
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
-	routerWithRuntimeTelegram.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("setup status with runtime telegram code = %d body=%s", w.Code, w.Body.String())
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
-		t.Fatalf("decode setup status with runtime telegram: %v", err)
-	}
-	if !status.TelegramConfigured {
-		t.Fatalf("telegram_configured = false, want true from built-in runtime credentials")
-	}
-
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/admin", bytes.NewBufferString(`{"username":"admin","password":"secret123"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -907,8 +890,6 @@ func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
 
 func TestTelegramAPISettings(t *testing.T) {
 	deps := testDeps(t)
-	deps.RuntimeConfig.Telegram.APIID = config.DefaultTelegramAPIID
-	deps.RuntimeConfig.Telegram.APIHash = config.DefaultTelegramAPIHash
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
@@ -918,7 +899,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup telegram api skip code = %d body=%s, want 200", w.Code, w.Body.String())
 	}
-	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, config.DefaultTelegramAPIID)
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), false, 0)
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":""}`))
@@ -961,6 +942,25 @@ func TestTelegramAPISettings(t *testing.T) {
 	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), true, 654321)
 	if bytes.Contains(w.Body.Bytes(), []byte("new-hash-secret")) {
 		t.Fatalf("put telegram api response leaked app hash: %s", w.Body.String())
+	}
+}
+
+func TestSetupStatusRequiresStoredTelegramAPI(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("setup status code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var status model.SetupStatus
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode setup status: %v", err)
+	}
+	if status.TelegramConfigured {
+		t.Fatalf("telegram configured = true, want false without stored Telegram API settings")
 	}
 }
 

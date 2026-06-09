@@ -18,16 +18,18 @@ import (
 )
 
 type GotdClient struct {
-	apiID   int
-	apiHash string
-	logger  *zap.Logger
+	credentials CredentialsProvider
+	logger      *zap.Logger
 }
 
-func NewGotdClient(apiID int, apiHash string, logger *zap.Logger) *GotdClient {
+func NewGotdClient(credentials CredentialsProvider, logger *zap.Logger) *GotdClient {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &GotdClient{apiID: apiID, apiHash: apiHash, logger: logger}
+	if credentials == nil {
+		credentials = StaticCredentialsProvider{}
+	}
+	return &GotdClient{credentials: credentials, logger: logger}
 }
 
 func (g *GotdClient) SendCode(ctx context.Context, phone string, sessionPath string) (SentCode, error) {
@@ -234,7 +236,11 @@ func (g *GotdClient) SearchMessages(ctx context.Context, account AccountSession,
 }
 
 func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func(context.Context, *gotdtelegram.Client) error) error {
-	client := gotdtelegram.NewClient(g.apiID, g.apiHash, gotdtelegram.Options{
+	credentials, err := g.credentials.TelegramCredentials(ctx)
+	if err != nil {
+		return err
+	}
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
 		SessionStorage: &session.FileStorage{Path: sessionPath},
 		Logger:         g.logger,
 		NoUpdates:      true,

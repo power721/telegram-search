@@ -11,9 +11,8 @@ func TestLoadAppliesDefaultsFromLocalConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	err := os.WriteFile(configPath, []byte(`
-telegram:
-  api_id: 12345
-  api_hash: test_hash
+server:
+  host: 127.0.0.1
 `), 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -24,12 +23,6 @@ telegram:
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	if cfg.Telegram.APIID != 12345 {
-		t.Fatalf("api id = %d, want 12345", cfg.Telegram.APIID)
-	}
-	if cfg.Telegram.APIHash != "test_hash" {
-		t.Fatalf("api hash = %q, want test_hash", cfg.Telegram.APIHash)
-	}
 	if cfg.Server.Host != "127.0.0.1" {
 		t.Fatalf("host = %q, want default localhost", cfg.Server.Host)
 	}
@@ -53,26 +46,21 @@ telegram:
 	}
 }
 
-func TestLoadAppliesBuiltInTelegramDefaults(t *testing.T) {
+func TestLoadRejectsTelegramConfig(t *testing.T) {
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	err := os.WriteFile(configPath, []byte(`
-server:
-  host: 127.0.0.1
+telegram:
+  api_id: 12345
+  api_hash: test_hash
 `), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := Load(configPath)
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
-	}
-	if cfg.Telegram.APIID != DefaultTelegramAPIID {
-		t.Fatalf("api id = %d, want built-in default %d", cfg.Telegram.APIID, DefaultTelegramAPIID)
-	}
-	if cfg.Telegram.APIHash != DefaultTelegramAPIHash {
-		t.Fatalf("api hash = %q, want built-in default", cfg.Telegram.APIHash)
+	_, err = Load(configPath)
+	if err == nil || !strings.Contains(err.Error(), "field telegram not found") {
+		t.Fatalf("Load error = %v, want unknown telegram field error", err)
 	}
 }
 
@@ -102,12 +90,6 @@ func TestLoadGeneratesDefaultConfigAtExplicitMissingPath(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	if cfg.Telegram.APIID == 0 {
-		t.Fatal("generated config missing telegram.api_id")
-	}
-	if cfg.Telegram.APIHash == "" {
-		t.Fatal("generated config missing telegram.api_hash")
-	}
 	if cfg.Server.Host != "127.0.0.1" {
 		t.Fatalf("generated host = %q, want 127.0.0.1", cfg.Server.Host)
 	}
@@ -116,6 +98,13 @@ func TestLoadGeneratesDefaultConfigAtExplicitMissingPath(t *testing.T) {
 	}
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("generated config not written: %v", err)
+	}
+	generated, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read generated config: %v", err)
+	}
+	if strings.Contains(string(generated), "telegram:") || strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
+		t.Fatalf("generated config contains Telegram API credentials:\n%s", string(generated))
 	}
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
@@ -160,14 +149,18 @@ func TestLoadGeneratesLocalDefaultConfigWhenNoConfigExists(t *testing.T) {
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	if cfg.Telegram.APIID == 0 || cfg.Telegram.APIHash == "" {
-		t.Fatalf("generated Telegram credentials are incomplete: %+v", cfg.Telegram)
-	}
 	if cfg.Storage.Path != "data" {
 		t.Fatalf("generated storage path = %q, want data", cfg.Storage.Path)
 	}
 	if _, err := os.Stat(localConfigPath); err != nil {
 		t.Fatalf("local config was not generated: %v", err)
+	}
+	generated, err := os.ReadFile(localConfigPath)
+	if err != nil {
+		t.Fatalf("read local config: %v", err)
+	}
+	if strings.Contains(string(generated), "telegram:") || strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
+		t.Fatalf("local generated config contains Telegram API credentials:\n%s", string(generated))
 	}
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)

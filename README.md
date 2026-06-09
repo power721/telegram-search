@@ -9,9 +9,6 @@ Self-hosted personal Telegram search foundation.
 Create `config.yaml` locally for development, or `/data/tg-search/config.yaml` in production:
 
 ```yaml
-telegram:
-  api_id: 123456
-  api_hash: your_api_hash
 server:
   host: 127.0.0.1
   port: 9900
@@ -23,6 +20,8 @@ storage:
   max_db_size: 10GB
   max_media_cache: 20GB
 ```
+
+Telegram App ID and App Hash are configured in the admin setup flow or later from Settings.
 
 Build and run:
 

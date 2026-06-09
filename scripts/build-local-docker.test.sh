@@ -45,20 +45,14 @@ assert_contains() {
 
 assert_contains "docker build -f $ROOT_DIR/Dockerfile --build-arg VERSION="
 assert_contains "--tag=haroldli/tg-search:latest $ROOT_DIR"
-assert_contains "=== generate $TMP_DIR/data/config.yaml ==="
+assert_contains "=== use image default /app/config.yaml ==="
 assert_contains "docker rm -f tg-search"
 assert_contains "docker run -d -p 7000:9900 -e TZ=Asia/Shanghai -v $TMP_DIR/data:/data/tg-search --restart=unless-stopped --name=tg-search haroldli/tg-search:latest"
 assert_contains "docker logs -f tg-search"
 assert_contains "http://192.168.1.20:7000/"
 
-if ! grep -q "api_id: 12345" "$TMP_DIR/data/config.yaml"; then
-  printf 'generated config missing API_ID\n' >&2
-  cat "$TMP_DIR/data/config.yaml" >&2
-  exit 1
-fi
-
-if ! grep -q "host: 0.0.0.0" "$TMP_DIR/data/config.yaml"; then
-  printf 'generated config must bind to 0.0.0.0 for Docker port publishing\n' >&2
+if [[ -e "$TMP_DIR/data/config.yaml" ]]; then
+  printf 'script should not generate config from Telegram API environment variables\n' >&2
   cat "$TMP_DIR/data/config.yaml" >&2
   exit 1
 fi

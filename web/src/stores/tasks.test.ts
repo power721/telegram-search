@@ -97,4 +97,22 @@ describe('tasks store', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
     expect(store.total).toBe(75)
   })
+
+  it('passes task filters, search and sorting options', async () => {
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: [], total: 0 } as never)
+    const store = useTasksStore()
+
+    await store.loadTasks({
+      status: 'failed',
+      type: 'history_sync',
+      q: 'temporary',
+      sort: 'retry_count',
+      order: 'desc',
+      limit: 20
+    })
+
+    expect(apiGet).toHaveBeenCalledWith(
+      '/api/tasks?status=failed&type=history_sync&q=temporary&sort=retry_count&order=desc&limit=20'
+    )
+  })
 })

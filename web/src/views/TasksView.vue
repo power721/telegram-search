@@ -8,6 +8,9 @@ import TaskTable from '@/components/tasks/TaskTable.vue'
 import { useEventsStore } from '@/stores/events'
 import { useTasksStore } from '@/stores/tasks'
 
+type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'next_run_at' | 'message'
+type SortDirection = 'asc' | 'desc'
+
 const tasks = useTasksStore()
 const events = useEventsStore()
 const dialog = useDialog()
@@ -16,12 +19,52 @@ const pageSizeOptions = [20, 50, 100]
 const pageSize = ref(50)
 const offset = ref(0)
 const selectedTaskIds = ref<number[]>([])
+const searchQuery = ref('')
+const statusFilter = ref('')
+const typeFilter = ref('')
+const sortKey = ref<TaskSortKey | null>(null)
+const sortDirection = ref<SortDirection>('desc')
 
 const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
 
+const statusOptions = [
+  { label: '全部状态', value: '' },
+  { label: '排队中', value: 'queued' },
+  { label: '运行中', value: 'running' },
+  { label: '取消中', value: 'canceling' },
+  { label: '已取消', value: 'canceled' },
+  { label: '已暂停', value: 'paused' },
+  { label: '失败', value: 'failed' },
+  { label: '成功', value: 'succeeded' },
+  { label: '等待限流解除', value: 'flood_wait' },
+  { label: '重连中', value: 'reconnecting' }
+]
+
+const typeOptions = [
+  { label: '全部类型', value: '' },
+  { label: '备份', value: 'backup' },
+  { label: '频道分析', value: 'channel_analysis' },
+  { label: '消息同步', value: 'gap_recovery' },
+  { label: '历史同步', value: 'history_sync' },
+  { label: '监听恢复', value: 'listener_recovery' },
+  { label: '元数据同步', value: 'metadata_sync' },
+  { label: '远程搜索', value: 'remote_search' },
+  { label: '网页访问检测', value: 'web_access_detection' }
+]
+
+const activeFilters = computed(() => ({
+  status: statusFilter.value,
+  type: typeFilter.value,
+  q: searchQuery.value.trim(),
+  sort: sortKey.value ?? undefined,
+  order: sortKey.value ? sortDirection.value : undefined,
+  limit: pageSize.value,
+  offset: offset.value
+}))
+
 function loadPage() {
   selectedTaskIds.value = []
-  return tasks.loadTasks({ limit: pageSize.value, offset: offset.value })
+  return tasks.loadTasks(activeFilters.value)
 }
 
 onMounted(() => {
@@ -49,6 +92,32 @@ async function changePage(pageNumber: number) {
 
 async function changePageSize(value: number) {
   pageSize.value = value
+  offset.value = 0
+  await loadPage()
+}
+
+async function resetAndLoad() {
+  offset.value = 0
+  await loadPage()
+}
+
+async function resetFilters() {
+  searchQuery.value = ''
+  statusFilter.value = ''
+  typeFilter.value = ''
+  sortKey.value = null
+  sortDirection.value = 'desc'
+  offset.value = 0
+  await loadPage()
+}
+
+async function sortTasks(key: TaskSortKey) {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortKey.value = key
+    sortDirection.value = 'asc'
+  }
   offset.value = 0
   await loadPage()
 }
@@ -121,11 +190,25 @@ function confirmDeleteSelectedTasks() {
 
     <div v-if="tasks.error" class="error-strip">{{ tasks.error }}</div>
 
+    <form class="task-filters" @submit.prevent="resetAndLoad">
+      <label class="filter-label" for="task-search">搜索</label>
+      <n-input id="task-search" v-model:value="searchQuery" class="task-search" clearable placeholder="搜索 ID、消息、错误或载荷" />
+      <label class="filter-label" for="task-status">状态</label>
+      <n-select id="task-status" v-model:value="statusFilter" class="task-status-filter" :options="statusOptions" />
+      <label class="filter-label" for="task-type">类型</label>
+      <n-select id="task-type" v-model:value="typeFilter" class="task-type-filter" :options="typeOptions" />
+      <n-button attr-type="submit" type="primary" :loading="tasks.loading">搜索</n-button>
+      <n-button attr-type="button" :disabled="tasks.loading" @click="resetFilters">重置</n-button>
+    </form>
+
     <TaskTable
       :tasks="tasks.items"
       :loading="tasks.loading"
       :selected-ids="selectedTaskIds"
+      :sort-key="sortKey"
+      :sort-direction="sortDirection"
       @select="selectTask"
+      @sort="sortTasks"
       @toggle-select="toggleTaskSelection"
       @toggle-select-all="toggleCurrentPageSelection"
       @retry="tasks.retryTask($event.id)"
@@ -153,5 +236,22 @@ function confirmDeleteSelectedTasks() {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.task-filters {
+  align-items: center;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(220px, 1fr) auto 180px auto 220px auto auto;
+  padding: 10px;
+}
+
+@media (max-width: 860px) {
+  .task-filters {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

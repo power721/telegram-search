@@ -27,6 +27,9 @@ type StatusUpdate struct {
 type ListFilter struct {
 	Status string
 	Type   string
+	Query  string
+	Sort   string
+	Order  string
 	Limit  int
 	Offset int
 }
@@ -124,7 +127,7 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]model.Task,
 SELECT id, type, status, progress, total, message, error_code, error_message, retry_count, next_run_at, payload_json, started_at, finished_at, created_at, updated_at
 FROM sync_tasks
 WHERE `+strings.Join(where, " AND ")+`
-ORDER BY updated_at DESC, id DESC
+`+taskListOrder(filter)+`
 LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tasks: %w", err)
@@ -167,7 +170,39 @@ func taskListWhere(filter ListFilter) ([]string, []any) {
 		where = append(where, "type = ?")
 		args = append(args, filter.Type)
 	}
+	if query := strings.TrimSpace(filter.Query); query != "" {
+		like := "%" + query + "%"
+		where = append(where, `(CAST(id AS TEXT) LIKE ? OR type LIKE ? OR status LIKE ? OR message LIKE ? OR error_code LIKE ? OR error_message LIKE ? OR payload_json LIKE ?)`)
+		args = append(args, like, like, like, like, like, like, like)
+	}
 	return where, args
+}
+
+func taskListOrder(filter ListFilter) string {
+	columns := map[string]string{
+		"id":          "id",
+		"type":        "type",
+		"status":      "status",
+		"progress":    "progress",
+		"total":       "total",
+		"retry_count": "retry_count",
+		"next_run_at": "next_run_at",
+		"created_at":  "created_at",
+		"updated_at":  "updated_at",
+		"message":     "message",
+	}
+	column, ok := columns[filter.Sort]
+	if !ok {
+		return "ORDER BY updated_at DESC, id DESC"
+	}
+	direction := "DESC"
+	if strings.EqualFold(filter.Order, "asc") {
+		direction = "ASC"
+	}
+	if column == "id" {
+		return "ORDER BY id " + direction
+	}
+	return "ORDER BY " + column + " " + direction + ", id " + direction
 }
 
 func (r *Repository) ListRestartable(ctx context.Context, now time.Time) ([]model.Task, error) {

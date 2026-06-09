@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import type { Task } from '@/api/types'
 
+type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'next_run_at' | 'message'
+type SortDirection = 'asc' | 'desc'
+
 defineProps<{
   tasks: Task[]
   loading?: boolean
   selectedIds?: number[]
+  sortKey?: TaskSortKey | null
+  sortDirection?: SortDirection
 }>()
 
 const emit = defineEmits<{
   select: [task: Task]
+  sort: [key: TaskSortKey]
   toggleSelect: [task: Task, selected: boolean]
   toggleSelectAll: [selected: boolean]
   retry: [task: Task]
@@ -87,6 +93,16 @@ function isSelected(task: Task, selectedIds: number[] = []) {
 function allSelected(tasks: Task[], selectedIds: number[] = []) {
   return tasks.length > 0 && tasks.every((task) => selectedIds.includes(task.id))
 }
+
+function sortIndicator(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDirection?: SortDirection) {
+  if (sortKey !== activeKey) return ''
+  return sortDirection === 'asc' ? ' ↑' : ' ↓'
+}
+
+function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDirection?: SortDirection) {
+  if (sortKey !== activeKey) return 'none'
+  return sortDirection === 'asc' ? 'ascending' : 'descending'
+}
 </script>
 
 <template>
@@ -102,13 +118,41 @@ function allSelected(tasks: Task[], selectedIds: number[] = []) {
               @change="emit('toggleSelectAll', ($event.target as HTMLInputElement).checked)"
             />
           </th>
-          <th>ID</th>
-          <th>类型</th>
-          <th>状态</th>
-          <th>进度</th>
-          <th>重试次数</th>
-          <th>下次运行</th>
-          <th>消息</th>
+          <th :aria-sort="sortAria('id', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="id" @click="emit('sort', 'id')">
+              ID{{ sortIndicator('id', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('type', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="type" @click="emit('sort', 'type')">
+              类型{{ sortIndicator('type', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('status', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="status" @click="emit('sort', 'status')">
+              状态{{ sortIndicator('status', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('progress', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="progress" @click="emit('sort', 'progress')">
+              进度{{ sortIndicator('progress', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('retry_count', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="retry_count" @click="emit('sort', 'retry_count')">
+              重试次数{{ sortIndicator('retry_count', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('next_run_at', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="next_run_at" @click="emit('sort', 'next_run_at')">
+              下次运行{{ sortIndicator('next_run_at', sortKey, sortDirection) }}
+            </button>
+          </th>
+          <th :aria-sort="sortAria('message', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="message" @click="emit('sort', 'message')">
+              消息{{ sortIndicator('message', sortKey, sortDirection) }}
+            </button>
+          </th>
           <th>操作</th>
         </tr>
       </thead>

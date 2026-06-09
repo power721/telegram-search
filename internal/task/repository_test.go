@@ -108,6 +108,66 @@ func TestTaskRepositoryRestartQuery(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListSearchAndSort(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	repo := NewRepository(conn)
+	first, err := repo.Create(ctx, model.Task{
+		Type:         model.TaskTypeHistorySync,
+		Status:       model.TaskStatusFailed,
+		Progress:     30,
+		Total:        100,
+		ErrorMessage: "temporary needle failure",
+		PayloadJSON:  `{"channel_id":1}`,
+	})
+	if err != nil {
+		t.Fatalf("Create first returned error: %v", err)
+	}
+	second, err := repo.Create(ctx, model.Task{
+		Type:        model.TaskTypeHistorySync,
+		Status:      model.TaskStatusQueued,
+		Progress:    80,
+		Total:       100,
+		Message:     "needle queued",
+		PayloadJSON: `{"channel_id":2}`,
+	})
+	if err != nil {
+		t.Fatalf("Create second returned error: %v", err)
+	}
+	if _, err := repo.Create(ctx, model.Task{
+		Type:        model.TaskTypeBackup,
+		Status:      model.TaskStatusQueued,
+		Message:     "unrelated",
+		PayloadJSON: `{}`,
+	}); err != nil {
+		t.Fatalf("Create third returned error: %v", err)
+	}
+
+	filter := ListFilter{Type: model.TaskTypeHistorySync, Query: "needle", Sort: "progress", Order: "desc", Limit: 10}
+	items, err := repo.List(ctx, filter)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(items) != 2 || items[0].ID != second.ID || items[1].ID != first.ID {
+		t.Fatalf("sorted search items = %+v, want [%d %d]", items, second.ID, first.ID)
+	}
+	total, err := repo.Count(ctx, filter)
+	if err != nil {
+		t.Fatalf("Count returned error: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("Count = %d, want 2", total)
+	}
+}
+
 func TestTaskRepositoryDelete(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

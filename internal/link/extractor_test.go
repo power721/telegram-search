@@ -920,6 +920,67 @@ https://drive.uc.cn/s/b3aa070e16134
 	}
 }
 
+func TestExtractMediaMetadataFromYunpansSearchResultList(t *testing.T) {
+	text := `夸克频道 新地址  @yunpans
+
+🔍 搜索结果：
+·难哄 (2025) [全32集] [1080P] [内封简繁] [白敬亭/章若楠] (https://pan.quark.cn/s/dba77b4d5c05)·quark
+·难哄 (2025) (https://pan.quark.cn/s/fdcd408b8669)·quark
+·难哄(2025)【4K.HDR.60fps】【内封简中】【32集全】【剧情/爱情】【白敬亭/章若楠】 (https://pan.quark.cn/s/0ac9dcdecaf3)·quark
+·难哄 (2025) 4K  全 32集 已完结 易河蟹 速存 (https://pan.xunlei.com/s/VOL-MK-zedh7csmMmR9lE6qpA1?pwd=ccfm)·xunlei
+·难哄 (2025) 【更新EP32 1080p/4K】完结【白敬亭/章若楠/爱情】附小说漫画广播剧 (https://pan.baidu.com/s/1G43Mt58j0G5geocnx5U2-Q?pwd=9f41)·baidu
+·难哄(2025)4K 10bit 60FPS S01完结 (https://www.123865.com/s/L4qVTd-Tmbud)·123pan
+·难哄  漫剧2季 (https://pan.quark.cn/s/5ab3bf941a66)·quark
+·最新短剧 2025年4月21日合集目录1 (https://pan.baidu.com/s/19OvoVqFxKquWChqFmlOrUA?pwd=g7mt)·baidu
+·最新短剧 2025年4月21日合集目录1 (https://drive.uc.cn/s/9ac00dfc5f864?public=1)·uc
+·最新短剧 2025年4月21日合集目录1 (https://pan.quark.cn/s/25102f853785)·quark
+·2025.4.8最新短剧合集总链目录1 (https://drive.uc.cn/s/6f8f64e4bc424?public=1)·uc
+·2025.4.8最新短剧合集总链目录1 (https://pan.baidu.com/s/133FiVN7nWs73EcqAxJ5NBw?pwd=td2s)·baidu
+·2025.4.8最新短剧合集总链目录1 (https://pan.quark.cn/s/131d160dc035)·quark
+·伪骨科短剧大合集（45部） (https://pan.quark.cn/s/7be6de8d6b8a)·quark
+·双胎小孕妻超难哄（64集）王阡惠＆张北淅 (https://pan.baidu.com/s/1bCQZBSSv9iEtMKb-GGZhvQ?pwd=s4ex)·baidu
+·双胎小孕妻超难哄（64集）王阡惠＆张北淅 (https://pan.quark.cn/s/c589040499a0)·quark
+·他的小难哄 (https://pan.quark.cn/s/54ce1f9fcae4)·quark
+
+失效资源反馈命令：/f 网盘链接 ，有效反馈可以增加你的频道使用积分，使用 /me 命令可以查看自己的积分。`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 17 {
+		t.Fatalf("len = %d, want 17: %+v", len(links), links)
+	}
+	wantFirst := []struct {
+		typ     string
+		url     string
+		pass    string
+		quality string
+	}{
+		{"quark", "https://pan.quark.cn/s/dba77b4d5c05", "", "1080P"},
+		{"quark", "https://pan.quark.cn/s/fdcd408b8669", "", ""},
+		{"quark", "https://pan.quark.cn/s/0ac9dcdecaf3", "", "4K HDR 60fps"},
+		{"xunlei", "https://pan.xunlei.com/s/VOL-MK-zedh7csmMmR9lE6qpA1?pwd=ccfm", "ccfm", "4K"},
+		{"baidu", "https://pan.baidu.com/s/1G43Mt58j0G5geocnx5U2-Q?pwd=9f41", "9f41", "1080p 4K"},
+		{"123", "https://www.123865.com/s/L4qVTd-Tmbud", "", "4K 60FPS"},
+	}
+	for i, want := range wantFirst {
+		link := links[i]
+		if link.Type != want.typ || link.URL != want.url || link.Password != want.pass {
+			t.Fatalf("link %d = %+v, want type=%s url=%s pass=%s", i, link, want.typ, want.url, want.pass)
+		}
+		if link.MediaTitle != "难哄" || link.MediaYear != "2025" {
+			t.Fatalf("link %d metadata = %+v, want title 难哄 year 2025", i, link)
+		}
+		if want.quality != "" && link.MediaQuality != want.quality {
+			t.Fatalf("link %d quality = %q, want %q", i, link.MediaQuality, want.quality)
+		}
+		if strings.Contains(link.MediaTitle, "yunpans") || strings.Contains(link.Note, "yunpans") {
+			t.Fatalf("link %d inherited channel announcement: %+v", i, link)
+		}
+	}
+	if links[0].MediaEpisode != "32集" || links[2].MediaEpisode != "32集" || links[3].MediaEpisode != "32集" {
+		t.Fatalf("episodes = %q/%q/%q, want 32集", links[0].MediaEpisode, links[2].MediaEpisode, links[3].MediaEpisode)
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

@@ -163,6 +163,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 		note := inferNote(text, candidate.MatchStart)
 		metadata := messageMetadata
 		metadata.overlay(mediaMetadataNearLink(text, candidate.MatchStart))
+		metadata.overlay(mediaMetadataFromSameLinePrefix(text, candidate.MatchStart))
 		metadata.merge(mediaMetadataFromURL(candidate.Type, url))
 		if metadata.Title == "" {
 			metadata.Title = note
@@ -434,6 +435,7 @@ func isLinkLabel(value string) bool {
 	labels := map[string]struct{}{
 		"":       {},
 		"链接":     {},
+		"直达链接":   {},
 		"地址":     {},
 		"资源":     {},
 		"资源地址":   {},
@@ -443,6 +445,7 @@ func isLinkLabel(value string) bool {
 		"quark":  {},
 		"百度":     {},
 		"baidu":  {},
+		"度盘":     {},
 		"阿里":     {},
 		"aliyun": {},
 		"alipan": {},
@@ -451,6 +454,8 @@ func isLinkLabel(value string) bool {
 		"xunlei": {},
 		"115":    {},
 		"123":    {},
+		"123盘":   {},
+		"123盘地址": {},
 		"天翼":     {},
 		"mobile": {},
 		"pikpak": {},
@@ -499,6 +504,7 @@ func isMetadataLine(value string) bool {
 		"提取码":    {},
 		"访问码":    {},
 		"标签":     {},
+		"搜索结果":   {},
 	}
 	_, ok := metadataLabels[normalized]
 	return ok
@@ -629,6 +635,52 @@ func mediaMetadataNearLink(text string, linkStart int) mediaMetadata {
 	return mediaMetadata{}
 }
 
+func mediaMetadataFromSameLinePrefix(text string, linkStart int) mediaMetadata {
+	if linkStart < 0 || linkStart > len(text) {
+		return mediaMetadata{}
+	}
+	lineStart := strings.LastIndex(text[:linkStart], "\n") + 1
+	prefix := strings.TrimSpace(text[lineStart:linkStart])
+	prefix = strings.TrimRight(prefix, " \t(（")
+	if prefix == "" {
+		return mediaMetadata{}
+	}
+	if idx := firstLabelSeparator(prefix); idx >= 0 {
+		head := strings.TrimSpace(prefix[:idx])
+		tail := strings.TrimSpace(prefix[idx+separatorLen(prefix[idx:]):])
+		if isLinkLabel(head) {
+			prefix = tail
+		}
+	}
+	prefix = cleanNoteCandidate(prefix)
+	prefix = strings.TrimRight(prefix, " \t(（")
+	prefix = strings.TrimSpace(prefix)
+	if prefix == "" || isLowConfidenceNote(prefix) {
+		return mediaMetadata{}
+	}
+	return mediaMetadataFromTitleLine(prefix)
+}
+
+func firstLabelSeparator(value string) int {
+	first := -1
+	for _, separator := range []string{"：", ":"} {
+		if idx := strings.Index(value, separator); idx >= 0 && (first < 0 || idx < first) {
+			first = idx
+		}
+	}
+	return first
+}
+
+func separatorLen(value string) int {
+	if strings.HasPrefix(value, "：") {
+		return len("：")
+	}
+	if strings.HasPrefix(value, ":") {
+		return len(":")
+	}
+	return 0
+}
+
 func mediaMetadataFromTitleLine(line string) mediaMetadata {
 	var metadata mediaMetadata
 	title, category := titleFromExplicitLine(line)
@@ -720,6 +772,9 @@ func titleFromPlainLine(line string) (string, string) {
 	if strings.Contains(line, "://") || strings.Contains(lower, "magnet:?") || isLinkLabel(line) || isMetadataLine(line) {
 		return "", ""
 	}
+	if isAnnouncementLine(line) {
+		return "", ""
+	}
 	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "@") {
 		return "", ""
 	}
@@ -740,6 +795,23 @@ func titleFromPlainLine(line string) (string, string) {
 		return "", ""
 	}
 	return normalized, ""
+}
+
+func isAnnouncementLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	if strings.Contains(trimmed, "@") {
+		return true
+	}
+	if strings.Contains(trimmed, "反馈命令") || strings.Contains(trimmed, "使用 /") {
+		return true
+	}
+	if strings.Contains(trimmed, "频道") && (strings.Contains(trimmed, "地址") || strings.Contains(strings.ToLower(trimmed), "channel")) {
+		return true
+	}
+	return false
 }
 
 func categoryFromLine(line string) string {

@@ -27,11 +27,18 @@ type RateLimitConfig struct {
 	Burst         int
 }
 
+type StreamConfig struct {
+	Concurrency  int
+	Buffers      int
+	ChunkTimeout time.Duration
+}
+
 type RuntimeConfig struct {
 	Proxy            string
 	ReconnectTimeout time.Duration
 	DialTimeout      time.Duration
 	RateLimit        RateLimitConfig
+	Stream           StreamConfig
 }
 
 type BuildOptionsInput struct {
@@ -51,6 +58,11 @@ func DefaultRuntimeConfig() RuntimeConfig {
 			RatePerSecond: 10,
 			Burst:         5,
 		},
+		Stream: StreamConfig{
+			Concurrency:  2,
+			Buffers:      4,
+			ChunkTimeout: 20 * time.Second,
+		},
 	}
 }
 
@@ -63,6 +75,11 @@ func RuntimeConfigFromConfig(cfg configpkg.TelegramConfig) RuntimeConfig {
 			Enabled:       cfg.RateLimit.Enabled,
 			RatePerSecond: cfg.RateLimit.RatePerSecond,
 			Burst:         cfg.RateLimit.Burst,
+		},
+		Stream: StreamConfig{
+			Concurrency:  cfg.Stream.Concurrency,
+			Buffers:      cfg.Stream.Buffers,
+			ChunkTimeout: cfg.Stream.ChunkTimeout.Std(),
 		},
 	}
 }
@@ -120,6 +137,15 @@ func normalizeRuntimeConfig(cfg RuntimeConfig) RuntimeConfig {
 	}
 	if cfg.RateLimit.Burst <= 0 {
 		cfg.RateLimit.Burst = defaults.RateLimit.Burst
+	}
+	if cfg.Stream.Concurrency < 1 {
+		cfg.Stream.Concurrency = 1
+	}
+	if cfg.Stream.Buffers < 1 {
+		cfg.Stream.Buffers = 1
+	}
+	if cfg.Stream.ChunkTimeout <= 0 {
+		cfg.Stream.ChunkTimeout = defaults.Stream.ChunkTimeout
 	}
 	return cfg
 }

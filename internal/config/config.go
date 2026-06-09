@@ -46,12 +46,19 @@ type TelegramConfig struct {
 	ReconnectTimeout Duration                `yaml:"reconnect_timeout"`
 	DialTimeout      Duration                `yaml:"dial_timeout"`
 	RateLimit        TelegramRateLimitConfig `yaml:"rate_limit"`
+	Stream           TelegramStreamConfig    `yaml:"stream"`
 }
 
 type TelegramRateLimitConfig struct {
 	Enabled       bool `yaml:"enabled"`
 	RatePerSecond int  `yaml:"rate_per_second"`
 	Burst         int  `yaml:"burst"`
+}
+
+type TelegramStreamConfig struct {
+	Concurrency  int      `yaml:"concurrency"`
+	Buffers      int      `yaml:"buffers"`
+	ChunkTimeout Duration `yaml:"chunk_timeout"`
 }
 
 func Load(path string) (Config, error) {
@@ -168,6 +175,11 @@ func defaultConfig() Config {
 				RatePerSecond: 10,
 				Burst:         5,
 			},
+			Stream: TelegramStreamConfig{
+				Concurrency:  2,
+				Buffers:      4,
+				ChunkTimeout: Duration(20 * time.Second),
+			},
 		},
 	}
 }
@@ -235,6 +247,24 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Telegram.RateLimit.Burst == 0 {
 		cfg.Telegram.RateLimit.Burst = defaults.Telegram.RateLimit.Burst
+	}
+	stream := cfg.Telegram.Stream
+	if cfg.Telegram.Stream.Concurrency < 1 {
+		if stream == (TelegramStreamConfig{}) {
+			cfg.Telegram.Stream.Concurrency = defaults.Telegram.Stream.Concurrency
+		} else {
+			cfg.Telegram.Stream.Concurrency = 1
+		}
+	}
+	if cfg.Telegram.Stream.Buffers < 1 {
+		if stream == (TelegramStreamConfig{}) {
+			cfg.Telegram.Stream.Buffers = defaults.Telegram.Stream.Buffers
+		} else {
+			cfg.Telegram.Stream.Buffers = 1
+		}
+	}
+	if cfg.Telegram.Stream.ChunkTimeout.Std() <= 0 {
+		cfg.Telegram.Stream.ChunkTimeout = defaults.Telegram.Stream.ChunkTimeout
 	}
 }
 

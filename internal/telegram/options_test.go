@@ -73,6 +73,11 @@ func TestRuntimeConfigFromConfig(t *testing.T) {
 			RatePerSecond: 7,
 			Burst:         2,
 		},
+		Stream: config.TelegramStreamConfig{
+			Concurrency:  3,
+			Buffers:      6,
+			ChunkTimeout: config.Duration(15 * time.Second),
+		},
 	})
 
 	if runtime.Proxy != "socks5://127.0.0.1:1080" {
@@ -89,6 +94,35 @@ func TestRuntimeConfigFromConfig(t *testing.T) {
 	}
 	if runtime.RateLimit.RatePerSecond != 7 || runtime.RateLimit.Burst != 2 {
 		t.Fatalf("rate limit = %+v, want rate 7 burst 2", runtime.RateLimit)
+	}
+	if runtime.Stream.Concurrency != 3 {
+		t.Fatalf("stream concurrency = %d, want 3", runtime.Stream.Concurrency)
+	}
+	if runtime.Stream.Buffers != 6 {
+		t.Fatalf("stream buffers = %d, want 6", runtime.Stream.Buffers)
+	}
+	if runtime.Stream.ChunkTimeout != 15*time.Second {
+		t.Fatalf("stream chunk timeout = %s, want 15s", runtime.Stream.ChunkTimeout)
+	}
+}
+
+func TestNormalizeRuntimeConfigAppliesStreamDefaults(t *testing.T) {
+	runtime := normalizeRuntimeConfig(RuntimeConfig{
+		Stream: StreamConfig{
+			Concurrency:  -1,
+			Buffers:      0,
+			ChunkTimeout: -time.Second,
+		},
+	})
+
+	if runtime.Stream.Concurrency != 1 {
+		t.Fatalf("stream concurrency = %d, want 1", runtime.Stream.Concurrency)
+	}
+	if runtime.Stream.Buffers != 1 {
+		t.Fatalf("stream buffers = %d, want 1", runtime.Stream.Buffers)
+	}
+	if runtime.Stream.ChunkTimeout != 20*time.Second {
+		t.Fatalf("stream chunk timeout = %s, want 20s", runtime.Stream.ChunkTimeout)
 	}
 }
 

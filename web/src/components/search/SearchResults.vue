@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { GlobalSearchResult, RemoteSearchItem } from '@/api/types'
-import { telegramMessageHref } from '@/utils/telegramLinks'
 
 defineProps<{
   result: GlobalSearchResult | null
@@ -17,8 +16,28 @@ function sourceLabel(source?: string) {
   return label || '本地'
 }
 
-function resultHref(item: { url?: string } & Parameters<typeof telegramMessageHref>[0]) {
-  return telegramMessageHref(item) ?? item.url
+function messageTextSegments(text: string) {
+  const segments: Array<{ text: string; href?: string }> = []
+  const urlPattern = /https?:\/\/[^\s<>"'，。！？；：、]+/gi
+  let lastIndex = 0
+  for (const match of text.matchAll(urlPattern)) {
+    const rawHref = match[0]
+    const trailing = rawHref.match(/[.,!?;:)\]}]+$/)?.[0] ?? ''
+    const href = trailing ? rawHref.slice(0, -trailing.length) : rawHref
+    const index = match.index ?? 0
+    if (index > lastIndex) {
+      segments.push({ text: text.slice(lastIndex, index) })
+    }
+    segments.push({ text: href, href })
+    if (trailing) {
+      segments.push({ text: trailing })
+    }
+    lastIndex = index + rawHref.length
+  }
+  if (lastIndex < text.length) {
+    segments.push({ text: text.slice(lastIndex) })
+  }
+  return segments.length > 0 ? segments : [{ text }]
 }
 </script>
 
@@ -35,38 +54,42 @@ function resultHref(item: { url?: string } & Parameters<typeof telegramMessageHr
         <span class="skeleton-line short" />
       </div>
       <template v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`">
-        <a
-          v-if="resultHref(item)"
-          class="result-row result-link"
-          :href="resultHref(item)"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
+        <article class="result-row">
           <strong>{{ item.channel_title || 'Telegram' }}</strong>
-          <p>{{ item.text }}</p>
-          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-        </a>
-        <article v-else class="result-row">
-          <strong>{{ item.channel_title || 'Telegram' }}</strong>
-          <p>{{ item.text }}</p>
+          <p class="message-text">
+            <template v-for="(segment, index) in messageTextSegments(item.text)" :key="index">
+              <a
+                v-if="segment.href"
+                class="external-link"
+                :href="segment.href"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {{ segment.text }}
+              </a>
+              <template v-else>{{ segment.text }}</template>
+            </template>
+          </p>
           <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
         </article>
       </template>
       <template v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`">
-        <a
-          v-if="resultHref(item)"
-          class="result-row result-link"
-          :href="resultHref(item)"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
+        <article class="result-row">
           <strong>{{ item.channel_title || '远程结果' }}</strong>
-          <p>{{ item.text }}</p>
-          <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
-        </a>
-        <article v-else class="result-row">
-          <strong>{{ item.channel_title || '远程结果' }}</strong>
-          <p>{{ item.text }}</p>
+          <p class="message-text">
+            <template v-for="(segment, index) in messageTextSegments(item.text)" :key="index">
+              <a
+                v-if="segment.href"
+                class="external-link"
+                :href="segment.href"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {{ segment.text }}
+              </a>
+              <template v-else>{{ segment.text }}</template>
+            </template>
+          </p>
           <small class="status-pill status-warning">{{ sourceLabel(item.source) }}</small>
         </article>
       </template>
@@ -89,20 +112,11 @@ function resultHref(item: { url?: string } & Parameters<typeof telegramMessageHr
         <span class="skeleton-line short" />
       </div>
       <template v-for="item in result?.links.items ?? []" :key="`l-${item.id}`">
-        <a
-          v-if="resultHref(item)"
-          class="result-row result-link"
-          :href="resultHref(item)"
-          rel="noopener noreferrer"
-          target="_blank"
-        >
+        <article class="result-row">
           <strong>{{ item.note || item.url }}</strong>
-          <p>{{ item.url }}</p>
-          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-        </a>
-        <article v-else class="result-row">
-          <strong>{{ item.note || item.url }}</strong>
-          <p>{{ item.url }}</p>
+          <p>
+            <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
+          </p>
           <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
         </article>
       </template>
@@ -122,17 +136,7 @@ function resultHref(item: { url?: string } & Parameters<typeof telegramMessageHr
         <span class="skeleton-line short" />
       </div>
       <template v-for="item in result?.files.items ?? []" :key="`f-${item.id}`">
-        <a
-          v-if="telegramMessageHref(item)"
-          class="result-row result-link"
-          :href="telegramMessageHref(item)"
-          rel="noopener noreferrer"
-        >
-          <strong>{{ item.file_name }}</strong>
-          <p>{{ item.extension }} {{ item.mime_type }}</p>
-          <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
-        </a>
-        <article v-else class="result-row">
+        <article class="result-row">
           <strong>{{ item.file_name }}</strong>
           <p>{{ item.extension }} {{ item.mime_type }}</p>
           <small class="status-pill status-info">{{ sourceLabel(item.source) }}</small>
@@ -218,10 +222,6 @@ small {
   margin: 4px 0;
 }
 
-.result-link:hover strong {
-  color: var(--app-accent);
-}
-
 .loading-stack {
   display: grid;
   gap: 8px;
@@ -230,6 +230,15 @@ small {
 
 .loading-stack .short {
   width: 62%;
+}
+
+.external-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.external-link:hover {
+  color: var(--app-accent);
 }
 
 @media (max-width: 900px) {

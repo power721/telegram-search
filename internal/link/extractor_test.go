@@ -1,6 +1,9 @@
 package link
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestExtractProviderCorpus(t *testing.T) {
 	extractor := NewExtractor()
@@ -604,6 +607,166 @@ func TestExtractMediaMetadataFromStructuredTVWithBracketQuality(t *testing.T) {
 	}
 	if link.MediaQuality != "[4K] [HDR10]" || link.MediaSize != "2.33 GB" || link.MediaTMDBID != "292696" {
 		t.Fatalf("structured metadata = %+v", link)
+	}
+}
+
+func TestExtractMediaMetadataFromLatestShortDramaMobileShare(t *testing.T) {
+	text := `最新擦边短剧：伪装的爱&疯狂试爱&情牵梦绕&危险同居&红唇温差&夜海沉沦&魂牵旧梦&深情蚀骨&秘爱成瘾&她影缠心（完整版）擦边短剧
+
+描述：喜欢就存 速存不补
+
+链接：https://yun.139.com/shareweb/#/w/i/2v3Ez1bGGYnpm
+
+📁 大小：N
+🏷 标签：#短剧 #最新短剧 #合集 #擦边短剧 #短剧榜 #热力榜`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.URL != "https://yun.139.com/shareweb/#/w/i/2v3Ez1bGGYnpm" {
+		t.Fatalf("link = %+v, want mobile yun share", link)
+	}
+	if link.MediaTitle != "伪装的爱&疯狂试爱&情牵梦绕&危险同居&红唇温差&夜海沉沦&魂牵旧梦&深情蚀骨&秘爱成瘾&她影缠心" || link.MediaCategory != "短剧" {
+		t.Fatalf("metadata = %+v, want short drama title/category", link)
+	}
+	if link.MediaSize != "" || link.MediaTags != "短剧 最新短剧 合集 擦边短剧 短剧榜 热力榜" {
+		t.Fatalf("size/tags = size:%q tags:%q", link.MediaSize, link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromMovieLabelAndBareMobileLink(t *testing.T) {
+	text := `电影：星河入梦 (2026) 王鹤棣 / 宋茜
+
+剧情：近未来，虚拟梦境系统“良梦”问世。
+
+链接：
+https://yun.139.com/shareweb/#/w/i/2uR1qyBjPmJnp
+
+🏷：#夸克网盘 #百度网盘 #迅雷网盘 #UC网盘 #电影`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "mobile" || link.MediaTitle != "星河入梦" || link.MediaYear != "2026" || link.MediaCategory != "电影" {
+		t.Fatalf("metadata = %+v, want movie mobile metadata", link)
+	}
+	if link.MediaTags != "夸克网盘 百度网盘 迅雷网盘 UC网盘 电影" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromMultiProviderUpdatedAnime(t *testing.T) {
+	text := `名称：绝世战魂  更新至181集  4K
+.
+描述：四大宗门之首的玄灵宗。
+.
+UC：https://drive.uc.cn/s/ea0bc2d5c64e4?public=1
+夸克：https://pan.quark.cn/s/55e3d0a4e4cf
+百度：https://pan.baidu.com/s/1Sd0rWph5mLJFsVD6eAV5uA?pwd=yyds
+迅雷：https://pan.xunlei.com/s/VOu5JoqaMd-LhqsmowoScmfEA1?pwd=qaah
+
+🏷 标签：#绝世战魂 #多多影音 #ucquark #baidu #xunlei`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 4 {
+		t.Fatalf("len = %d, want 4: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "绝世战魂" || link.MediaEpisode != "更新181集" || link.MediaQuality != "4K" {
+			t.Fatalf("link = %+v, want title/update/quality", link)
+		}
+	}
+	if links[2].Password != "yyds" || links[3].Password != "qaah" {
+		t.Fatalf("passwords = baidu:%q xunlei:%q", links[2].Password, links[3].Password)
+	}
+}
+
+func TestExtractMediaMetadataFromDetailedMovieQualityLines(t *testing.T) {
+	text := `🎬 真人快打2 (2026)
+
+🎭 类型：电影
+⭐️ TMDB评分：7.5/10
+🖥 画质：1080p
+📹 视频：WEB-DL.H.264
+📦 大小：48.37GB
+
+1080P&4K WEB-DL DV/HDR/SDR DDP5.1 [英语][内封简繁字幕]
+
+🔗 链接：123网盘 (https://www.123pan.com/s/IpPUVv-M1Pdv?pwd=Ocat#)
+
+🏷 标签：#真人快打2 #动作 #奇幻 #冒险`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "真人快打2" || link.MediaYear != "2026" || link.MediaCategory != "电影" || link.MediaSize != "48.37GB" {
+		t.Fatalf("metadata = %+v, want movie fields", link)
+	}
+	for _, token := range []string{"1080p", "WEB-DL.H.264", "4K", "DV", "HDR", "SDR", "DDP5.1"} {
+		if !strings.Contains(link.MediaQuality, token) {
+			t.Fatalf("quality = %q, missing %s", link.MediaQuality, token)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromUpdateNotificationStatus(t *testing.T) {
+	text := `📺 影片更新通知~
+
+电视剧名：豺狼的日子 (2024)
+类型：#剧情 #动作冒险 #悬疑
+季数：第1季
+地区：#英国
+平台：#Sky_Atlantic #Sky_Showcase
+
+状态：更新至第2集(共10集)
+
+🔗 123盘地址：https://www.123pan.com/s/dU7jjv-cqUHA`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "豺狼的日子" || link.MediaYear != "2024" || link.MediaSeason != "第1季" || link.MediaEpisode != "更新2集" {
+		t.Fatalf("metadata = %+v, want tv update status", link)
+	}
+	if link.MediaCategory != "#剧情 #动作冒险 #悬疑" {
+		t.Fatalf("category = %q", link.MediaCategory)
+	}
+}
+
+func TestExtractMediaMetadataFromHDHiveResourceURL(t *testing.T) {
+	text := `白日飞升 (2026)
+S01E01-E08 4K SDR 内嵌简中 DDP.2.0 HiveWeb
+
+简介：万古仙王苏无病与上仙林宁雪历经三百年等待。
+
+分享：任秋叶卷起 (https://hdhive.com/user/31485)
+大小：1.59KB｜400MB/集
+链接：直达链接 (https://hdhive.com/resource/f3ffec8b2d394724a0b43aecaff1e5c0)
+网址：白日飞升 (2026) (https://hdhive.com/tv/e78e028399154625934aaa6a34515060)
+
+标签：#白日飞升 #剧情`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want user/resource/tv fallback URLs: %+v", len(links), links)
+	}
+	resource := links[1]
+	if resource.Type != "url" || resource.URL != "https://hdhive.com/resource/f3ffec8b2d394724a0b43aecaff1e5c0" {
+		t.Fatalf("resource link = %+v", resource)
+	}
+	if resource.MediaTitle != "白日飞升" || resource.MediaYear != "2026" || resource.MediaSeason != "S01" || resource.MediaEpisode != "E01" {
+		t.Fatalf("metadata = %+v, want hdhive title/season", resource)
+	}
+	if resource.MediaQuality != "4K SDR DDP.2.0" || resource.MediaSize != "1.59KB" {
+		t.Fatalf("quality/size = %q/%q", resource.MediaQuality, resource.MediaSize)
 	}
 }
 

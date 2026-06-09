@@ -73,7 +73,7 @@ func NewExtractor() *Extractor {
 			providerParser("ed2k", `(?i)(ed2k://\|file\|[^\r\n|]+\|\d+\|[A-Z0-9]+\|/)`, 1, 0),
 			providerParser("url", `(?i)(https?://[^\s"'<>，。；、]+)`, 1, 0),
 		},
-		passwordPattern: regexp.MustCompile(`(?i)(?:密码|提取码|验证码|访问码|分享密码|密钥|pwd|password|code|share_pwd|pass_code|#)[=:：\s]*([A-Za-z0-9]{1,4})`),
+		passwordPattern: regexp.MustCompile(`(?i)(?:密码|提取码|验证码|访问码|分享密码|密钥|pwd|password|code|share_pwd|pass_code)[=:：\s]*([A-Za-z0-9]{1,4})`),
 	}
 }
 
@@ -477,9 +477,16 @@ func isMetadataLine(value string) bool {
 		"类型":     {},
 		"分类":     {},
 		"质量":     {},
+		"画质":     {},
+		"视频":     {},
 		"文件":     {},
 		"大小":     {},
 		"描述":     {},
+		"剧情":     {},
+		"状态":     {},
+		"季数":     {},
+		"地区":     {},
+		"平台":     {},
 		"主演":     {},
 		"简介":     {},
 		"分享":     {},
@@ -537,10 +544,11 @@ func extractMediaMetadata(text string) mediaMetadata {
 		if metadata.Size == "" {
 			metadata.Size = extractFirstMatch(clean, `(?i)(?:大小|文件大小|体积|总大小)[：:\s]*([0-9]+(?:\.[0-9]+)?\s*(?:KB|MB|GB|TB|T))\b`)
 		}
-		if metadata.Quality == "" {
-			metadata.Quality = extractLabeledValue(clean, []string{"质量", "视频质量"})
+		lineQuality := extractLabeledValue(clean, []string{"质量", "视频质量", "画质", "视频"})
+		if lineQuality != "" {
+			metadata.Quality = appendMetadataValue(metadata.Quality, lineQuality)
 		}
-		if category := extractLabeledValue(clean, []string{"分类"}); category != "" {
+		if category := extractLabeledValue(clean, []string{"分类", "类型", "题材"}); category != "" {
 			metadata.Category = category
 		}
 		if metadata.Tags == "" {
@@ -571,8 +579,8 @@ func extractMediaMetadata(text string) mediaMetadata {
 		if metadata.Year == "" {
 			metadata.Year = extractYear(clean)
 		}
-		if metadata.Quality == "" {
-			metadata.Quality = qualityFromLine(clean)
+		if lineQuality == "" {
+			metadata.Quality = appendMetadataValue(metadata.Quality, qualityFromLine(clean))
 		}
 	}
 	if metadata.Title != "" {
@@ -634,7 +642,10 @@ func cleanMediaLine(line string) string {
 	line = strings.TrimSpace(line)
 	for line != "" {
 		r, size := utf8.DecodeRuneInString(line)
-		if r == ' ' || r == '\t' || r == '-' || r == '*' || r == '>' || r == '|' || unicode.IsSymbol(r) || unicode.IsMark(r) {
+		if r == '#' {
+			break
+		}
+		if r == ' ' || r == '\t' || r == '-' || r == '*' || r == '>' || r == '|' || r == ':' || r == '：' || unicode.IsSymbol(r) || unicode.IsMark(r) {
 			line = strings.TrimSpace(line[size:])
 			continue
 		}
@@ -662,8 +673,8 @@ func titleFromExplicitLine(line string) (string, string) {
 		category = strings.TrimSpace(match[1])
 		return normalizeMediaTitle(match[2]), category
 	}
-	if match := regexp.MustCompile(`^(资源名称|名称|标题|片名|电影|电视剧|剧集|动漫|动画|综艺|短剧|已更新)\s*[：:]\s*(.+)$`).FindStringSubmatch(line); len(match) == 3 {
-		if match[1] != "资源名称" && match[1] != "名称" && match[1] != "标题" && match[1] != "片名" && match[1] != "已更新" {
+	if match := regexp.MustCompile(`^(最新擦边短剧|资源名称|电视剧名|名称|标题|片名|电影|电视剧|剧集|动漫|动画|综艺|短剧|已更新)\s*[：:]\s*(.+)$`).FindStringSubmatch(line); len(match) == 3 {
+		if match[1] != "最新擦边短剧" && match[1] != "资源名称" && match[1] != "电视剧名" && match[1] != "名称" && match[1] != "标题" && match[1] != "片名" && match[1] != "已更新" {
 			category = match[1]
 		}
 		return normalizeMediaTitle(match[2]), category
@@ -683,6 +694,12 @@ func titleFromPlainLine(line string) (string, string) {
 		return "", ""
 	}
 	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "@") {
+		return "", ""
+	}
+	if strings.Contains(line, "更新通知") {
+		return "", ""
+	}
+	if regexp.MustCompile(`(?i)^(?:\d{3,4}p|4K|8K|WEB|WEB[- ]?DL|NF|Netflix|DV|HDR|SDR)\b`).MatchString(line) {
 		return "", ""
 	}
 	if utf8.RuneCountInString(line) > 80 {
@@ -728,6 +745,7 @@ func normalizeMediaTitle(raw string) string {
 	if idx := regexp.MustCompile(`（\s*\d+\s*集\s*）|\(\s*\d+\s*集\s*\)`).FindStringIndex(title); idx != nil {
 		title = title[:idx[0]]
 	}
+	title = regexp.MustCompile(`（完整版）|\(完整版\)|\[完整版\]|【完整版】`).ReplaceAllString(title, "")
 	title = regexp.MustCompile(`(?i)\{tmdb-\d+\}`).ReplaceAllString(title, "")
 	title = regexp.MustCompile(`(?i)\bTMDB(?:\s*ID)?[：:\s-]*\d+`).ReplaceAllString(title, "")
 	if idx := regexp.MustCompile(`\s+[-—]\s+S\d{1,2}E\d{1,4}\b`).FindStringIndex(title); idx != nil {
@@ -739,9 +757,10 @@ func normalizeMediaTitle(raw string) string {
 	if idx := regexp.MustCompile(`\s+(?:19|20)\d{2}\b`).FindStringIndex(title); idx != nil {
 		title = title[:idx[0]]
 	}
-	if idx := regexp.MustCompile(`(?i)\s+(?:WEB[- ]?(?:DL|4K)?|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR10?|DV|SDR|DDP|DTS|HEVC|H\.?26[45]|完结|更新\s*\d+|第\s*\d+\s*集|第\s*\d+\s*期)\b`).FindStringIndex(title); idx != nil {
+	if idx := regexp.MustCompile(`(?i)\s+(?:WEB[- ]?(?:DL|4K)?|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR10?|DV|SDR|DDP|DTS|HEVC|H\.?26[45]|完结|更新至?\s*\d+|更至?\s*\d+|第\s*\d+\s*集|第\s*\d+\s*期)\b`).FindStringIndex(title); idx != nil {
 		title = title[:idx[0]]
 	}
+	title = regexp.MustCompile(`\s*擦边短剧\s*$`).ReplaceAllString(title, "")
 	title = regexp.MustCompile(`\s+`).ReplaceAllString(title, " ")
 	return strings.Trim(title, " \t:：-—,，")
 }
@@ -762,7 +781,7 @@ func sequenceMetadata(line string) mediaMetadata {
 	if metadata.Episode == "" {
 		if episode := extractFirstMatch(line, `(\d{4})\s*期`); episode != "" {
 			metadata.Episode = episode + "期"
-		} else if episode := extractFirstMatch(line, `(?:更新至|更至|更新|更)\s*(\d+)\s*集`); episode != "" {
+		} else if episode := extractFirstMatch(line, `(?:更新至|更至|更新|更)\s*第?\s*(\d+)\s*集`); episode != "" {
 			metadata.Episode = "更新" + episode + "集"
 		} else if episode := extractFirstMatch(line, `第\s*(\d+)\s*集`); episode != "" {
 			metadata.Episode = "E" + zeroPad(episode, 2)
@@ -797,6 +816,9 @@ func extractTags(line string) string {
 			value = strings.TrimSpace(match[1])
 		}
 	}
+	if value == "" && strings.HasPrefix(strings.TrimSpace(line), "#") {
+		value = strings.TrimSpace(line)
+	}
 	if value == "" {
 		return ""
 	}
@@ -812,7 +834,7 @@ func extractTags(line string) string {
 }
 
 func qualityFromLine(line string) string {
-	tokens := regexp.MustCompile(`(?i)\b(?:Netflix|NF|WEB[- ]?DL|WEB[- ]?4K|WEB|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR(?:10\+?)?|DV|SDR|DDP5?\.?1?|DTS-HD(?:\s+MA)?|HEVC|H\.?26[45]|AAC|50fps)\b`).FindAllString(line, -1)
+	tokens := regexp.MustCompile(`(?i)\b(?:Netflix|NF|WEB[- ]?DL|WEB[- ]?4K|WEB|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR(?:10\+?)?|DV|SDR|DDP(?:5\.?1|2\.0|\.2\.0)?|DTS-HD(?:\s+MA)?|HEVC|H\.?26[45]|AAC|50fps)\b`).FindAllString(line, -1)
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -827,6 +849,30 @@ func qualityFromLine(line string) string {
 		out = append(out, token)
 	}
 	return strings.Join(out, " ")
+}
+
+func appendMetadataValue(current string, next string) string {
+	next = strings.TrimSpace(next)
+	if next == "" {
+		return current
+	}
+	if current == "" {
+		return next
+	}
+	existing := map[string]struct{}{}
+	for _, token := range strings.Fields(current) {
+		existing[strings.ToLower(token)] = struct{}{}
+	}
+	out := current
+	for _, token := range strings.Fields(next) {
+		key := strings.ToLower(token)
+		if _, ok := existing[key]; ok {
+			continue
+		}
+		existing[key] = struct{}{}
+		out += " " + token
+	}
+	return out
 }
 
 func mediaMetadataFromURL(typ string, raw string) mediaMetadata {

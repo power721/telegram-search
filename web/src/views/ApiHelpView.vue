@@ -74,6 +74,33 @@ const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
     "offset": 0
   }'`
 
+const searchResponseExample = `{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 126,
+    "merged_by_type": {
+      "quark": [
+        {
+          "url": "https://pan.quark.cn/s/42455f092f5d",
+          "note": "迷墙",
+          "datetime": "2026-06-09T20:05:21Z",
+          "images": [
+            "/i/4986016461960711126?exp=1781131335&sig=4bdb7be40232890fbe159fc2cfa9753ff5016bc9e2a35180219eb6760ae8ba7b"
+          ],
+          "media": {
+            "title": "迷墙",
+            "year": "2026",
+            "episode": "更新07集",
+            "quality": "4K",
+            "tags": "迷墙 leoziyuan"
+          }
+        }
+      ]
+    }
+  }
+}`
+
 const healthExample = `curl 'http://localhost:9900/api/health' \\
   -H 'X-API-Key: YOUR_API_KEY'`
 
@@ -237,6 +264,16 @@ async function copyCode(key: string, value: string) {
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <div class="code-card single-code">
+        <div class="code-title">
+          <strong>返回示例</strong>
+          <button type="button" @click="copyCode('search-response', searchResponseExample)">
+            {{ copiedKey === 'search-response' ? '已复制' : '复制' }}
+          </button>
+        </div>
+        <pre><code>{{ searchResponseExample }}</code></pre>
       </div>
     </section>
 

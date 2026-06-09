@@ -12,4 +12,17 @@ describe('ApiHelpView', () => {
     expect(text).not.toContain('Bearer')
     expect(text).not.toContain('api_key=YOUR_API_KEY')
   })
+
+  it('documents the search response example shape', () => {
+    const wrapper = mount(ApiHelpView)
+    const text = wrapper.text()
+
+    expect(text).toContain('返回示例')
+    expect(text).toContain('"merged_by_type"')
+    expect(text).toContain('"quark"')
+    expect(text).toContain('"url": "https://pan.quark.cn/s/42455f092f5d"')
+    expect(text).toContain('"/i/4986016461960711126?exp=1781131335&sig=4bdb7be40232890fbe159fc2cfa9753ff5016bc9e2a35180219eb6760ae8ba7b"')
+    expect(text).toContain('"media"')
+    expect(text).toContain('"quality": "4K"')
+  })
 })

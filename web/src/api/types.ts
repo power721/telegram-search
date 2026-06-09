@@ -262,6 +262,7 @@ export interface Link {
 export interface MessageSearchResult {
   id: number
   channel_id: number
+  telegram_channel_id?: number
   telegram_message_id: number
   text: string
   raw_json?: string
@@ -276,7 +277,9 @@ export interface LinkSearchResult extends Link {
   message_text?: string
   message_date?: string
   channel_id?: number
+  telegram_channel_id?: number
   channel_title?: string
+  channel_username?: string
   telegram_message_id?: number
   source?: 'local' | 'remote'
 }
@@ -292,7 +295,9 @@ export interface FileSearchResult {
   message_text?: string
   message_date?: string
   channel_id?: number
+  telegram_channel_id?: number
   channel_title?: string
+  channel_username?: string
   telegram_message_id?: number
   source?: 'local' | 'remote'
 }
@@ -311,6 +316,7 @@ export interface GlobalSearchResult {
 export interface RemoteSearchItem {
   source: 'remote'
   channel_id: number
+  telegram_channel_id?: number
   channel_title: string
   channel_username?: string
   telegram_message_id: number
@@ -339,7 +345,9 @@ export interface ResourceItem {
   source_snippet?: string
   datetime?: string
   channel_id?: number
+  telegram_channel_id?: number
   channel_title?: string
+  channel_username?: string
   telegram_message_id?: number
 }
 

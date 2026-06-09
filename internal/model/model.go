@@ -228,6 +228,7 @@ type RemoteSearchItem struct {
 	Source            string     `json:"source"`
 	AccountID         int64      `json:"account_id"`
 	ChannelID         int64      `json:"channel_id"`
+	TelegramChannelID int64      `json:"telegram_channel_id"`
 	ChannelTitle      string     `json:"channel_title"`
 	ChannelUsername   string     `json:"channel_username"`
 	TelegramMessageID int64      `json:"telegram_message_id"`
@@ -302,12 +303,13 @@ type File struct {
 
 type SearchResult struct {
 	Message
-	AccountPhone     string `json:"account_phone"`
-	AccountUsername  string `json:"account_username"`
-	AccountFirstName string `json:"account_first_name"`
-	ChannelTitle     string `json:"channel_title"`
-	ChannelUsername  string `json:"channel_username"`
-	Links            []Link `json:"links"`
+	AccountPhone      string `json:"account_phone"`
+	AccountUsername   string `json:"account_username"`
+	AccountFirstName  string `json:"account_first_name"`
+	ChannelTitle      string `json:"channel_title"`
+	ChannelUsername   string `json:"channel_username"`
+	TelegramChannelID int64  `json:"telegram_channel_id"`
+	Links             []Link `json:"links"`
 }
 
 type ListResult[T any] struct {
@@ -335,7 +337,9 @@ type LinkResult struct {
 	MessageDate       time.Time `json:"message_date"`
 	AccountID         int64     `json:"account_id"`
 	ChannelID         int64     `json:"channel_id"`
+	TelegramChannelID int64     `json:"telegram_channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
+	ChannelUsername   string    `json:"channel_username"`
 	TelegramMessageID int64     `json:"telegram_message_id"`
 }
 
@@ -345,7 +349,9 @@ type FileResult struct {
 	MessageDate       time.Time `json:"message_date"`
 	AccountID         int64     `json:"account_id"`
 	ChannelID         int64     `json:"channel_id"`
+	TelegramChannelID int64     `json:"telegram_channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
+	ChannelUsername   string    `json:"channel_username"`
 	TelegramMessageID int64     `json:"telegram_message_id"`
 }
 

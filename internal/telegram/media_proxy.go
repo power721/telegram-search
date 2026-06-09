@@ -228,7 +228,7 @@ func downloadMessageImage(ctx context.Context, api *tg.Client, msg *tg.Message) 
 		if !ok {
 			return ImageFile{}, fmt.Errorf("unexpected document type %T", media.Document)
 		}
-		return downloadDocumentThumb(ctx, api, doc)
+		return downloadDocumentImage(ctx, api, doc)
 	case *tg.MessageMediaWebPage:
 		webPage, ok := media.Webpage.(*tg.WebPage)
 		if !ok {
@@ -242,7 +242,7 @@ func downloadMessageImage(ctx context.Context, api *tg.Client, msg *tg.Message) 
 		}
 		if document, ok := webPage.GetDocument(); ok {
 			if doc, ok := document.(*tg.Document); ok {
-				return downloadDocumentThumb(ctx, api, doc)
+				return downloadDocumentImage(ctx, api, doc)
 			}
 			return ImageFile{}, fmt.Errorf("unexpected webpage document type %T", document)
 		}
@@ -272,19 +272,40 @@ func downloadPhotoImage(ctx context.Context, api *tg.Client, photo *tg.Photo) (I
 	return ImageFile{Data: data, MIMEType: imageMIME(data, "")}, nil
 }
 
-func downloadDocumentThumb(ctx context.Context, api *tg.Client, doc *tg.Document) (ImageFile, error) {
-	thumbType, cached, err := choosePhotoSize(doc.Thumbs)
+func downloadDocumentImage(ctx context.Context, api *tg.Client, doc *tg.Document) (ImageFile, error) {
+	loc, fallbackMIME, cached, err := documentImageSource(doc)
 	if err != nil {
 		return ImageFile{}, err
 	}
 	if cached != nil {
 		return ImageFile{Data: cached, MIMEType: http.DetectContentType(cached)}, nil
 	}
-	data, err := downloadSmallFile(ctx, api, documentFileLocation(videoFileFromDocument(doc), thumbType))
+	data, err := downloadSmallFile(ctx, api, loc)
 	if err != nil {
 		return ImageFile{}, err
 	}
-	return ImageFile{Data: data, MIMEType: imageMIME(data, doc.MimeType)}, nil
+	return ImageFile{Data: data, MIMEType: imageMIME(data, fallbackMIME)}, nil
+}
+
+func documentImageSource(doc *tg.Document) (tg.InputFileLocationClass, string, []byte, error) {
+	if doc == nil {
+		return nil, "", nil, fmt.Errorf("document is required")
+	}
+	if isImageDocument(doc) {
+		return documentFileLocation(videoFileFromDocument(doc), ""), doc.MimeType, nil, nil
+	}
+	thumbType, cached, err := choosePhotoSize(doc.Thumbs)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if cached != nil {
+		return nil, "", cached, nil
+	}
+	return documentFileLocation(videoFileFromDocument(doc), thumbType), doc.MimeType, nil, nil
+}
+
+func isImageDocument(doc *tg.Document) bool {
+	return doc != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(doc.MimeType)), "image/")
 }
 
 func choosePhotoSize(sizes []tg.PhotoSizeClass) (thumbType string, cached []byte, err error) {

@@ -635,7 +635,7 @@ func (h handlers) tasks(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
+	c.JSON(http.StatusOK, gin.H{"items": localizeTasks(items), "total": total})
 }
 
 func (h handlers) logs(c *gin.Context) {
@@ -718,7 +718,7 @@ func (h handlers) task(c *gin.Context) {
 		errorJSON(c, http.StatusNotFound, err)
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, localizeTask(item))
 }
 
 func (h handlers) deleteTask(c *gin.Context) {
@@ -818,8 +818,9 @@ func (h handlers) updateTask(c *gin.Context, fn func(context.Context, int64) err
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: item})
-	c.JSON(http.StatusOK, item)
+	localized := localizeTask(item)
+	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: localized})
+	c.JSON(http.StatusOK, localized)
 }
 
 func (h handlers) events(c *gin.Context) {
@@ -1031,7 +1032,7 @@ func (h handlers) accounts(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": localizeAccounts(items)})
 }
 
 func (h handlers) logoutAccount(c *gin.Context) {
@@ -1064,7 +1065,7 @@ func (h handlers) logoutAccount(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, account)
+	c.JSON(http.StatusOK, localizeAccount(account))
 }
 
 func (h handlers) deleteAccount(c *gin.Context) {
@@ -1109,7 +1110,7 @@ func (h handlers) channels(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": localizeChannels(items)})
 }
 
 func (h handlers) channel(c *gin.Context) {
@@ -1122,7 +1123,7 @@ func (h handlers) channel(c *gin.Context) {
 		errorJSON(c, http.StatusNotFound, err)
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, localizeChannel(item))
 }
 
 func (h handlers) updateChannelControl(c *gin.Context) {
@@ -1147,7 +1148,7 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, localizeChannel(item))
 }
 
 func (h handlers) updateChannelsControl(c *gin.Context) {
@@ -1194,7 +1195,7 @@ func (h handlers) updateChannelsControl(c *gin.Context) {
 		}
 		items = append(items, item)
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": localizeChannels(items)})
 }
 
 func (h handlers) validateChannelControl(c *gin.Context, control model.ChannelControl) (model.ChannelControl, bool) {
@@ -1234,7 +1235,7 @@ func (h handlers) analyzeChannel(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, model.ChannelAnalysis{
-		Channel: item,
+		Channel: localizeChannel(item),
 		Control: model.ChannelControl{
 			HistorySyncEnabled:  item.HistorySyncEnabled,
 			SyncProfile:         item.SyncProfile,
@@ -1282,17 +1283,11 @@ func (h handlers) createRemoteSearchTask(c *gin.Context) {
 		return
 	}
 	if !item.RemoteSearchAllowed {
-		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
-			"code":    "remote_search_not_allowed",
-			"message": "remote search is not allowed for this channel",
-		}})
+		errorWithCode(c, http.StatusConflict, "remote_search_not_allowed", "remote search is not allowed for this channel")
 		return
 	}
 	if item.LastMessageID > 0 || item.LastSyncTime != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
-			"code":    "remote_search_requires_unsynced_channel",
-			"message": "remote search requires an unsynced channel",
-		}})
+		errorWithCode(c, http.StatusConflict, "remote_search_requires_unsynced_channel", "remote search requires an unsynced channel")
 		return
 	}
 	task := model.RemoteSearchTask{
@@ -1338,15 +1333,9 @@ func (h handlers) remoteSearchError(c *gin.Context, err error) {
 	case errors.Is(err, searchsvc.ErrEmptyQuery):
 		errorText(c, http.StatusBadRequest, "query is required")
 	case errors.Is(err, searchsvc.ErrRemoteSearchNotAllowed):
-		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
-			"code":    "remote_search_not_allowed",
-			"message": "remote search is not allowed for this channel",
-		}})
+		errorWithCode(c, http.StatusConflict, "remote_search_not_allowed", "remote search is not allowed for this channel")
 	case errors.Is(err, searchsvc.ErrRemoteSearchRequiresUnsynced):
-		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
-			"code":    "remote_search_requires_unsynced_channel",
-			"message": "remote search requires an unsynced channel",
-		}})
+		errorWithCode(c, http.StatusConflict, "remote_search_requires_unsynced_channel", "remote search requires an unsynced channel")
 	default:
 		errorJSON(c, http.StatusInternalServerError, err)
 	}
@@ -1362,10 +1351,7 @@ func (h handlers) checkStorageQuota(c *gin.Context) bool {
 		return false
 	}
 	if usage.MaxDBBytes > 0 && usage.DBBytes >= usage.MaxDBBytes {
-		c.JSON(http.StatusConflict, gin.H{"error": gin.H{
-			"code":    "storage_quota_exceeded",
-			"message": "database storage quota exceeded",
-		}})
+		errorWithCode(c, http.StatusConflict, "storage_quota_exceeded", "database storage quota exceeded")
 		return false
 	}
 	return true
@@ -1434,7 +1420,7 @@ func (h handlers) syncChannels(c *gin.Context) {
 		return
 	}
 	result := h.deps.History.SyncManyWithMaxMessages(c.Request.Context(), req.ChannelIDs, maxMessages)
-	c.JSON(http.StatusAccepted, result)
+	c.JSON(http.StatusAccepted, localizeSyncManyResult(result))
 }
 
 func (h handlers) checkChannelWebAccess(c *gin.Context) {
@@ -1467,7 +1453,7 @@ func (h handlers) checkChannelWebAccess(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, gin.H{"items": localizeWebAccessResults(items)})
 }
 
 func (h handlers) syncAccountChannels(c *gin.Context) {
@@ -2111,7 +2097,7 @@ func (h handlers) respondWithOnlineAccount(c *gin.Context, account model.Account
 			job := h.deps.SyncQueue.Enqueue(jobCtx, "metadata-sync", func(ctx context.Context) error {
 				items, err := h.deps.ChannelSync.SyncAccount(ctx, accountForSync)
 				if err != nil {
-					accountForSync.LastError = err.Error()
+					accountForSync.LastError = localizeDisplayError(err.Error())
 					if updateErr := h.deps.Accounts.Update(ctx, accountForSync); updateErr != nil {
 						return updateErr
 					}
@@ -2140,12 +2126,12 @@ func (h handlers) respondWithOnlineAccount(c *gin.Context, account model.Account
 		}
 		items, err := h.deps.ChannelSync.SyncAccount(c.Request.Context(), account)
 		if err != nil {
-			account.LastError = err.Error()
+			account.LastError = localizeDisplayError(err.Error())
 			if updateErr := h.deps.Accounts.Update(c.Request.Context(), account); updateErr != nil {
 				errorJSON(c, http.StatusInternalServerError, updateErr)
 				return
 			}
-			metadataSync = gin.H{"status": "failed", "channel_count": 0, "error": err.Error()}
+			metadataSync = gin.H{"status": "failed", "channel_count": 0, "error": localizeDisplayError(err.Error())}
 		} else {
 			metadataSync = gin.H{"status": "succeeded", "channel_count": len(items)}
 		}
@@ -2299,5 +2285,9 @@ func errorText(c *gin.Context, status int, msg string) {
 	if status >= http.StatusBadRequest && status < http.StatusInternalServerError {
 		code = "bad_request"
 	}
-	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": msg}})
+	errorWithCode(c, status, code, msg)
+}
+
+func errorWithCode(c *gin.Context, status int, code string, msg string) {
+	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": localizedErrorMessage(status, msg)}})
 }

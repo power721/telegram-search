@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
 
       <n-form v-else @submit.prevent>
         <n-form-item label="手机号">
-          <n-input v-model:value="phone" autocomplete="tel" />
+          <n-input v-model:value="phone" autocomplete="tel" placeholder="请输入手机号码" />
         </n-form-item>
         <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 
@@ -178,6 +178,7 @@ onBeforeUnmount(() => {
               v-model:value="code"
               inputmode="numeric"
               autocomplete="one-time-code"
+              placeholder="请输入验证码"
               :disabled="!codeSent"
             />
           </n-form-item>
@@ -188,7 +189,7 @@ onBeforeUnmount(() => {
 
         <div v-if="telegram.passwordRequired" class="form-section">
           <n-form-item label="两步验证密码">
-            <n-input v-model:value="password" type="password" autocomplete="current-password" />
+            <n-input v-model:value="password" type="password" autocomplete="current-password" placeholder="请输入密码" />
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="submitPassword">
             提交密码

@@ -227,7 +227,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
         </div>
         <n-form @submit.prevent>
           <n-form-item label="手机号">
-            <n-input v-model:value="loginPhone" autocomplete="tel" />
+            <n-input v-model:value="loginPhone" autocomplete="tel" placeholder="请输入手机号码" />
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 
@@ -237,6 +237,7 @@ function confirmDeleteAccount(account: TelegramAccount) {
                 v-model:value="loginCode"
                 inputmode="numeric"
                 autocomplete="one-time-code"
+                placeholder="请输入验证码"
                 :disabled="!loginCodeSent"
               />
             </n-form-item>
@@ -247,7 +248,12 @@ function confirmDeleteAccount(account: TelegramAccount) {
 
           <div v-if="telegram.passwordRequired" class="form-section">
             <n-form-item label="两步验证密码">
-              <n-input v-model:value="loginPassword" type="password" autocomplete="current-password" />
+              <n-input
+                v-model:value="loginPassword"
+                type="password"
+                autocomplete="current-password"
+                placeholder="请输入密码"
+              />
             </n-form-item>
             <n-button type="primary" block :loading="telegram.loading" @click="submitPassword">
               提交密码

@@ -128,4 +128,16 @@ describe('SettingsView', () => {
     expect(wrapper.get<HTMLInputElement>('[data-testid="current-password-input"]').element.value).toBe('')
     expect(wrapper.get<HTMLInputElement>('[data-testid="new-password-input"]').element.value).toBe('')
   })
+
+  it('renders Chinese placeholders for admin credential inputs', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="admin-username-input"]').element.placeholder).toBe('请输入用户名')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="current-password-input"]').element.placeholder).toBe('请输入密码')
+  })
 })

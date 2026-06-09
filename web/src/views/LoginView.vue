@@ -32,10 +32,15 @@ async function submit() {
       <h1>登录 TG Search</h1>
       <n-form @submit.prevent="submit">
         <n-form-item label="用户名">
-          <n-input v-model:value="username" autocomplete="username" />
+          <n-input v-model:value="username" autocomplete="username" placeholder="请输入用户名" />
         </n-form-item>
         <n-form-item label="密码">
-          <n-input v-model:value="password" type="password" autocomplete="current-password" />
+          <n-input
+            v-model:value="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="请输入密码"
+          />
         </n-form-item>
         <n-button type="primary" block :loading="loading" @click="submit">登录</n-button>
       </n-form>

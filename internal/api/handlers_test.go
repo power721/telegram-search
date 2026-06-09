@@ -1386,6 +1386,108 @@ func TestSearchRequiresQuery(t *testing.T) {
 	}
 }
 
+func TestAPIErrorMessagesAreLocalized(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	blockedID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   44,
+		Title:               "Blocked",
+		Type:                model.ChannelTypeChannel,
+		RemoteSearchAllowed: false,
+	})
+	router := NewRouter(deps)
+
+	for _, tc := range []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		auth       bool
+		wantStatus int
+		wantMsg    string
+	}{
+		{
+			name:       "missing api key",
+			method:     http.MethodGet,
+			path:       "/api/accounts",
+			wantStatus: http.StatusUnauthorized,
+			wantMsg:    "缺少 API Key",
+		},
+		{
+			name:       "invalid json",
+			method:     http.MethodPost,
+			path:       "/api/setup/admin",
+			body:       `{"username":`,
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "请求体 JSON 格式错误",
+		},
+		{
+			name:       "admin username required",
+			method:     http.MethodPost,
+			path:       "/api/setup/admin",
+			body:       `{"username":" ","password":"secret123"}`,
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "请输入用户名",
+		},
+		{
+			name:       "phone required",
+			method:     http.MethodPost,
+			path:       "/api/telegram/login/send-code",
+			body:       `{"phone":""}`,
+			auth:       true,
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "请输入手机号码",
+		},
+		{
+			name:       "invalid account id",
+			method:     http.MethodGet,
+			path:       "/api/channels/not-a-number",
+			body:       "",
+			auth:       true,
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "ID 无效",
+		},
+		{
+			name:       "invalid date",
+			method:     http.MethodGet,
+			path:       "/api/search/messages?q=ubuntu&date_from=bad-date",
+			auth:       true,
+			wantStatus: http.StatusBadRequest,
+			wantMsg:    "date_from 必须是 YYYY-MM-DD 或 RFC3339 格式",
+		},
+		{
+			name:       "remote search forbidden",
+			method:     http.MethodPost,
+			path:       "/api/search/remote",
+			body:       `{"channel_id":` + strconv.FormatInt(blockedID, 10) + `,"query":"ubuntu"}`,
+			auth:       true,
+			wantStatus: http.StatusConflict,
+			wantMsg:    "该频道不允许远程搜索",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			if tc.auth {
+				withAPIKey(t, deps, req)
+			}
+			router.ServeHTTP(w, req)
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status = %d body=%s, want %d", w.Code, w.Body.String(), tc.wantStatus)
+			}
+			got := errorMessage(t, w.Body.Bytes())
+			if got != tc.wantMsg {
+				t.Fatalf("message = %q, want %q; body=%s", got, tc.wantMsg, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	deps := testDeps(t)
 	deps.Telegram = &fakeTelegram{}
@@ -1898,15 +2000,15 @@ func TestTelegramSignInKeepsAccountOnlineWhenMetadataSyncFails(t *testing.T) {
 	if body.Status != model.AccountStatusOnline || body.Account.Status != model.AccountStatusOnline {
 		t.Fatalf("status body = %+v, want ONLINE", body)
 	}
-	if body.MetadataSync.Status != "failed" || !strings.Contains(body.MetadataSync.Error, "flood wait") {
-		t.Fatalf("metadata_sync = %+v, want failed flood wait", body.MetadataSync)
+	if body.MetadataSync.Status != "failed" || body.MetadataSync.Error != "Telegram 请求触发限流，请稍后重试" {
+		t.Fatalf("metadata_sync = %+v, want localized flood wait", body.MetadataSync)
 	}
 	account, err := deps.Accounts.FindByID(ctx, body.Account.ID)
 	if err != nil {
 		t.Fatalf("find account: %v", err)
 	}
-	if account.Status != model.AccountStatusOnline || !strings.Contains(account.LastError, "flood wait") {
-		t.Fatalf("stored account = %+v, want ONLINE with last_error", account)
+	if account.Status != model.AccountStatusOnline || account.LastError != "Telegram 请求触发限流，请稍后重试" {
+		t.Fatalf("stored account = %+v, want ONLINE with localized last_error", account)
 	}
 }
 
@@ -2498,6 +2600,15 @@ func TestChannelWebAccessCheckAPIStoresErrors(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
+	var body struct {
+		Items []channel.WebAccessResult `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].WebAccessError != "Telegram 网页访问检测失败" {
+		t.Fatalf("response = %+v, want localized web access error", body)
+	}
 
 	stored, err := deps.Channels.FindByID(ctx, channelID)
 	if err != nil {
@@ -3055,6 +3166,19 @@ func testDeps(t *testing.T) Dependencies {
 	t.Helper()
 	deps, _ := testDepsWithDB(t)
 	return deps
+}
+
+func errorMessage(t *testing.T, data []byte) string {
+	t.Helper()
+	var body struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("decode error response: %v; body=%s", err, string(data))
+	}
+	return body.Error.Message
 }
 
 func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {

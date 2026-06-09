@@ -218,6 +218,31 @@ export interface RuntimeEvent<T = unknown> {
   created_at: string
 }
 
+export interface LogFileInfo {
+  name: string
+  size: number
+  mod_time?: string
+}
+
+export interface LogEntry {
+  file: string
+  time?: string
+  level?: string
+  message?: string
+  caller?: string
+  fields?: Record<string, unknown>
+  raw: string
+}
+
+export interface LogsResponse {
+  items: LogEntry[]
+  total: number
+  files: LogFileInfo[]
+  limit: number
+  offset: number
+  order: 'asc' | 'desc'
+}
+
 export interface ListResult<T> {
   items: T[]
   total: number

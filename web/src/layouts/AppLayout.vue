@@ -11,6 +11,7 @@ const navItems = [
   { label: '资源', eyebrow: 'Resources', to: '/resources', name: 'resources' },
   { label: '账号', eyebrow: 'Accounts', to: '/accounts', name: 'accounts' },
   { label: '任务', eyebrow: 'Tasks', to: '/tasks', name: 'tasks' },
+  { label: '日志', eyebrow: 'Logs', to: '/logs', name: 'logs' },
   { label: '设置', eyebrow: 'Settings', to: '/settings', name: 'settings' }
 ]
 

@@ -104,6 +104,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	business.POST("/tasks/:id/pause", h.pauseTask)
 	business.POST("/tasks/:id/resume", h.resumeTask)
 	business.GET("/events", h.events)
+	business.GET("/logs", h.logs)
+	business.GET("/logs/:file/download", h.downloadLog)
 	telegramAPI := business.Group("/telegram")
 	telegramAPI.POST("/login/send-code", h.sendCode)
 	telegramAPI.POST("/login/sign-in", h.signIn)

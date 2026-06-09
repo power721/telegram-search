@@ -22,6 +22,7 @@ import (
 	"tg-search/internal/backup"
 	channelpkg "tg-search/internal/channel"
 	"tg-search/internal/config"
+	"tg-search/internal/logviewer"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
@@ -635,6 +636,72 @@ func (h handlers) tasks(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
+}
+
+func (h handlers) logs(c *gin.Context) {
+	viewer, ok := h.logViewer(c)
+	if !ok {
+		return
+	}
+	limit, ok := queryNonNegativeInt(c, "limit")
+	if !ok {
+		return
+	}
+	offset, ok := queryNonNegativeInt(c, "offset")
+	if !ok {
+		return
+	}
+	result, err := viewer.List(logviewer.Query{
+		File:   c.Query("file"),
+		Level:  c.Query("level"),
+		Text:   c.Query("q"),
+		Order:  c.Query("order"),
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		if errors.Is(err, logviewer.ErrInvalidLogFile) {
+			errorText(c, http.StatusBadRequest, "invalid log file")
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h handlers) downloadLog(c *gin.Context) {
+	viewer, ok := h.logViewer(c)
+	if !ok {
+		return
+	}
+	name := c.Param("file")
+	logPath, err := viewer.Path(name)
+	if err != nil {
+		errorText(c, http.StatusBadRequest, "invalid log file")
+		return
+	}
+	if _, err := os.Stat(logPath); errors.Is(err, os.ErrNotExist) {
+		errorText(c, http.StatusNotFound, "log file not found")
+		return
+	} else if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.Header("Content-Disposition", `attachment; filename="`+name+`"`)
+	c.File(logPath)
+}
+
+func (h handlers) logViewer(c *gin.Context) (*logviewer.Service, bool) {
+	runtimeConfig := h.deps.RuntimeConfig
+	if runtimeConfig.Storage.Path == "" && h.deps.StorageUsage != nil {
+		runtimeConfig = h.deps.StorageUsage.Config()
+	}
+	if runtimeConfig.Storage.Path == "" {
+		errorText(c, http.StatusServiceUnavailable, "log storage is unavailable")
+		return nil, false
+	}
+	return logviewer.New(filepath.Join(runtimeConfig.Storage.Path, "logs")), true
 }
 
 func (h handlers) task(c *gin.Context) {

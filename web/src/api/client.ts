@@ -73,6 +73,17 @@ export async function apiDelete<T>(path: string): Promise<T> {
   return readResponse<T>(response)
 }
 
+export async function apiDownload(path: string): Promise<Blob> {
+  const response = await fetch(path, {
+    credentials: 'include',
+    headers: jsonHeaders()
+  })
+  if (!response.ok) {
+    await throwResponseError(response)
+  }
+  return response.blob()
+}
+
 function jsonHeaders(contentType = false) {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (contentType) {
@@ -123,12 +134,21 @@ function removeStoredAPIKey() {
 async function readResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => undefined)
   if (!response.ok) {
-    const envelope = data as ErrorEnvelope | undefined
-    throw new ApiError(
-      response.status,
-      envelope?.error?.code ?? 'http_error',
-      envelope?.error?.message ?? `request failed with ${response.status}`
-    )
+    throw apiErrorFromData(response, data)
   }
   return data as T
+}
+
+async function throwResponseError(response: Response): Promise<never> {
+  const data = await response.json().catch(() => undefined)
+  throw apiErrorFromData(response, data)
+}
+
+function apiErrorFromData(response: Response, data: unknown) {
+  const envelope = data as ErrorEnvelope | undefined
+  return new ApiError(
+    response.status,
+    envelope?.error?.code ?? 'http_error',
+    envelope?.error?.message ?? `request failed with ${response.status}`
+  )
 }

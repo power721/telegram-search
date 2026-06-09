@@ -16,6 +16,7 @@ import SetupChannelSelectionView from '@/views/SetupChannelSelectionView.vue'
 import ChannelsView from '@/views/ChannelsView.vue'
 import ResourcesView from '@/views/ResourcesView.vue'
 import TasksView from '@/views/TasksView.vue'
+import LogsView from '@/views/LogsView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -62,6 +63,7 @@ export const router = createRouter({
         { path: 'resources', name: 'resources', component: ResourcesView },
         { path: 'accounts', name: 'accounts', component: AccountsView },
         { path: 'tasks', name: 'tasks', component: TasksView },
+        { path: 'logs', name: 'logs', component: LogsView },
         { path: 'settings', name: 'settings', component: SettingsView }
       ]
     }

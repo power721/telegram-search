@@ -318,6 +318,7 @@ describe('ResourceTable', () => {
     expect(player.attributes('poster')).toBe('/i/77')
     expect(player.attributes('controls')).toBeDefined()
     expect(player.attributes('autoplay')).toBeDefined()
+    expect(resourceTableSource).toContain(':block-scroll="false"')
     expect(resourceTableSource).toMatch(/\.video-player-dialog\s*\{[\s\S]*width:\s*1200px;/)
 
     await wrapper.find('[aria-label="最大化播放窗口"]').trigger('click')

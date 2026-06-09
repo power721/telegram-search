@@ -256,7 +256,7 @@ function formatDate(value?: string) {
         </span>
       </article>
     </template>
-    <n-modal :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
+    <n-modal :block-scroll="false" :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
       <n-card
         v-if="activeVideo"
         class="video-player-dialog"

@@ -16,6 +16,10 @@ function sourceLabel(source?: string) {
   const label = labels[source ?? ''] ?? source
   return label || '本地'
 }
+
+function resultHref(item: { url?: string } & Parameters<typeof telegramMessageHref>[0]) {
+  return telegramMessageHref(item) ?? item.url
+}
 </script>
 
 <template>
@@ -32,10 +36,11 @@ function sourceLabel(source?: string) {
       </div>
       <template v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`">
         <a
-          v-if="telegramMessageHref(item)"
+          v-if="resultHref(item)"
           class="result-row result-link"
-          :href="telegramMessageHref(item)"
+          :href="resultHref(item)"
           rel="noopener noreferrer"
+          target="_blank"
         >
           <strong>{{ item.channel_title || 'Telegram' }}</strong>
           <p>{{ item.text }}</p>
@@ -49,10 +54,11 @@ function sourceLabel(source?: string) {
       </template>
       <template v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`">
         <a
-          v-if="telegramMessageHref(item)"
+          v-if="resultHref(item)"
           class="result-row result-link"
-          :href="telegramMessageHref(item)"
+          :href="resultHref(item)"
           rel="noopener noreferrer"
+          target="_blank"
         >
           <strong>{{ item.channel_title || '远程结果' }}</strong>
           <p>{{ item.text }}</p>
@@ -84,10 +90,11 @@ function sourceLabel(source?: string) {
       </div>
       <template v-for="item in result?.links.items ?? []" :key="`l-${item.id}`">
         <a
-          v-if="telegramMessageHref(item)"
+          v-if="resultHref(item)"
           class="result-row result-link"
-          :href="telegramMessageHref(item)"
+          :href="resultHref(item)"
           rel="noopener noreferrer"
+          target="_blank"
         >
           <strong>{{ item.note || item.url }}</strong>
           <p>{{ item.url }}</p>

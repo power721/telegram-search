@@ -21,6 +21,10 @@ function itemLabel(item: ResourceItem) {
   return item.title || item.file_name || item.url || '-'
 }
 
+function resourceHref(item: ResourceItem) {
+  return telegramMessageHref(item) ?? item.url
+}
+
 function formatDate(value?: string) {
   if (!value) return '-'
   const date = new Date(value)
@@ -46,10 +50,11 @@ function formatDate(value?: string) {
     </div>
     <template v-for="item in items" :key="item.id">
       <a
-        v-if="telegramMessageHref(item)"
+        v-if="resourceHref(item)"
         class="table-row resource-link"
-        :href="telegramMessageHref(item)"
+        :href="resourceHref(item)"
         rel="noopener noreferrer"
+        target="_blank"
       >
         <div>
           <strong>{{ itemLabel(item) }}</strong>

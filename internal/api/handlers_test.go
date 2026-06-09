@@ -2134,7 +2134,7 @@ func TestDeleteAccountKeepsLocalStateWhenTelegramLogoutFails(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodDelete, "/api/accounts/"+strconv.FormatInt(accountID, 10), nil)
-	withAPIKey(t, deps, req)
+	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusInternalServerError {

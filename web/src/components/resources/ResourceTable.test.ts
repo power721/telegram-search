@@ -96,4 +96,53 @@ describe('ResourceTable', () => {
     expect(image.exists()).toBe(true)
     expect(image.attributes('src')).toBe('/i/resources/77')
   })
+
+  it('renders video previews when only a video URL is available', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:video',
+            kind: 'file',
+            category: 'files',
+            file_name: 'clip.mp4',
+            media: {
+              video_url: '/v/resources/77'
+            }
+          }
+        ]
+      }
+    })
+
+    const video = wrapper.find('video.resource-thumb')
+    expect(video.exists()).toBe(true)
+    expect(video.attributes('src')).toBe('/v/resources/77')
+    expect(video.attributes('preload')).toBe('metadata')
+  })
+
+  it('falls back to video preview when an image thumbnail fails', async () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:video',
+            kind: 'file',
+            category: 'files',
+            file_name: 'clip.mp4',
+            media: {
+              image_url: '/i/resources/77',
+              video_url: '/v/resources/77'
+            }
+          }
+        ]
+      }
+    })
+
+    await wrapper.find('img.resource-thumb').trigger('error')
+
+    const video = wrapper.find('video.resource-thumb')
+    expect(video.exists()).toBe(true)
+    expect(video.attributes('src')).toBe('/v/resources/77')
+    expect(video.attributes('poster')).toBe('/i/resources/77')
+  })
 })

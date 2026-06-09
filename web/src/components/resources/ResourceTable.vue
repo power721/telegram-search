@@ -1,10 +1,25 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { ResourceItem } from '@/api/types'
 import { telegramMessageHref } from '@/utils/telegramLinks'
 
 defineProps<{
   items: ResourceItem[]
 }>()
+
+const failedImageThumbs = ref(new Set<string>())
+
+function showImageThumb(item: ResourceItem) {
+  return Boolean(item.media?.image_url && !failedImageThumbs.value.has(item.id))
+}
+
+function showVideoThumb(item: ResourceItem) {
+  return Boolean(item.media?.video_url && (!item.media?.image_url || failedImageThumbs.value.has(item.id)))
+}
+
+function markImageThumbFailed(item: ResourceItem) {
+  failedImageThumbs.value = new Set(failedImageThumbs.value).add(item.id)
+}
 
 function categoryLabel(category: string) {
   const labels: Record<string, string> = {
@@ -52,12 +67,22 @@ function formatDate(value?: string) {
       <article class="table-row">
         <div class="resource-cell">
           <img
-            v-if="item.media?.image_url"
+            v-if="showImageThumb(item)"
             class="resource-thumb"
-            :src="item.media.image_url"
+            :src="item.media?.image_url"
             alt=""
             loading="lazy"
-          >
+            @error="markImageThumbFailed(item)"
+          />
+          <video
+            v-else-if="showVideoThumb(item)"
+            class="resource-thumb"
+            :poster="item.media?.image_url"
+            :src="item.media?.video_url"
+            muted
+            playsinline
+            preload="metadata"
+          ></video>
           <div class="resource-copy">
             <strong>{{ itemLabel(item) }}</strong>
             <p v-if="item.url">

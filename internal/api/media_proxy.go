@@ -250,7 +250,7 @@ func mediaErrorStatus(err error) int {
 	switch {
 	case strings.Contains(msg, "bad range"), strings.Contains(msg, "invalid range"):
 		return http.StatusRequestedRangeNotSatisfiable
-	case strings.Contains(msg, "not found"), strings.Contains(msg, "no rows"), strings.Contains(msg, "has no"):
+	case strings.Contains(msg, "not found"), strings.Contains(msg, "no rows"), strings.Contains(msg, "has no"), strings.Contains(msg, "no usable photo size"):
 		return http.StatusNotFound
 	case strings.Contains(msg, "required"), strings.Contains(msg, "positive integer"):
 		return http.StatusBadRequest

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -165,6 +166,12 @@ func TestTelegramMediaRequiresHeaderAPIKeyOrSignature(t *testing.T) {
 				t.Fatalf("status = %d body=%s, want 401", w.Code, w.Body.String())
 			}
 		})
+	}
+}
+
+func TestMediaErrorStatusTreatsMissingThumbnailAsNotFound(t *testing.T) {
+	if got := mediaErrorStatus(errors.New("no usable photo size")); got != http.StatusNotFound {
+		t.Fatalf("mediaErrorStatus = %d, want 404", got)
 	}
 }
 

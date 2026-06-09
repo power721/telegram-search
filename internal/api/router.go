@@ -153,6 +153,11 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	resourceAccess.GET("/resources/:id", h.resource)
 	resourceAccess.GET("/resources", h.resources)
 
+	mediaAccess := router.Group("")
+	mediaAccess.Use(h.requireMediaAccess())
+	mediaAccess.GET("/v/:channel/:msgid", h.serveTelegramVideo)
+	mediaAccess.GET("/i/:channel/:msgid", h.serveTelegramImage)
+
 	router.NoRoute(h.frontend)
 	return router
 }

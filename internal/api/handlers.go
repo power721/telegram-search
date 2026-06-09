@@ -519,6 +519,13 @@ func (h handlers) adminSession(c *gin.Context) (string, model.User, bool) {
 }
 
 func apiKeyFromRequest(r *http.Request) string {
+	if key := apiKeyFromRequestHeader(r); key != "" {
+		return key
+	}
+	return strings.TrimSpace(r.URL.Query().Get("api_key"))
+}
+
+func apiKeyFromRequestHeader(r *http.Request) string {
 	auth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(auth), "bearer ") {
 		return strings.TrimSpace(auth[7:])
@@ -526,7 +533,7 @@ func apiKeyFromRequest(r *http.Request) string {
 	if key := strings.TrimSpace(r.Header.Get("X-API-Key")); key != "" {
 		return key
 	}
-	return strings.TrimSpace(r.URL.Query().Get("api_key"))
+	return ""
 }
 
 func (h handlers) storageUsage(c *gin.Context) {

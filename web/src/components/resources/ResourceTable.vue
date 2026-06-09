@@ -77,7 +77,31 @@ function cloudDriveTypeLabel(type?: string) {
   return labels[type] ?? type
 }
 
+function fileTypeLabel(item: ResourceItem) {
+  const type = item.type?.trim()
+  const labels: Record<string, string> = {
+    image: '图片',
+    video: '视频',
+    audio: '音频',
+    document: '文档',
+    ebook: '文档',
+    archive: '压缩包',
+    software: '软件',
+    file: '文件'
+  }
+  if (type && type !== 'files') return labels[type] ?? type
+  const mimeType = item.mime_type?.toLowerCase() ?? ''
+  const extension = item.extension?.toLowerCase() ?? ''
+  if (mimeType.startsWith('image/') || ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(extension)) return '图片'
+  if (mimeType.startsWith('video/') || ['.mp4', '.mkv', '.avi', '.mov', '.webm'].includes(extension)) return '视频'
+  if (mimeType.startsWith('audio/') || ['.mp3', '.m4a', '.ogg', '.opus', '.flac', '.wav'].includes(extension)) return '音频'
+  if (['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz'].includes(extension)) return '压缩包'
+  if (['.pdf', '.epub', '.mobi', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.rtf', '.md', '.csv'].includes(extension)) return '文档'
+  return ''
+}
+
 function resourceTypeLabel(item: ResourceItem) {
+  if (item.kind === 'file' && item.category === 'files') return fileTypeLabel(item) || categoryLabel(item.category)
   if (item.category !== 'cloud_drive') return categoryLabel(item.category)
   return cloudDriveTypeLabel(item.type) || categoryLabel(item.category)
 }

@@ -351,10 +351,10 @@ func fileCategory(file model.File) string {
 		return "video"
 	case ext == ".mp3" || ext == ".m4a" || ext == ".ogg" || ext == ".opus" || ext == ".flac" || ext == ".wav" || strings.HasPrefix(mimeType, "audio/"):
 		return "audio"
-	case ext == ".pdf" || ext == ".epub" || ext == ".mobi":
-		return "ebook"
-	case ext == ".zip" || ext == ".rar" || ext == ".7z":
+	case ext == ".zip" || ext == ".rar" || ext == ".7z" || ext == ".tar" || ext == ".gz" || ext == ".bz2" || ext == ".xz" || strings.Contains(mimeType, "zip") || strings.Contains(mimeType, "rar") || strings.Contains(mimeType, "7z") || strings.Contains(mimeType, "tar"):
 		return "archive"
+	case ext == ".pdf" || ext == ".epub" || ext == ".mobi" || ext == ".doc" || ext == ".docx" || ext == ".xls" || ext == ".xlsx" || ext == ".ppt" || ext == ".pptx" || ext == ".txt" || ext == ".rtf" || ext == ".md" || ext == ".csv" || strings.HasPrefix(mimeType, "text/") || strings.Contains(mimeType, "pdf") || strings.Contains(mimeType, "msword") || strings.Contains(mimeType, "officedocument") || strings.Contains(mimeType, "spreadsheet") || strings.Contains(mimeType, "presentation"):
+		return "document"
 	case ext == ".iso" || ext == ".exe" || ext == ".apk" || strings.Contains(mimeType, "application/"):
 		return "software"
 	default:

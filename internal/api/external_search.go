@@ -13,7 +13,7 @@ import (
 )
 
 const externalSearchDefaultLimit = 50
-const externalSearchMaxLimit = 200
+const externalSearchMaxLimit = 3000
 
 type externalSearchRequest struct {
 	Keyword    string   `json:"kw"`
@@ -76,10 +76,6 @@ func (h handlers) externalSearch(c *gin.Context) {
 		return
 	}
 	keyword := strings.TrimSpace(firstNonEmptyString(req.Keyword, req.Query))
-	if keyword == "" {
-		c.JSON(http.StatusBadRequest, externalAPIResponse{Code: http.StatusBadRequest, Message: "kw is required"})
-		return
-	}
 	resultType := normalizeExternalResultType(req.ResultType)
 	if resultType == "" {
 		c.JSON(http.StatusBadRequest, externalAPIResponse{Code: http.StatusBadRequest, Message: "invalid res"})
@@ -176,6 +172,7 @@ func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTyp
 			Type:     filter.typ,
 			Category: filter.category,
 			Limit:    fetchLimit,
+			MaxLimit: fetchLimit,
 			Sort:     "date_desc",
 		})
 		if err != nil {

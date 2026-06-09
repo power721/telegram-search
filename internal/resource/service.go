@@ -20,6 +20,7 @@ type Query struct {
 	Sort      string
 	Limit     int
 	Offset    int
+	MaxLimit  int
 }
 
 type Item struct {
@@ -68,7 +69,7 @@ func NewService(links *repository.LinkRepository, files *repository.FileReposito
 }
 
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
-	limit := normalizedLimit(query.Limit)
+	limit := normalizedLimit(query.Limit, query.MaxLimit)
 	offset := normalizedOffset(query.Offset)
 	fetchLimit := offset + limit
 
@@ -276,12 +277,15 @@ func groupedTotal(grouped map[string]int) int {
 	return total
 }
 
-func normalizedLimit(limit int) int {
+func normalizedLimit(limit int, maxLimit int) int {
 	if limit <= 0 {
 		return 50
 	}
-	if limit > 200 {
-		return 200
+	if maxLimit <= 0 {
+		maxLimit = 200
+	}
+	if limit > maxLimit {
+		return maxLimit
 	}
 	return limit
 }

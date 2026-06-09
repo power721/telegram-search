@@ -859,6 +859,85 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 }
 
+func TestExternalSearchAllowsEmptyKeywordAndLargeLimit(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.APIKeyService = apikey.NewService(deps.APIKeys, deps.Settings)
+	files := repository.NewFileRepository(deps.BackupDB)
+	deps.Resources = resource.NewService(deps.Links, files)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID: accountID, TelegramChannelID: 1, Title: "Public Resources", Username: "public_resources", Type: model.ChannelTypeChannel,
+	})
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	input := make([]model.Message, 0, 250)
+	for i := 0; i < 250; i++ {
+		input = append(input, model.Message{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: int64(i + 1),
+			Text: "resource item", RawJSON: "{}", Date: now.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	stored, err := deps.Messages.SaveBatch(ctx, input)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for i, msg := range stored {
+		if _, err := deps.Links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "quark", URL: "https://pan.quark.cn/s/item-" + strconv.Itoa(i), Note: "item " + strconv.Itoa(i),
+		}}); err != nil {
+			t.Fatalf("save link %d: %v", i, err)
+		}
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search?limit=250&res=results&cloud_types=quark", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("external search status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			Total   int `json:"total"`
+			Results []struct {
+				Title    string    `json:"title"`
+				Datetime time.Time `json:"datetime"`
+			} `json:"results"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Code != 0 || body.Data.Total != 250 {
+		t.Fatalf("external response = %+v body=%s, want code 0 total 250", body, w.Body.String())
+	}
+	if len(body.Data.Results) != 250 {
+		t.Fatalf("results len = %d, want 250; body=%s", len(body.Data.Results), w.Body.String())
+	}
+	if body.Data.Results[0].Title != "item 249" || !body.Data.Results[0].Datetime.Equal(now.Add(249*time.Minute)) {
+		t.Fatalf("first result = %+v, want latest item", body.Data.Results[0])
+	}
+}
+
+func TestNormalizeExternalLimitAllowsUpToThreeThousand(t *testing.T) {
+	for _, tc := range []struct {
+		limit int
+		want  int
+	}{
+		{limit: 0, want: 50},
+		{limit: 250, want: 250},
+		{limit: 3000, want: 3000},
+		{limit: 3001, want: 3000},
+	} {
+		if got := normalizeExternalLimit(tc.limit); got != tc.want {
+			t.Fatalf("normalizeExternalLimit(%d) = %d, want %d", tc.limit, got, tc.want)
+		}
+	}
+}
+
 func TestSearchPathServesFrontend(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

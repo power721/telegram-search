@@ -237,6 +237,23 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('go1.25.0')
   })
 
+  it('places three settings panels in each desktop column', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    const leftPanels = wrapper.findAll('.settings-column-left > .panel')
+    const rightPanels = wrapper.findAll('.settings-column-right > .panel')
+
+    expect(leftPanels).toHaveLength(3)
+    expect(rightPanels).toHaveLength(3)
+    expect(leftPanels.map((panel) => panel.find('h2').text())).toEqual(['管理员账号', '存储', '版本'])
+    expect(rightPanels.map((panel) => panel.find('h2').text())).toEqual(['API 密钥', 'Telegram API', '系统'])
+  })
+
   it('updates Telegram API credentials from the settings page', async () => {
     const wrapper = mount(SettingsView, {
       global: {

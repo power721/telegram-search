@@ -284,35 +284,6 @@ function versionStatusText() {
             查看 GitHub Release
           </a>
         </section>
-        <section class="panel system-panel">
-          <h2>系统</h2>
-          <dl>
-            <div>
-              <dt>名称</dt>
-              <dd data-testid="system-name">{{ systemInfo?.name || '-' }}</dd>
-            </div>
-            <div>
-              <dt>版本</dt>
-              <dd>{{ systemInfo?.version || '-' }}</dd>
-            </div>
-            <div>
-              <dt>架构</dt>
-              <dd>{{ systemInfo?.architecture || '-' }}</dd>
-            </div>
-            <div>
-              <dt>主机名</dt>
-              <dd>{{ systemInfo?.hostname || '-' }}</dd>
-            </div>
-            <div>
-              <dt>CPU</dt>
-              <dd>{{ systemInfo?.cpu_count ?? '-' }}</dd>
-            </div>
-            <div>
-              <dt>Go 版本</dt>
-              <dd>{{ systemInfo?.go_version || '-' }}</dd>
-            </div>
-          </dl>
-        </section>
       </div>
       <div class="settings-column settings-column-right">
         <section class="panel api-key-panel">
@@ -390,6 +361,35 @@ function versionStatusText() {
               </n-button>
             </div>
           </n-form>
+        </section>
+        <section class="panel system-panel">
+          <h2>系统</h2>
+          <dl>
+            <div>
+              <dt>名称</dt>
+              <dd data-testid="system-name">{{ systemInfo?.name || '-' }}</dd>
+            </div>
+            <div>
+              <dt>版本</dt>
+              <dd>{{ systemInfo?.version || '-' }}</dd>
+            </div>
+            <div>
+              <dt>架构</dt>
+              <dd>{{ systemInfo?.architecture || '-' }}</dd>
+            </div>
+            <div>
+              <dt>主机名</dt>
+              <dd>{{ systemInfo?.hostname || '-' }}</dd>
+            </div>
+            <div>
+              <dt>CPU</dt>
+              <dd>{{ systemInfo?.cpu_count ?? '-' }}</dd>
+            </div>
+            <div>
+              <dt>Go 版本</dt>
+              <dd>{{ systemInfo?.go_version || '-' }}</dd>
+            </div>
+          </dl>
         </section>
       </div>
     </div>
@@ -513,19 +513,19 @@ dd {
   }
 
   .api-key-panel {
-    order: 2;
-  }
-
-  .storage-panel {
-    order: 3;
-  }
-
-  .telegram-panel {
     order: 4;
   }
 
-  .version-panel {
+  .storage-panel {
+    order: 2;
+  }
+
+  .telegram-panel {
     order: 5;
+  }
+
+  .version-panel {
+    order: 3;
   }
 
   .system-panel {

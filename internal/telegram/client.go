@@ -84,6 +84,7 @@ type Client interface {
 	SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (Profile, error)
 	Password(ctx context.Context, password string, sessionPath string) (Profile, error)
 	StartQRLogin(ctx context.Context, sessionPath string) (QRLoginSession, error)
+	Logout(ctx context.Context, session AccountSession) error
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
 	SearchMessages(ctx context.Context, session AccountSession, channel ChannelRef, query string, limit int) ([]Message, error)
@@ -130,6 +131,10 @@ func (NopClient) Password(context.Context, string, string) (Profile, error) {
 
 func (NopClient) StartQRLogin(context.Context, string) (QRLoginSession, error) {
 	return nil, ErrUnavailable
+}
+
+func (NopClient) Logout(context.Context, AccountSession) error {
+	return ErrUnavailable
 }
 
 func (NopClient) ListChannels(context.Context, AccountSession) ([]Channel, error) {

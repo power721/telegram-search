@@ -268,7 +268,7 @@ Returns Telegram accounts.
 
 ### `DELETE /api/accounts/:id`
 
-Stops account runtime state, removes the local session file, and deletes the account row.
+Stops account runtime state, logs out the Telegram session, removes the local session file, and deletes the account row.
 
 ### `POST /api/accounts/:id/channels/sync-metadata`
 

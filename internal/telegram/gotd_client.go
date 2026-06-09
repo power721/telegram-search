@@ -98,6 +98,13 @@ func (g *GotdClient) ListChannels(ctx context.Context, account AccountSession) (
 	return out, err
 }
 
+func (g *GotdClient) Logout(ctx context.Context, account AccountSession) error {
+	return g.withClient(ctx, account.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		_, err := client.API().AuthLogOut(ctx)
+		return err
+	})
+}
+
 type dialogIterator interface {
 	Next(context.Context) bool
 	Value() dialogs.Elem

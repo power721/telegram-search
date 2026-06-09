@@ -1043,7 +1043,8 @@ func (h handlers) logoutAccount(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if _, err := h.deps.Accounts.FindByID(c.Request.Context(), id); err != nil {
+	account, err := h.deps.Accounts.FindByID(c.Request.Context(), id)
+	if err != nil {
 		errorJSON(c, http.StatusNotFound, err)
 		return
 	}
@@ -1052,6 +1053,10 @@ func (h handlers) logoutAccount(c *gin.Context) {
 			errorJSON(c, http.StatusInternalServerError, err)
 			return
 		}
+	}
+	if err := h.logoutTelegramAccount(c.Request.Context(), account); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
 	}
 	if h.deps.Sessions != nil {
 		if err := h.deps.Sessions.RemoveForAccount(id); err != nil {
@@ -1063,7 +1068,7 @@ func (h handlers) logoutAccount(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	account, err := h.deps.Accounts.FindByID(c.Request.Context(), id)
+	account, err = h.deps.Accounts.FindByID(c.Request.Context(), id)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
@@ -1076,11 +1081,20 @@ func (h handlers) deleteAccount(c *gin.Context) {
 	if !ok {
 		return
 	}
+	account, err := h.deps.Accounts.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
 	if h.deps.AccountRuntime != nil {
 		if err := h.deps.AccountRuntime.StopAccount(c.Request.Context(), id); err != nil {
 			errorJSON(c, http.StatusInternalServerError, err)
 			return
 		}
+	}
+	if err := h.logoutTelegramAccount(c.Request.Context(), account); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
 	}
 	if h.deps.Sessions != nil {
 		if err := h.deps.Sessions.RemoveForAccount(id); err != nil {
@@ -1093,6 +1107,37 @@ func (h handlers) deleteAccount(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h handlers) logoutTelegramAccount(ctx context.Context, account model.Account) error {
+	if h.deps.Telegram == nil {
+		return nil
+	}
+	sessionPath := account.SessionPath
+	if sessionPath == "" {
+		sessionPath = h.sessionPath(account.ID)
+	}
+	if sessionPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("stat telegram session: %w", err)
+	}
+	err := h.deps.Telegram.Logout(ctx, telegram.AccountSession{
+		AccountID:   account.ID,
+		Phone:       account.Phone,
+		SessionPath: sessionPath,
+	})
+	if errors.Is(err, telegram.ErrUnavailable) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("logout telegram account: %w", err)
+	}
+	return nil
 }
 
 func (h handlers) channels(c *gin.Context) {

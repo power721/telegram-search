@@ -6,16 +6,16 @@ Support Telegram account logout and deletion from the Accounts page.
 
 ## Behavior
 
-Logout keeps the account and indexed data. It stops account runtime work, removes the local Telegram session file, and marks the account `LOGIN_REQUIRED` so the user can sign in again later.
+Logout keeps the account and indexed data. It stops account runtime work, logs out the Telegram session, removes the local Telegram session file, and marks the account `LOGIN_REQUIRED` so the user can sign in again later.
 
-Delete removes the account. It stops account runtime work, removes the local Telegram session file, and deletes the account row. Existing foreign keys cascade account-owned channels, messages, links, rules, and cursors.
+Delete removes the account. It stops account runtime work, logs out the Telegram session, removes the local Telegram session file, and deletes the account row. Existing foreign keys cascade account-owned channels, messages, links, rules, and cursors.
 
 ## API
 
 - `POST /api/accounts/:id/logout`
   - Returns the updated account.
   - `404` when the account does not exist.
-  - Stops runtime before removing the session.
+  - Stops runtime and logs out Telegram before removing the session.
   - Updates status to `LOGIN_REQUIRED`.
 - `DELETE /api/accounts/:id`
   - Existing endpoint.

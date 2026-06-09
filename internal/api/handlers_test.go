@@ -2028,6 +2028,8 @@ func TestDeleteAccountStopsRuntimeAndRemovesSession(t *testing.T) {
 	}
 	runtime := &recordingAccountRuntime{}
 	deps.AccountRuntime = runtime
+	fake := &fakeTelegram{}
+	deps.Telegram = fake
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
@@ -2041,11 +2043,50 @@ func TestDeleteAccountStopsRuntimeAndRemovesSession(t *testing.T) {
 	if got := runtime.stoppedIDs(); !sameInt64s(got, []int64{accountID}) {
 		t.Fatalf("stopped ids = %v, want [%d]", got, accountID)
 	}
+	if got := fake.logoutSessionPaths(); !sameStrings(got, []string{sessionPath}) {
+		t.Fatalf("logout session paths = %v, want [%q]", got, sessionPath)
+	}
+	if !fake.logoutSessionExisted {
+		t.Fatal("telegram logout ran after session removal, want logout before local session cleanup")
+	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
 		t.Fatalf("session stat error = %v, want not exist", err)
 	}
 	if _, err := deps.Accounts.FindByID(ctx, accountID); err == nil {
 		t.Fatal("FindByID succeeded after delete, want missing account")
+	}
+}
+
+func TestDeleteAccountKeepsLocalStateWhenTelegramLogoutFails(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	sessionPath := deps.Sessions.PathForAccount(accountID)
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0o755); err != nil {
+		t.Fatalf("mkdir session dir: %v", err)
+	}
+	if err := os.WriteFile(sessionPath, []byte("session"), 0o600); err != nil {
+		t.Fatalf("write session: %v", err)
+	}
+	deps.Telegram = &fakeTelegram{logoutErr: errors.New("remote logout failed")}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/accounts/"+strconv.FormatInt(accountID, 10), nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d body=%s, want 500", w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(sessionPath); err != nil {
+		t.Fatalf("session stat error = %v, want session preserved", err)
+	}
+	if _, err := deps.Accounts.FindByID(ctx, accountID); err != nil {
+		t.Fatalf("find account after failed delete: %v", err)
 	}
 }
 
@@ -2065,6 +2106,8 @@ func TestLogoutAccountStopsRuntimeRemovesSessionAndKeepsAccount(t *testing.T) {
 	}
 	runtime := &recordingAccountRuntime{}
 	deps.AccountRuntime = runtime
+	fake := &fakeTelegram{}
+	deps.Telegram = fake
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
@@ -2077,6 +2120,9 @@ func TestLogoutAccountStopsRuntimeRemovesSessionAndKeepsAccount(t *testing.T) {
 	}
 	if got := runtime.stoppedIDs(); !sameInt64s(got, []int64{accountID}) {
 		t.Fatalf("stopped ids = %v, want [%d]", got, accountID)
+	}
+	if got := fake.logoutSessionPaths(); !sameStrings(got, []string{sessionPath}) {
+		t.Fatalf("logout session paths = %v, want [%q]", got, sessionPath)
 	}
 	if _, err := os.Stat(sessionPath); !os.IsNotExist(err) {
 		t.Fatalf("session stat error = %v, want not exist", err)
@@ -3237,13 +3283,17 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 
 type fakeTelegram struct {
 	telegram.NopClient
-	channels          []telegram.Channel
-	listErr           error
-	fetchHistoryCalls int
-	qrTokenURL        string
-	qrExpires         time.Time
-	qrSessionPath     string
-	qrSession         *fakeQRLoginSession
+	mu                   sync.Mutex
+	channels             []telegram.Channel
+	listErr              error
+	logoutErr            error
+	logoutSessions       []telegram.AccountSession
+	logoutSessionExisted bool
+	fetchHistoryCalls    int
+	qrTokenURL           string
+	qrExpires            time.Time
+	qrSessionPath        string
+	qrSession            *fakeQRLoginSession
 }
 
 func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
@@ -3280,6 +3330,26 @@ func (f *fakeTelegram) ListChannels(ctx context.Context, accountSession telegram
 	}
 	out = append(out, f.channels...)
 	return out, nil
+}
+
+func (f *fakeTelegram) Logout(ctx context.Context, accountSession telegram.AccountSession) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.logoutSessions = append(f.logoutSessions, accountSession)
+	if _, err := os.Stat(accountSession.SessionPath); err == nil {
+		f.logoutSessionExisted = true
+	}
+	return f.logoutErr
+}
+
+func (f *fakeTelegram) logoutSessionPaths() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]string, 0, len(f.logoutSessions))
+	for _, session := range f.logoutSessions {
+		out = append(out, session.SessionPath)
+	}
+	return out
 }
 
 func (f *fakeTelegram) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
@@ -3353,6 +3423,25 @@ func sameInt64s(got []int64, want []int64) bool {
 	}
 	for _, id := range want {
 		seen[id]--
+	}
+	for _, count := range seen {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func sameStrings(got []string, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, item := range got {
+		seen[item]++
+	}
+	for _, item := range want {
+		seen[item]--
 	}
 	for _, count := range seen {
 		if count != 0 {

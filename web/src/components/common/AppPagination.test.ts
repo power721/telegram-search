@@ -13,6 +13,7 @@ describe('AppPagination', () => {
     })
 
     expect(wrapper.findAll('.pagination-pages button').map((button) => button.text())).toEqual([
+      '首页',
       '5',
       '6',
       '7',
@@ -23,9 +24,41 @@ describe('AppPagination', () => {
       '12',
       '13',
       '14',
-      '15'
+      '15',
+      '尾页'
     ])
     expect(wrapper.find('button[aria-current="page"]').text()).toBe('10')
+  })
+
+  it('uses first and last page buttons when they are outside the visible page range', async () => {
+    const wrapper = mount(AppPagination, {
+      props: {
+        page: 10,
+        pageSize: 50,
+        total: 2000
+      }
+    })
+
+    expect(wrapper.findAll('.pagination-pages button').map((button) => button.text())).toEqual([
+      '首页',
+      '5',
+      '6',
+      '7',
+      '8',
+      '9',
+      '10',
+      '11',
+      '12',
+      '13',
+      '14',
+      '15',
+      '尾页'
+    ])
+
+    await wrapper.get('button[aria-label="首页"]').trigger('click')
+    await wrapper.get('button[aria-label="尾页"]').trigger('click')
+
+    expect(wrapper.emitted('update:page')).toEqual([[1], [40]])
   })
 
   it('emits page jumps from the input and page size changes', async () => {

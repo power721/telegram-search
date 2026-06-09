@@ -10,6 +10,7 @@ defineProps<{
 const failedImageThumbs = ref(new Set<string>())
 const activeVideo = ref<ResourceItem | null>(null)
 const videoDialogVisible = ref(false)
+const isVideoMaximized = ref(false)
 
 function showImageThumb(item: ResourceItem) {
   return Boolean(item.media?.image_url && !failedImageThumbs.value.has(item.id))
@@ -67,11 +68,13 @@ function itemLabel(item: ResourceItem) {
 function openVideoPlayer(item: ResourceItem) {
   if (!item.media?.video_url) return
   activeVideo.value = item
+  isVideoMaximized.value = false
   videoDialogVisible.value = true
 }
 
 function closeVideoPlayer() {
   videoDialogVisible.value = false
+  isVideoMaximized.value = false
   activeVideo.value = null
 }
 
@@ -81,6 +84,10 @@ function handleVideoDialogVisibleUpdate(show: boolean) {
     return
   }
   closeVideoPlayer()
+}
+
+function toggleVideoMaximized() {
+  isVideoMaximized.value = !isVideoMaximized.value
 }
 
 function mediaMetaParts(item: ResourceItem) {
@@ -207,10 +214,42 @@ function formatDate(value?: string) {
       </article>
     </template>
     <n-modal :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
-      <n-card v-if="activeVideo" class="video-player-dialog" :bordered="false">
+      <n-card
+        v-if="activeVideo"
+        class="video-player-dialog"
+        :class="{ 'is-maximized': isVideoMaximized }"
+        :bordered="false"
+      >
         <div class="video-player-header">
           <h2>{{ itemLabel(activeVideo) }}</h2>
-          <n-button aria-label="关闭视频播放" circle quaternary size="small" @click="closeVideoPlayer">×</n-button>
+          <div class="video-player-actions">
+            <n-button
+              :aria-label="isVideoMaximized ? '还原播放窗口' : '最大化播放窗口'"
+              circle
+              quaternary
+              size="small"
+              @click="toggleVideoMaximized"
+            >
+              <svg
+                v-if="isVideoMaximized"
+                class="video-player-action-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M9 3v6H3" />
+                <path d="M15 21v-6h6" />
+                <path d="M9 9 4 4" />
+                <path d="m15 15 5 5" />
+              </svg>
+              <svg v-else class="video-player-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 3H3v5" />
+                <path d="M16 3h5v5" />
+                <path d="M21 16v5h-5" />
+                <path d="M3 16v5h5" />
+              </svg>
+            </n-button>
+            <n-button aria-label="关闭视频播放" circle quaternary size="small" @click="closeVideoPlayer">×</n-button>
+          </div>
         </div>
         <video
           :key="activeVideo.id"
@@ -426,8 +465,13 @@ img.resource-thumb {
 }
 
 .video-player-dialog {
-  max-width: min(920px, calc(100vw - 32px));
-  width: 920px;
+  max-width: min(1200px, calc(100vw - 32px));
+  width: 1200px;
+}
+
+.video-player-dialog.is-maximized {
+  max-width: calc(100vw - 24px);
+  width: calc(100vw - 24px);
 }
 
 .video-player-header {
@@ -448,6 +492,23 @@ img.resource-thumb {
   overflow-wrap: anywhere;
 }
 
+.video-player-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.video-player-action-icon {
+  fill: none;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 16px;
+}
+
 .video-player {
   aspect-ratio: 16 / 9;
   background: #000;
@@ -455,6 +516,10 @@ img.resource-thumb {
   display: block;
   max-height: calc(100vh - 180px);
   width: 100%;
+}
+
+.video-player-dialog.is-maximized .video-player {
+  max-height: calc(100vh - 124px);
 }
 
 @media (max-width: 760px) {

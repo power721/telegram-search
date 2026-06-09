@@ -285,12 +285,20 @@ describe('ResourceTable', () => {
     await wrapper.find('button.resource-thumb-button').trigger('click')
 
     const player = wrapper.find('video.video-player')
-    expect(wrapper.find('.video-player-dialog').text()).toContain('clip.mp4')
+    const dialog = wrapper.find('.video-player-dialog')
+    expect(dialog.text()).toContain('clip.mp4')
     expect(player.exists()).toBe(true)
     expect(player.attributes('src')).toBe('/v/77')
     expect(player.attributes('poster')).toBe('/i/77')
     expect(player.attributes('controls')).toBeDefined()
     expect(player.attributes('autoplay')).toBeDefined()
+    expect(resourceTableSource).toMatch(/\.video-player-dialog\s*\{[\s\S]*width:\s*1200px;/)
+
+    await wrapper.find('[aria-label="最大化播放窗口"]').trigger('click')
+
+    expect(wrapper.find('.video-player-dialog').classes()).toContain('is-maximized')
+    expect(wrapper.find('[aria-label="还原播放窗口"]').exists()).toBe(true)
+    expect(resourceTableSource).toMatch(/\.video-player-dialog\.is-maximized\s*\{[\s\S]*width:\s*calc\(100vw - 24px\);/)
 
     await wrapper.find('[aria-label="关闭视频播放"]').trigger('click')
 

@@ -195,7 +195,7 @@ describe('ResourceTable', () => {
     expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
   })
 
-  it('renders video previews when only a video URL is available', () => {
+  it('renders a video placeholder when only a video URL is available', () => {
     const wrapper = mount(ResourceTable, {
       props: {
         items: [
@@ -212,13 +212,14 @@ describe('ResourceTable', () => {
       }
     })
 
-    const video = wrapper.find('video.resource-thumb')
-    expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/v/77')
-    expect(video.attributes('preload')).toBe('metadata')
+    expect(wrapper.find('button.resource-thumb-button').exists()).toBe(true)
+    expect(wrapper.find('.resource-video-placeholder').exists()).toBe(true)
+    expect(wrapper.find('video.resource-thumb').exists()).toBe(false)
+    expect(resourceTableSource).toMatch(/\.resource-video-placeholder\s*\{[\s\S]*linear-gradient/)
+    expect(resourceTableSource).toMatch(/\.resource-thumb-button::after\s*\{[\s\S]*border-left:\s*11px solid #fff;/)
   })
 
-  it('falls back to video preview when an image thumbnail fails', async () => {
+  it('falls back to a video placeholder when an image thumbnail fails', async () => {
     const wrapper = mount(ResourceTable, {
       props: {
         items: [
@@ -238,9 +239,40 @@ describe('ResourceTable', () => {
 
     await wrapper.find('img.resource-thumb').trigger('error')
 
-    const video = wrapper.find('video.resource-thumb')
-    expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toBe('/v/77')
-    expect(video.attributes('poster')).toBe('/i/77')
+    expect(wrapper.find('.resource-video-placeholder').exists()).toBe(true)
+    expect(wrapper.find('video.resource-thumb').exists()).toBe(false)
+  })
+
+  it('opens a video player dialog when clicking a video resource thumbnail', async () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:video',
+            kind: 'file',
+            category: 'files',
+            file_name: 'clip.mp4',
+            media: {
+              image_url: '/i/77',
+              video_url: '/v/77'
+            }
+          }
+        ]
+      }
+    })
+
+    await wrapper.find('button.resource-thumb-button').trigger('click')
+
+    const player = wrapper.find('video.video-player')
+    expect(wrapper.find('.video-player-dialog').text()).toContain('clip.mp4')
+    expect(player.exists()).toBe(true)
+    expect(player.attributes('src')).toBe('/v/77')
+    expect(player.attributes('poster')).toBe('/i/77')
+    expect(player.attributes('controls')).toBeDefined()
+    expect(player.attributes('autoplay')).toBeDefined()
+
+    await wrapper.find('[aria-label="关闭视频播放"]').trigger('click')
+
+    expect(wrapper.find('video.video-player').exists()).toBe(false)
   })
 })

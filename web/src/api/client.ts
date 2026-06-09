@@ -127,7 +127,7 @@ async function readResponse<T>(response: Response): Promise<T> {
     throw new ApiError(
       response.status,
       envelope?.error?.code ?? 'http_error',
-      envelope?.error?.message ?? `request failed with ${response.status}`
+      envelope?.error?.message ?? `请求失败，状态码 ${response.status}`
     )
   }
   return data as T

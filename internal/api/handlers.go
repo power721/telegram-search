@@ -424,7 +424,7 @@ func (h handlers) authLogin(c *gin.Context) {
 	user, err := h.deps.AdminAuth.Authenticate(c.Request.Context(), req.Username, req.Password)
 	if err != nil {
 		if errors.Is(err, adminauth.ErrInvalidCredentials) {
-			errorText(c, http.StatusUnauthorized, "invalid username or password")
+			errorText(c, http.StatusUnauthorized, "用户名或密码错误")
 			return
 		}
 		errorJSON(c, http.StatusInternalServerError, err)

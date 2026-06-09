@@ -295,13 +295,17 @@ func documentImageSource(doc *tg.Document) (tg.InputFileLocationClass, string, [
 		return documentFileLocation(videoFileFromDocument(doc), ""), doc.MimeType, nil, nil
 	}
 	thumbType, cached, err := choosePhotoSize(doc.Thumbs)
-	if err != nil {
+	if err == nil {
+		if cached != nil {
+			return nil, "", cached, nil
+		}
+		return documentFileLocation(videoFileFromDocument(doc), thumbType), doc.MimeType, nil, nil
+	}
+	videoThumbType, videoErr := chooseVideoThumbSize(doc.VideoThumbs)
+	if videoErr != nil {
 		return nil, "", nil, err
 	}
-	if cached != nil {
-		return nil, "", cached, nil
-	}
-	return documentFileLocation(videoFileFromDocument(doc), thumbType), doc.MimeType, nil, nil
+	return documentFileLocation(videoFileFromDocument(doc), videoThumbType), "video/mp4", nil, nil
 }
 
 func isImageDocument(doc *tg.Document) bool {
@@ -341,6 +345,24 @@ func choosePhotoSize(sizes []tg.PhotoSizeClass) (thumbType string, cached []byte
 		return "", nil, fmt.Errorf("no usable photo size")
 	}
 	return thumbType, cached, nil
+}
+
+func chooseVideoThumbSize(sizes []tg.VideoSizeClass) (thumbType string, err error) {
+	var bestArea int
+	for _, s := range sizes {
+		switch v := s.(type) {
+		case *tg.VideoSize:
+			area := v.W * v.H
+			if area > bestArea {
+				bestArea = area
+				thumbType = v.Type
+			}
+		}
+	}
+	if thumbType == "" {
+		return "", fmt.Errorf("no usable video thumbnail")
+	}
+	return thumbType, nil
 }
 
 func downloadSmallFile(ctx context.Context, api *tg.Client, loc tg.InputFileLocationClass) ([]byte, error) {

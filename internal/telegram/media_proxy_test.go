@@ -64,6 +64,36 @@ func TestDocumentImageSourceUsesThumbnailForVideoDocument(t *testing.T) {
 	}
 }
 
+func TestDocumentImageSourceFallsBackToVideoThumbnail(t *testing.T) {
+	doc := &tg.Document{
+		ID:            42,
+		AccessHash:    7,
+		FileReference: []byte{1, 2, 3},
+		MimeType:      "video/mp4",
+		VideoThumbs: []tg.VideoSizeClass{
+			&tg.VideoSize{Type: "v", W: 320, H: 180, Size: 8192},
+		},
+	}
+
+	loc, fallbackMIME, cached, err := documentImageSource(doc)
+	if err != nil {
+		t.Fatalf("documentImageSource returned error: %v", err)
+	}
+	if cached != nil {
+		t.Fatalf("cached = %v, want nil", cached)
+	}
+	if fallbackMIME != "video/mp4" {
+		t.Fatalf("fallback MIME = %q, want video/mp4", fallbackMIME)
+	}
+	input, ok := loc.(*tg.InputDocumentFileLocation)
+	if !ok {
+		t.Fatalf("location = %T, want *tg.InputDocumentFileLocation", loc)
+	}
+	if input.ThumbSize != "v" {
+		t.Fatalf("thumb size = %q, want v", input.ThumbSize)
+	}
+}
+
 func TestDocumentImageSourceReportsMissingThumbnailForNonImageDocument(t *testing.T) {
 	_, _, _, err := documentImageSource(&tg.Document{MimeType: "application/pdf"})
 	if err == nil {

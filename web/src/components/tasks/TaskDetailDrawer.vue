@@ -38,6 +38,16 @@ function statusLabel(status: string) {
   }
   return labels[status] ?? status
 }
+
+function formatDate(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
+}
 </script>
 
 <template>
@@ -51,7 +61,10 @@ function statusLabel(status: string) {
         <n-descriptions-item label="消息">{{ task.message || '-' }}</n-descriptions-item>
         <n-descriptions-item label="错误">{{ task.error_message || '-' }}</n-descriptions-item>
         <n-descriptions-item label="重试次数">{{ task.retry_count }}</n-descriptions-item>
-        <n-descriptions-item label="下次运行">{{ task.next_run_at || '-' }}</n-descriptions-item>
+        <n-descriptions-item label="创建时间">{{ formatDate(task.created_at) }}</n-descriptions-item>
+        <n-descriptions-item label="开始时间">{{ formatDate(task.started_at) }}</n-descriptions-item>
+        <n-descriptions-item label="结束时间">{{ formatDate(task.finished_at) }}</n-descriptions-item>
+        <n-descriptions-item label="下次运行">{{ formatDate(task.next_run_at) }}</n-descriptions-item>
         <n-descriptions-item label="任务载荷">
           <pre>{{ task.payload_json || '{}' }}</pre>
         </n-descriptions-item>

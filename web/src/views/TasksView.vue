@@ -8,7 +8,7 @@ import TaskTable from '@/components/tasks/TaskTable.vue'
 import { useEventsStore } from '@/stores/events'
 import { useTasksStore } from '@/stores/tasks'
 
-type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'next_run_at' | 'message'
+type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'created_at' | 'next_run_at' | 'message'
 type SortDirection = 'asc' | 'desc'
 
 const tasks = useTasksStore()

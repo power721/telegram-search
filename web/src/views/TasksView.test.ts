@@ -28,6 +28,9 @@ vi.mock('@/api/client', () => ({
         total: 100,
         error_message: 'temporary failure',
         retry_count: 2,
+        created_at: '2026-06-08T11:00:00Z',
+        started_at: '2026-06-08T11:05:00Z',
+        finished_at: '2026-06-08T11:30:00Z',
         next_run_at: '2026-06-08T13:00:00Z'
       },
       {
@@ -36,7 +39,9 @@ vi.mock('@/api/client', () => ({
         status: 'running',
         progress: 4,
         total: 10,
-        message: 'checking'
+        message: 'checking',
+        created_at: '2026-06-08T12:00:00Z',
+        started_at: '2026-06-08T12:01:00Z'
       },
       {
         id: 3,
@@ -44,7 +49,8 @@ vi.mock('@/api/client', () => ({
         status: 'queued',
         progress: 0,
         total: 4,
-        retry_count: 0
+        retry_count: 0,
+        created_at: '2026-06-08T12:30:00Z'
       }
     ]
   }),
@@ -84,6 +90,7 @@ describe('TasksView', () => {
     expect(wrapper.text()).toContain('失败')
     expect(wrapper.text()).toContain('25 / 100')
     expect(wrapper.text()).toContain('temporary failure')
+    expect(wrapper.text()).toContain('创建时间')
     expect(wrapper.text()).toContain('重试')
     expect(wrapper.text()).toContain('取消')
     expect(wrapper.text()).toContain('暂停')
@@ -216,6 +223,10 @@ describe('TasksView', () => {
     await wrapper.find('[data-sort-key="progress"]').trigger('click')
     await flushPromises()
     expect(apiGet).toHaveBeenLastCalledWith('/api/tasks?sort=progress&order=desc&limit=50')
+
+    await wrapper.find('[data-sort-key="created_at"]').trigger('click')
+    await flushPromises()
+    expect(apiGet).toHaveBeenLastCalledWith('/api/tasks?sort=created_at&order=asc&limit=50')
   })
 
   it('confirms before deleting selected tasks', async () => {

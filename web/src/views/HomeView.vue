@@ -205,7 +205,6 @@ function linkTypeLabel(type: string) {
   display: grid;
   gap: 3px;
   justify-items: end;
-  min-width: 160px;
   padding: 8px 10px;
 }
 

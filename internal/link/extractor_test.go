@@ -735,6 +735,33 @@ func TestExtractMediaMetadataFromDetailedMovieQualityLines(t *testing.T) {
 	}
 }
 
+func TestExtractMediaMetadataSkipsStandaloneDateHeading(t *testing.T) {
+	text := `📅 6月9日
+
+🎬 红色珍珠（2026）更新62集
+
+类型：韩国剧
+分享：123panHH
+💾 网盘：123网盘
+
+📝 简介：
+【SPOTV新闻=姜孝真记者】演员朴真熙将正式展开回归活动。7日，据SPOTV新闻采访，朴真熙将出演KBS新日日剧《红珍珠》的主人公。
+
+🔗 链接：https://www.123pan.com/s/IpPUVv-M1Pdv?pwd=Ocat#`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "红色珍珠" || link.Note != "红色珍珠" {
+		t.Fatalf("title/note = %q/%q, want 红色珍珠", link.MediaTitle, link.Note)
+	}
+	if link.MediaYear != "2026" || link.MediaEpisode != "更新62集" || link.MediaCategory != "韩国剧" {
+		t.Fatalf("metadata = %+v, want year/category/update episode", link)
+	}
+}
+
 func TestExtractMediaMetadataFromUpdateNotificationStatus(t *testing.T) {
 	text := `📺 影片更新通知~
 

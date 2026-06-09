@@ -165,7 +165,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 		if metadata.Title == "" {
 			metadata.Title = note
 		}
-		if note == "" || isLowConfidenceNote(note) {
+		if note == "" || isLowConfidenceNote(note) || (metadata.Title != "" && isProseNote(note) && !noteMatchesMediaTitle(note, metadata.Title)) {
 			note = metadata.Title
 		}
 		seen[url] = struct{}{}
@@ -505,7 +505,7 @@ func cleanNoteCandidate(raw string) string {
 	}
 	candidate = strings.TrimRight(candidate, ":：-—| \t")
 	candidate = strings.TrimSpace(candidate)
-	if candidate == "" || isLinkLabel(candidate) || isMetadataLine(candidate) {
+	if candidate == "" || isLinkLabel(candidate) || isMetadataLine(candidate) || isStandaloneDateLine(candidate) {
 		return ""
 	}
 	return candidate
@@ -618,6 +618,9 @@ func isLowConfidenceNote(note string) bool {
 	if isMetadataLine(note) || isLinkLabel(note) {
 		return true
 	}
+	if isStandaloneDateLine(note) {
+		return true
+	}
 	if isCatalogItemLine(note) {
 		return true
 	}
@@ -631,6 +634,33 @@ func isLowConfidenceNote(note string) bool {
 	return strings.HasSuffix(normalized, "(") || strings.HasSuffix(normalized, "（")
 }
 
+func noteMatchesMediaTitle(note string, mediaTitle string) bool {
+	if note == "" || mediaTitle == "" {
+		return false
+	}
+	noteTitle, _ := titleFromExplicitLine(note)
+	if noteTitle == "" {
+		noteTitle, _ = titleFromPlainLine(note)
+	}
+	if noteTitle == "" {
+		return false
+	}
+	normalizedNote := normalizeMediaTitle(noteTitle)
+	normalizedTitle := normalizeMediaTitle(mediaTitle)
+	if normalizedNote == normalizedTitle {
+		return true
+	}
+	return strings.Contains(normalizedNote, normalizedTitle)
+}
+
+func isProseNote(note string) bool {
+	trimmed := strings.TrimSpace(note)
+	if utf8.RuneCountInString(trimmed) > 40 && strings.ContainsAny(trimmed, "。！？；!?;") {
+		return true
+	}
+	return utf8.RuneCountInString(trimmed) > 60 && strings.Contains(trimmed, "，")
+}
+
 func extractMediaMetadata(text string) mediaMetadata {
 	var metadata mediaMetadata
 	lines := strings.Split(text, "\n")
@@ -641,6 +671,9 @@ func extractMediaMetadata(text string) mediaMetadata {
 		}
 		clean := cleanMediaLine(line)
 		if clean == "" {
+			continue
+		}
+		if isStandaloneDateLine(clean) {
 			continue
 		}
 		hasResourceURL := isResourceURLLine(clean)
@@ -876,6 +909,9 @@ func titleFromPlainLine(line string) (string, string) {
 	if isAnnouncementLine(line) {
 		return "", ""
 	}
+	if isStandaloneDateLine(line) {
+		return "", ""
+	}
 	if strings.HasPrefix(line, "#") || strings.HasPrefix(line, "@") {
 		return "", ""
 	}
@@ -913,6 +949,14 @@ func isAnnouncementLine(line string) bool {
 		return true
 	}
 	return false
+}
+
+func isStandaloneDateLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	return regexp.MustCompile(`^(?:(?:19|20)\d{2}\s*年\s*)?\d{1,2}\s*月\s*\d{1,2}\s*(?:日|号)?$`).MatchString(trimmed)
 }
 
 func categoryFromLine(line string) string {

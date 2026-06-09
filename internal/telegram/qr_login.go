@@ -46,8 +46,8 @@ func (g *GotdClient) StartQRLogin(ctx context.Context, sessionPath string) (QRLo
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
 			AppVersion:     "1.0.0",
-			SystemLangCode: "cn",
-			LangCode:       "cn",
+			SystemLangCode: "zh-CN",
+			LangCode:       "zh",
 		},
 	})
 

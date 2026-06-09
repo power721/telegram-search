@@ -56,8 +56,8 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
 			AppVersion:     "1.0.0",
-			SystemLangCode: "cn",
-			LangCode:       "cn",
+			SystemLangCode: "zh-CN",
+			LangCode:       "zh",
 		},
 	})
 	return client.Run(ctx, func(ctx context.Context) error {

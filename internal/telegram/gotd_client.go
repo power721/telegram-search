@@ -233,8 +233,8 @@ func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
 			AppVersion:     "1.0.0",
-			SystemLangCode: "cn",
-			LangCode:       "cn",
+			SystemLangCode: "zh-CN",
+			LangCode:       "zh",
 		},
 	})
 	return client.Run(ctx, func(ctx context.Context) error {

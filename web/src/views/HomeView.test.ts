@@ -2,7 +2,10 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import HomeView from './HomeView.vue'
-import { apiGet } from '@/api/client'
+
+const { routerPush } = vi.hoisted(() => ({
+  routerPush: vi.fn()
+}))
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn((path: string) => {
@@ -47,21 +50,20 @@ vi.mock('@/api/client', () => ({
         items: [{ id: 1, type: 'history_sync', status: 'failed', error_message: 'temporary failure' }]
       })
     }
-    if (path === '/api/admin/search/global?q=ubuntu&limit=50') {
-      return Promise.resolve({
-        messages: { total: 1, items: [{ id: 1, channel_title: 'Linux', text: 'ubuntu iso' }] },
-        links: { total: 0, items: [] },
-        files: { total: 0, items: [] },
-        channels: { total: 0, items: [] }
-      })
-    }
     return Promise.reject(new Error('unexpected path'))
+  })
+}))
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({
+    push: routerPush
   })
 }))
 
 describe('HomeView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    routerPush.mockReset()
   })
 
   it('renders storage usage', async () => {
@@ -83,15 +85,14 @@ describe('HomeView', () => {
     expect(wrapper.get('input[name="q"]').attributes('placeholder')).toBe('搜索消息、链接、文件、频道')
   })
 
-  it('runs home global search through the API endpoint', async () => {
+  it('navigates home global search to the search page', async () => {
     const wrapper = mount(HomeView)
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    await wrapper.get('input[name="q"]').setValue('ubuntu')
+    await wrapper.get('input[name="q"]').setValue(' ubuntu ')
     await wrapper.get('form.home-search').trigger('submit')
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(apiGet).toHaveBeenCalledWith('/api/admin/search/global?q=ubuntu&limit=50')
-    expect(wrapper.text()).toContain('ubuntu iso')
+    expect(routerPush).toHaveBeenCalledWith({ path: '/search', query: { q: 'ubuntu' } })
   })
 })

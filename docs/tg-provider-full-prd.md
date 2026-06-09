@@ -369,6 +369,8 @@ sync:
 
   history_batch_size: 100
 
+  telegram_request_interval: 2s
+
 storage:
 
   path: /data/tg-provider

@@ -31,8 +31,9 @@ type ServerConfig struct {
 }
 
 type SyncConfig struct {
-	Workers          int `yaml:"workers"`
-	HistoryBatchSize int `yaml:"history_batch_size"`
+	Workers                 int      `yaml:"workers"`
+	HistoryBatchSize        int      `yaml:"history_batch_size"`
+	TelegramRequestInterval Duration `yaml:"telegram_request_interval"`
 }
 
 type StorageConfig struct {
@@ -159,8 +160,9 @@ func defaultConfig() Config {
 			Port: 9900,
 		},
 		Sync: SyncConfig{
-			Workers:          5,
-			HistoryBatchSize: 100,
+			Workers:                 5,
+			HistoryBatchSize:        100,
+			TelegramRequestInterval: Duration(2 * time.Second),
 		},
 		Storage: StorageConfig{
 			Path:          "/data/tg-search",
@@ -224,6 +226,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Sync.HistoryBatchSize == 0 {
 		cfg.Sync.HistoryBatchSize = defaults.Sync.HistoryBatchSize
 	}
+	if cfg.Sync.TelegramRequestInterval == 0 {
+		cfg.Sync.TelegramRequestInterval = defaults.Sync.TelegramRequestInterval
+	}
 	if cfg.Storage.Path == "" {
 		cfg.Storage.Path = defaults.Storage.Path
 	}
@@ -280,6 +285,9 @@ func validate(cfg Config) error {
 	}
 	if cfg.Sync.HistoryBatchSize <= 0 {
 		return errors.New("sync.history_batch_size must be greater than zero")
+	}
+	if cfg.Sync.TelegramRequestInterval < 0 {
+		return errors.New("sync.telegram_request_interval must be non-negative")
 	}
 	if cfg.Storage.Path == "" {
 		return errors.New("storage.path is required")

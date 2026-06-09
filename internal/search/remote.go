@@ -16,33 +16,36 @@ import (
 	"tg-search/internal/session"
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
+	"tg-search/internal/telegramguard"
 )
 
 var ErrRemoteSearchNotAllowed = errors.New("remote search is not allowed for this channel")
 var ErrRemoteSearchRequiresUnsynced = errors.New("remote search requires an unsynced channel")
 
 type RemoteOptions struct {
-	Accounts *repository.AccountRepository
-	Channels *repository.ChannelRepository
-	Tasks    *repository.RemoteSearchTaskRepository
-	Cursors  *repository.SyncCursorRepository
-	Telegram telegram.Client
-	Sessions *session.Manager
-	TTL      time.Duration
-	Logger   *zap.Logger
+	Accounts        *repository.AccountRepository
+	Channels        *repository.ChannelRepository
+	Tasks           *repository.RemoteSearchTaskRepository
+	Cursors         *repository.SyncCursorRepository
+	Telegram        telegram.Client
+	Sessions        *session.Manager
+	RequestGovernor *telegramguard.Governor
+	TTL             time.Duration
+	Logger          *zap.Logger
 }
 
 type RemoteService struct {
-	accounts *repository.AccountRepository
-	channels *repository.ChannelRepository
-	tasks    *repository.RemoteSearchTaskRepository
-	cursors  *repository.SyncCursorRepository
-	telegram telegram.Client
-	sessions *session.Manager
-	ttl      time.Duration
-	logger   *zap.Logger
-	mu       sync.Mutex
-	results  map[int64][]model.RemoteSearchItem
+	accounts        *repository.AccountRepository
+	channels        *repository.ChannelRepository
+	tasks           *repository.RemoteSearchTaskRepository
+	cursors         *repository.SyncCursorRepository
+	telegram        telegram.Client
+	sessions        *session.Manager
+	requestGovernor *telegramguard.Governor
+	ttl             time.Duration
+	logger          *zap.Logger
+	mu              sync.Mutex
+	results         map[int64][]model.RemoteSearchItem
 }
 
 func NewRemoteService(opts RemoteOptions) *RemoteService {
@@ -56,15 +59,16 @@ func NewRemoteService(opts RemoteOptions) *RemoteService {
 		opts.Logger = zap.NewNop()
 	}
 	return &RemoteService{
-		accounts: opts.Accounts,
-		channels: opts.Channels,
-		tasks:    opts.Tasks,
-		cursors:  opts.Cursors,
-		telegram: opts.Telegram,
-		sessions: opts.Sessions,
-		ttl:      opts.TTL,
-		logger:   opts.Logger,
-		results:  map[int64][]model.RemoteSearchItem{},
+		accounts:        opts.Accounts,
+		channels:        opts.Channels,
+		tasks:           opts.Tasks,
+		cursors:         opts.Cursors,
+		telegram:        opts.Telegram,
+		sessions:        opts.Sessions,
+		requestGovernor: opts.RequestGovernor,
+		ttl:             opts.TTL,
+		logger:          opts.Logger,
+		results:         map[int64][]model.RemoteSearchItem{},
 	}
 }
 
@@ -140,15 +144,22 @@ func (s *RemoteService) SearchWithProgress(ctx context.Context, channelID int64,
 		zap.Int("limit", limit),
 	)
 
-	items, err := s.telegram.SearchMessages(ctx, telegram.AccountSession{
+	accountSession := telegram.AccountSession{
 		AccountID:   account.ID,
 		Phone:       account.Phone,
 		SessionPath: sessionPath,
-	}, telegram.ChannelRef{
+	}
+	channelRef := telegram.ChannelRef{
 		TelegramChannelID: channel.TelegramChannelID,
 		AccessHash:        channel.AccessHash,
 		Type:              channel.Type,
-	}, query, limit)
+	}
+	var items []telegram.Message
+	err = s.requestGovernor.Run(ctx, account.ID, telegramguard.OperationSearch, func() error {
+		var err error
+		items, err = s.telegram.SearchMessages(ctx, accountSession, channelRef, query, limit)
+		return err
+	})
 	if err != nil {
 		s.logger.Error("remote search failed",
 			zap.Int64("task_id", task.ID),

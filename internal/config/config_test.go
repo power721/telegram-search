@@ -36,6 +36,9 @@ server:
 	if cfg.Sync.HistoryBatchSize != 100 {
 		t.Fatalf("history batch size = %d, want 100", cfg.Sync.HistoryBatchSize)
 	}
+	if time.Duration(cfg.Sync.TelegramRequestInterval) != 2*time.Second {
+		t.Fatalf("telegram request interval = %s, want 2s", cfg.Sync.TelegramRequestInterval)
+	}
 	if cfg.Storage.Path != "/data/tg-search" {
 		t.Fatalf("storage path = %q, want /data/tg-search", cfg.Storage.Path)
 	}
@@ -144,6 +147,27 @@ telegram:
 	}
 	if time.Duration(cfg.Telegram.Stream.ChunkTimeout) != 15*time.Second {
 		t.Fatalf("telegram stream chunk timeout = %s, want 15s", cfg.Telegram.Stream.ChunkTimeout)
+	}
+}
+
+func TestLoadAppliesSyncTelegramRequestInterval(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	err := os.WriteFile(configPath, []byte(`
+sync:
+  telegram_request_interval: 750ms
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	if time.Duration(cfg.Sync.TelegramRequestInterval) != 750*time.Millisecond {
+		t.Fatalf("telegram request interval = %s, want 750ms", cfg.Sync.TelegramRequestInterval)
 	}
 }
 

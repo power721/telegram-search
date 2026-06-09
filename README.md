@@ -15,6 +15,7 @@ server:
 sync:
   workers: 5
   history_batch_size: 100
+  telegram_request_interval: 2s
 storage:
   path: /data/tg-search
   max_db_size: 10GB

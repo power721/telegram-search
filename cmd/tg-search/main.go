@@ -32,6 +32,7 @@ import (
 	"tg-search/internal/storage"
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
+	"tg-search/internal/telegramguard"
 	updatepkg "tg-search/internal/update"
 )
 
@@ -106,6 +107,7 @@ func run(configPath string) error {
 	telegramRuntime := telegram.RuntimeConfigFromConfig(cfg.Telegram)
 	tgClient := telegram.NewGotdClient(telegramCredentials, logs.Telegram, telegramRuntime)
 	retryPolicy := retry.DefaultPolicy()
+	telegramGovernor := telegramguard.New(telegramguard.Options{Interval: cfg.Sync.TelegramRequestInterval.Std()})
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
@@ -130,13 +132,14 @@ func run(configPath string) error {
 	})
 	searchService := search.NewService(messages, links, files, channels)
 	remoteSearchService := search.NewRemoteService(search.RemoteOptions{
-		Accounts: accounts,
-		Channels: channels,
-		Tasks:    remoteSearch,
-		Cursors:  cursors,
-		Telegram: tgClient,
-		Sessions: sessions,
-		Logger:   logs.App,
+		Accounts:        accounts,
+		Channels:        channels,
+		Tasks:           remoteSearch,
+		Cursors:         cursors,
+		Telegram:        tgClient,
+		Sessions:        sessions,
+		RequestGovernor: telegramGovernor,
+		Logger:          logs.App,
 	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, Cursors: cursors,
@@ -146,6 +149,7 @@ func run(configPath string) error {
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 		Workers:          cfg.Sync.Workers,
 		RetryPolicy:      retryPolicy,
+		RequestGovernor:  telegramGovernor,
 		Logger:           logs.SyncLog,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)

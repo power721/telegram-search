@@ -22,6 +22,7 @@ import (
 	"tg-search/internal/session"
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
+	"tg-search/internal/telegramguard"
 )
 
 type Options struct {
@@ -40,6 +41,7 @@ type Options struct {
 	HistoryBatchSize int
 	Workers          int
 	RetryPolicy      retry.Policy
+	RequestGovernor  *telegramguard.Governor
 	Logger           *zap.Logger
 }
 
@@ -59,6 +61,7 @@ type Service struct {
 	historyBatchSize int
 	workers          int
 	retryPolicy      retry.Policy
+	requestGovernor  *telegramguard.Governor
 	logger           *zap.Logger
 	mu               sync.Mutex
 	runningChannels  map[int64]struct{}
@@ -142,6 +145,7 @@ func NewService(opts Options) *Service {
 		historyBatchSize: opts.HistoryBatchSize,
 		workers:          opts.Workers,
 		retryPolicy:      opts.RetryPolicy,
+		requestGovernor:  opts.RequestGovernor,
 		logger:           opts.Logger,
 		runningChannels:  map[int64]struct{}{},
 	}
@@ -284,7 +288,7 @@ func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.Ga
 		if err := checkTaskStatus(ctx, progress); err != nil {
 			return result, err
 		}
-		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
+		batch, err := s.fetchHistory(ctx, account.ID, accountSession, ref, offsetID, s.historyBatchSize)
 		if err != nil {
 			err = fmt.Errorf("fetch gap recovery history: %w", err)
 			if classification := retry.Classify(err); classification.Kind == retry.KindFloodWait {
@@ -656,7 +660,7 @@ func (s *Service) syncListenBacklogChannelOnce(ctx context.Context, channel mode
 		Type:              channel.Type,
 	}
 
-	firstBatch, err := s.telegram.FetchHistory(ctx, accountSession, ref, 0, 1)
+	firstBatch, err := s.fetchHistory(ctx, account.ID, accountSession, ref, 0, 1)
 	if err != nil {
 		return result, fmt.Errorf("fetch latest history: %w", err)
 	}
@@ -715,7 +719,7 @@ func (s *Service) syncListenBacklogChannelOnce(ctx context.Context, channel mode
 			break
 		}
 		offsetID = minID
-		batch, err = s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
+		batch, err = s.fetchHistory(ctx, account.ID, accountSession, ref, offsetID, s.historyBatchSize)
 		if err != nil {
 			return result, fmt.Errorf("fetch backlog history: %w", err)
 		}
@@ -875,7 +879,7 @@ func (s *Service) syncChannelOnce(ctx context.Context, channelID int64, requeste
 				fetchLimit = remaining
 			}
 		}
-		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, fetchLimit)
+		batch, err := s.fetchHistory(ctx, account.ID, accountSession, ref, offsetID, fetchLimit)
 		if err != nil {
 			return result, fmt.Errorf("fetch history: %w", err)
 		}
@@ -988,6 +992,16 @@ func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64,
 		return
 	}
 	_ = s.accounts.UpdateStatus(ctx, channel.AccountID, status)
+}
+
+func (s *Service) fetchHistory(ctx context.Context, accountID int64, account telegram.AccountSession, ref telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	var out []telegram.Message
+	err := s.requestGovernor.Run(ctx, accountID, telegramguard.OperationFetchHistory, func() error {
+		var err error
+		out, err = s.telegram.FetchHistory(ctx, account, ref, offsetID, limit)
+		return err
+	})
+	return out, err
 }
 
 func (s *Service) markAccountFloodWait(ctx context.Context, accountID int64) {

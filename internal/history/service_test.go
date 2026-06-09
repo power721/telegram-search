@@ -20,6 +20,7 @@ import (
 	"tg-search/internal/session"
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
+	"tg-search/internal/telegramguard"
 )
 
 func TestSyncChannelUsesSyncProfile(t *testing.T) {
@@ -1337,6 +1338,36 @@ func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {
 	}
 	if fake.maxActive > 2 {
 		t.Fatalf("max active = %d, want <= 2", fake.maxActive)
+	}
+}
+
+func TestSyncManySerializesFetchHistoryPerAccountWithGovernor(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channel1 := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	channel2, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 201, AccessHash: 301, Title: "VIP 2", Type: model.ChannelTypeChannel, HistorySyncEnabled: true})
+	if err != nil {
+		t.Fatalf("save channel2: %v", err)
+	}
+	channel3, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 202, AccessHash: 302, Title: "VIP 3", Type: model.ChannelTypeChannel, HistorySyncEnabled: true})
+	if err != nil {
+		t.Fatalf("save channel3: %v", err)
+	}
+	fake := &concurrentHistoryClient{delay: 5 * time.Millisecond}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10, Workers: 3,
+		RetryPolicy:     retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
+		RequestGovernor: telegramguard.New(telegramguard.Options{}),
+	})
+
+	result := service.SyncMany(ctx, []int64{channel1, channel2, channel3})
+	if result.Queued != 3 || len(result.Failures) != 0 {
+		t.Fatalf("result = %+v, want 3 queued and no failures", result)
+	}
+	if fake.maxActive != 1 {
+		t.Fatalf("max active = %d, want 1", fake.maxActive)
 	}
 }
 

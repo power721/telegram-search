@@ -70,6 +70,9 @@ function statusLabel(status: string) {
     ONLINE: '在线',
     LOGIN_REQUIRED: '需要登录',
     PASSWORD_REQUIRED: '需要密码',
+    RECONNECTING: '重连中',
+    FLOOD_WAIT: '等待限流解除',
+    DISCONNECTED: '已断开',
     OFFLINE: '离线',
     ERROR: '异常'
   }
@@ -78,7 +81,8 @@ function statusLabel(status: string) {
 
 function statusClass(status: string) {
   if (status === 'ONLINE') return 'status-success'
-  if (status === 'LOGIN_REQUIRED' || status === 'PASSWORD_REQUIRED') return 'status-warning'
+  if (status === 'LOGIN_REQUIRED' || status === 'PASSWORD_REQUIRED' || status === 'FLOOD_WAIT') return 'status-warning'
+  if (status === 'RECONNECTING') return 'status-info'
   if (status === 'ERROR') return 'status-danger'
   return 'status-muted'
 }

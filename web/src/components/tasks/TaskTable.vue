@@ -35,7 +35,7 @@ function formatDate(value?: string) {
   if (Number.isNaN(date.getTime())) return '-'
   return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'medium',
-    timeStyle: 'short'
+    timeStyle: 'medium'
   }).format(date)
 }
 

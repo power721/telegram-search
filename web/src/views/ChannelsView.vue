@@ -27,7 +27,7 @@ const ruleSaving = ref(false)
 const channelRuleId = ref<number | null>(null)
 const canConfirmSync = computed(() => Number.isInteger(syncMaxMessages.value) && Number(syncMaxMessages.value) > 0)
 
-const defaultMessageTypes = ['link', 'text']
+const defaultMessageTypes = ['link', 'text', 'image', 'video', 'audio']
 const defaultLinkTypes = ['cloud_drive', 'magnet', 'ed2k', 'other']
 
 const ruleForm = ref({
@@ -584,6 +584,7 @@ async function useGlobalRule() {
           <n-form-item label="消息类型">
             <n-checkbox-group v-model:value="ruleForm.message_types" class="rule-message-types">
               <n-checkbox value="link">链接</n-checkbox>
+              <n-checkbox value="image">图片</n-checkbox>
               <n-checkbox value="video">视频</n-checkbox>
               <n-checkbox value="audio">音频</n-checkbox>
               <n-checkbox value="file">文件</n-checkbox>

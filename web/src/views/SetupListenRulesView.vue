@@ -10,7 +10,7 @@ const setup = useSetupStore()
 
 const includes = ref('')
 const excludes = ref('')
-const messageTypes = ref(['link', 'text', 'image', 'video'])
+const messageTypes = ref(['link', 'text', 'image', 'video', 'audio'])
 const linkTypes = ref(['cloud_drive', 'magnet', 'ed2k', 'other'])
 
 function terms(value: string) {

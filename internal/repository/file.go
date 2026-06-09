@@ -257,6 +257,8 @@ func fileCategory(file model.File) string {
 		return "image"
 	case ext == ".mp4" || ext == ".mkv" || ext == ".avi" || strings.HasPrefix(mimeType, "video/"):
 		return "video"
+	case ext == ".mp3" || ext == ".m4a" || ext == ".ogg" || ext == ".opus" || ext == ".flac" || ext == ".wav" || strings.HasPrefix(mimeType, "audio/"):
+		return "audio"
 	case ext == ".pdf" || ext == ".epub" || ext == ".mobi":
 		return "ebook"
 	case ext == ".zip" || ext == ".rar" || ext == ".7z":

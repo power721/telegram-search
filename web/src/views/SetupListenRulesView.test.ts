@@ -53,7 +53,7 @@ describe('SetupListenRulesView', () => {
     expect(apiPost).toHaveBeenCalledWith('/api/setup/listen-rules', {
       includes: [],
       excludes: [],
-      message_types: ['link', 'text'],
+      message_types: ['link', 'text', 'image', 'video', 'audio'],
       link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
     })
     expect(push).toHaveBeenCalledWith('/setup/channels')

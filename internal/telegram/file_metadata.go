@@ -79,6 +79,9 @@ func MessageMediaMetadata(message *tg.Message) (string, string) {
 		if isVideoDocument(document) {
 			return "video", document.MimeType
 		}
+		if isAudioDocument(document) {
+			return "audio", document.MimeType
+		}
 		if strings.HasPrefix(strings.ToLower(document.MimeType), "image/") {
 			return "photo", document.MimeType
 		}
@@ -95,6 +98,9 @@ func MessageMediaMetadata(message *tg.Message) (string, string) {
 			if document, ok := doc.(*tg.Document); ok {
 				if isVideoDocument(document) {
 					return "video", "webpage_" + document.MimeType
+				}
+				if isAudioDocument(document) {
+					return "audio", "webpage_" + document.MimeType
 				}
 				if strings.HasPrefix(strings.ToLower(document.MimeType), "image/") || len(document.Thumbs) > 0 {
 					return "photo", "webpage_" + document.MimeType
@@ -120,6 +126,8 @@ func defaultDocumentFileName(document *tg.Document) string {
 	switch {
 	case isVideoDocument(document):
 		return fmt.Sprintf("telegram-video-%d%s", document.ID, mimeExtension(document.MimeType, ".mp4"))
+	case isAudioDocument(document):
+		return fmt.Sprintf("telegram-audio-%d%s", document.ID, mimeExtension(document.MimeType, ".mp3"))
 	case strings.HasPrefix(strings.ToLower(document.MimeType), "image/"):
 		return fmt.Sprintf("telegram-image-%d%s", document.ID, mimeExtension(document.MimeType, ".jpg"))
 	default:
@@ -131,6 +139,8 @@ func mediaFileCategory(document *tg.Document) string {
 	switch {
 	case isVideoDocument(document):
 		return "video"
+	case isAudioDocument(document):
+		return "audio"
 	case strings.HasPrefix(strings.ToLower(document.MimeType), "image/"):
 		return "image"
 	default:
@@ -154,6 +164,18 @@ func mimeExtension(mimeType string, fallback string) string {
 		return ".mov"
 	case "video/webm":
 		return ".webm"
+	case "audio/mpeg":
+		return ".mp3"
+	case "audio/mp4":
+		return ".m4a"
+	case "audio/ogg":
+		return ".ogg"
+	case "audio/opus":
+		return ".opus"
+	case "audio/flac":
+		return ".flac"
+	case "audio/wav", "audio/x-wav":
+		return ".wav"
 	default:
 		return fallback
 	}
@@ -191,6 +213,21 @@ func isVideoDocument(document *tg.Document) bool {
 	}
 	for _, attr := range document.Attributes {
 		if _, ok := attr.(*tg.DocumentAttributeVideo); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func isAudioDocument(document *tg.Document) bool {
+	if document == nil {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(document.MimeType), "audio/") {
+		return true
+	}
+	for _, attr := range document.Attributes {
+		if _, ok := attr.(*tg.DocumentAttributeAudio); ok {
 			return true
 		}
 	}

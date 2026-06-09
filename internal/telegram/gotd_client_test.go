@@ -241,6 +241,39 @@ func TestConvertMessageExtractsVideoFileMetadata(t *testing.T) {
 	}
 }
 
+func TestConvertMessageExtractsAudioFileMetadata(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	media := &tg.MessageMediaDocument{}
+	media.SetDocument(&tg.Document{
+		ID:       42,
+		MimeType: "audio/mpeg",
+		Size:     12345,
+		Attributes: []tg.DocumentAttributeClass{
+			&tg.DocumentAttributeAudio{Duration: 180},
+		},
+	})
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "audio",
+	}
+	message.SetMedia(media)
+
+	converted := convertMessage(message)
+
+	if converted.MessageType != "audio" || converted.MediaSummary != "audio/mpeg" {
+		t.Fatalf("media metadata = %q/%q, want audio/audio/mpeg", converted.MessageType, converted.MediaSummary)
+	}
+	if len(converted.Files) != 1 {
+		t.Fatalf("files = %+v, want one audio file", converted.Files)
+	}
+	file := converted.Files[0]
+	if file.FileName != "telegram-audio-42.mp3" || file.Extension != ".mp3" || file.MimeType != "audio/mpeg" || file.SizeBytes != 12345 || file.Category != "audio" {
+		t.Fatalf("audio file = %+v, want mp3 metadata", file)
+	}
+}
+
 func TestConvertMessageClassifiesWebPagePhotoMedia(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	webPage := &tg.WebPage{ID: 7, URL: "https://pan.quark.cn/s/abc"}

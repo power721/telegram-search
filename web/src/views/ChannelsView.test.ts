@@ -476,7 +476,7 @@ describe('ChannelsView', () => {
       enabled: true,
       includes: ['电影'],
       excludes: ['预告'],
-      message_types: ['link', 'text'],
+      message_types: ['link', 'text', 'image', 'video', 'audio'],
       link_types: ['cloud_drive', 'magnet', 'ed2k', 'other']
     })
 

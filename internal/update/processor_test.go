@@ -155,14 +155,14 @@ func TestProcessorFiltersRealtimeMessagesByEnabledWatchRule(t *testing.T) {
 	}
 }
 
-func TestProcessorKeepsRealtimeImageMessagesWhenRuleAllowsImages(t *testing.T) {
+func TestProcessorKeepsRealtimeImageAndAudioMessagesWhenRuleAllowsMedia(t *testing.T) {
 	ctx := context.Background()
 	fixture := newProcessorFixture(t)
 	rules := repository.NewWatchRuleRepository(fixture.conn)
 	_, err := rules.Create(ctx, model.WatchRule{
 		ChannelID:    fixture.channelID,
 		Enabled:      true,
-		MessageTypes: []string{"image"},
+		MessageTypes: []string{"image", "audio"},
 		LinkTypes:    []string{"cloud_drive"},
 	})
 	if err != nil {
@@ -197,6 +197,25 @@ func TestProcessorKeepsRealtimeImageMessagesWhenRuleAllowsImages(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("process image event: %v", err)
 	}
+	if err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         16,
+		MessageType:       "audio",
+		MediaSummary:      "audio/mpeg",
+		Text:              "track",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+		Files: []model.File{{
+			FileName:  "telegram-audio-42.mp3",
+			Extension: ".mp3",
+			MimeType:  "audio/mpeg",
+			Category:  "audio",
+		}},
+	}); err != nil {
+		t.Fatalf("process audio event: %v", err)
+	}
 
 	results, err := fixture.messages.Search(ctx, repository.SearchParams{Query: "cover", Limit: 10})
 	if err != nil {
@@ -211,6 +230,20 @@ func TestProcessorKeepsRealtimeImageMessagesWhenRuleAllowsImages(t *testing.T) {
 	}
 	if len(files) != 1 || files[0].Category != "image" {
 		t.Fatalf("files = %+v, want image metadata", files)
+	}
+	results, err = fixture.messages.Search(ctx, repository.SearchParams{Query: "track", Limit: 10})
+	if err != nil {
+		t.Fatalf("search audio: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 16 || results[0].MessageType != "audio" {
+		t.Fatalf("audio results = %+v, want stored audio message 16", results)
+	}
+	files, err = fixture.files.FindByMessageID(ctx, results[0].ID)
+	if err != nil {
+		t.Fatalf("find audio files: %v", err)
+	}
+	if len(files) != 1 || files[0].Category != "audio" {
+		t.Fatalf("audio files = %+v, want audio metadata", files)
 	}
 }
 

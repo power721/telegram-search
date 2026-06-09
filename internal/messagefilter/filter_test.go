@@ -67,12 +67,12 @@ func TestFilterKeepsCloudDriveLinkWithMediaCover(t *testing.T) {
 	}
 }
 
-func TestFilterKeepsImageAndVideoMessagesByType(t *testing.T) {
+func TestFilterKeepsImageVideoAndAudioMessagesByType(t *testing.T) {
 	rules := fakeRules{byChannel: map[int64]model.WatchRule{
 		1: {
 			ChannelID:    1,
 			Enabled:      true,
-			MessageTypes: []string{"image", "video"},
+			MessageTypes: []string{"image", "video", "audio"},
 			LinkTypes:    []string{"cloud_drive"},
 		},
 	}}
@@ -102,6 +102,19 @@ func TestFilterKeepsImageAndVideoMessagesByType(t *testing.T) {
 	}
 	if !video.Keep {
 		t.Fatalf("video result = %+v, want keep", video)
+	}
+
+	audio, err := filter.Apply(context.Background(), Request{
+		ChannelID:   1,
+		Text:        "track",
+		MessageType: "audio",
+		Files:       []model.File{{FileName: "track.mp3", MimeType: "audio/mpeg", Category: "audio"}},
+	})
+	if err != nil {
+		t.Fatalf("Apply audio returned error: %v", err)
+	}
+	if !audio.Keep {
+		t.Fatalf("audio result = %+v, want keep", audio)
 	}
 }
 

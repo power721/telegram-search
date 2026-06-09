@@ -591,7 +591,7 @@ func TestSyncChannelAppliesWatchRuleAndIgnoresEnabled(t *testing.T) {
 	}
 }
 
-func TestSyncChannelKeepsVideoMessagesWhenRuleAllowsVideos(t *testing.T) {
+func TestSyncChannelKeepsVideoAndAudioMessagesWhenRuleAllowsMedia(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	files := repository.NewFileRepository(conn)
@@ -600,7 +600,7 @@ func TestSyncChannelKeepsVideoMessagesWhenRuleAllowsVideos(t *testing.T) {
 	_, err := rules.Create(ctx, model.WatchRule{
 		ChannelID:    channelID,
 		Enabled:      false,
-		MessageTypes: []string{"video"},
+		MessageTypes: []string{"video", "audio"},
 		LinkTypes:    []string{"cloud_drive"},
 	})
 	if err != nil {
@@ -622,6 +622,21 @@ func TestSyncChannelKeepsVideoMessagesWhenRuleAllowsVideos(t *testing.T) {
 					MimeType:  "video/mp4",
 					SizeBytes: 12345,
 					Category:  "video",
+				}},
+			},
+			{
+				TelegramMessageID: 5,
+				MessageType:       "audio",
+				MediaSummary:      "audio/mpeg",
+				Text:              "track",
+				RawJSON:           "{}",
+				Date:              now.Add(-30 * time.Second),
+				Files: []model.File{{
+					FileName:  "telegram-audio-42.mp3",
+					Extension: ".mp3",
+					MimeType:  "audio/mpeg",
+					SizeBytes: 23456,
+					Category:  "audio",
 				}},
 			},
 			{TelegramMessageID: 3, Text: "plain text", RawJSON: "{}", Date: now.Add(-time.Minute)},
@@ -657,6 +672,20 @@ func TestSyncChannelKeepsVideoMessagesWhenRuleAllowsVideos(t *testing.T) {
 	}
 	if len(storedFiles) != 1 || storedFiles[0].Category != "video" {
 		t.Fatalf("files = %+v, want video metadata", storedFiles)
+	}
+	results, err = messages.Search(ctx, repository.SearchParams{Query: "track", Limit: 10})
+	if err != nil {
+		t.Fatalf("search audio: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 5 || results[0].MessageType != "audio" {
+		t.Fatalf("audio results = %+v, want stored audio message 5", results)
+	}
+	storedFiles, err = files.FindByMessageID(ctx, results[0].ID)
+	if err != nil {
+		t.Fatalf("find audio files: %v", err)
+	}
+	if len(storedFiles) != 1 || storedFiles[0].Category != "audio" {
+		t.Fatalf("audio files = %+v, want audio metadata", storedFiles)
 	}
 }
 

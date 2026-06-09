@@ -770,6 +770,9 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if _, err := deps.Links.SaveBatch(ctx, stored[2].ID, []model.Link{{Type: "ed2k", URL: "ed2k://|file|ubuntu.mkv|123|ABCDEF|/", Note: "Ubuntu ED2K"}}); err != nil {
 		t.Fatalf("save ed2k link: %v", err)
 	}
+	if _, err := deps.BackupDB.ExecContext(ctx, `UPDATE telegram_links SET category = '' WHERE type IN ('quark', 'magnet', 'ed2k')`); err != nil {
+		t.Fatalf("clear legacy link categories: %v", err)
+	}
 	if _, err := files.SaveBatch(ctx, stored[3].ID, []model.File{{FileName: "ubuntu-trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
 		t.Fatalf("save video file: %v", err)
 	}
@@ -855,6 +858,33 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	} {
 		if strings.Contains(responseText, forbidden) {
 			t.Fatalf("external response leaked %q: %s", forbidden, responseText)
+		}
+	}
+}
+
+func TestExternalResourceFiltersSupportRequestedTypeAliases(t *testing.T) {
+	got := externalResourceFilters([]string{"百度", "阿里", "夸克", "光鸭", "天翼", "115", "迅雷", "UC", "移动", "PikPak", "123", "磁力", "电驴"})
+	want := []externalResourceFilter{
+		{category: "cloud_drive", typ: "baidu"},
+		{category: "cloud_drive", typ: "aliyun"},
+		{category: "cloud_drive", typ: "quark"},
+		{category: "cloud_drive", typ: "guangya"},
+		{category: "cloud_drive", typ: "tianyi"},
+		{category: "cloud_drive", typ: "115"},
+		{category: "cloud_drive", typ: "xunlei"},
+		{category: "cloud_drive", typ: "uc"},
+		{category: "cloud_drive", typ: "mobile"},
+		{category: "cloud_drive", typ: "pikpak"},
+		{category: "cloud_drive", typ: "123"},
+		{category: "magnet"},
+		{category: "ed2k"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("filters len = %d, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("filter[%d] = %+v, want %+v; all=%+v", i, got[i], want[i], got)
 		}
 	}
 }

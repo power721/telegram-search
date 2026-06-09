@@ -15,6 +15,14 @@ type LinkRepository struct {
 	db *sql.DB
 }
 
+const linkResourceCategoryExpr = `CASE
+           WHEN COALESCE(l.category, '') <> '' THEN l.category
+           WHEN l.type = 'magnet' THEN 'magnet'
+           WHEN l.type = 'ed2k' THEN 'ed2k'
+           WHEN l.type = 'url' THEN 'http'
+           ELSE 'cloud_drive'
+         END`
+
 func NewLinkRepository(db *sql.DB) *LinkRepository {
 	return &LinkRepository{db: db}
 }
@@ -116,13 +124,7 @@ SELECT id, message_id, type, url, password, note, source_snippet, category, crea
 FROM (
   SELECT l.id, l.message_id, l.type, l.url, COALESCE(l.password, '') AS password,
          COALESCE(l.note, '') AS note, COALESCE(l.source_snippet, '') AS source_snippet,
-         CASE
-           WHEN COALESCE(l.category, '') <> '' THEN l.category
-           WHEN l.type = 'magnet' THEN 'magnet'
-           WHEN l.type = 'ed2k' THEN 'ed2k'
-           WHEN l.type = 'url' THEN 'http'
-           ELSE 'cloud_drive'
-         END AS category,
+         ` + linkResourceCategoryExpr + ` AS category,
          l.created_at, mc.text AS message_text, m.date AS message_date, m.message_type, m.media_summary, m.account_id,
          m.channel_id, c.telegram_channel_id, c.title AS channel_title, c.username AS channel_username, m.telegram_message_id,
          row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
@@ -173,13 +175,7 @@ SELECT category, count(*)
 FROM (
   SELECT
     l.url,
-    CASE
-      WHEN COALESCE(l.category, '') <> '' THEN l.category
-      WHEN l.type = 'magnet' THEN 'magnet'
-      WHEN l.type = 'ed2k' THEN 'ed2k'
-      WHEN l.type = 'url' THEN 'http'
-      ELSE 'cloud_drive'
-    END AS category,
+    ` + linkResourceCategoryExpr + ` AS category,
     row_number() OVER (PARTITION BY l.url ORDER BY m.date DESC, l.id DESC) AS rn
   FROM telegram_links l
   JOIN telegram_messages m ON m.id = l.message_id
@@ -238,7 +234,7 @@ func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 		args = append(args, params.Type)
 	}
 	if params.Category != "" {
-		where = append(where, `l.category = ?`)
+		where = append(where, `(`+linkResourceCategoryExpr+`) = ?`)
 		args = append(args, params.Category)
 	}
 	if params.AccountID > 0 {

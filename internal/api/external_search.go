@@ -257,11 +257,44 @@ func normalizeExternalCloudTypes(cloudTypes []string) []string {
 		for _, part := range strings.Split(raw, ",") {
 			value := strings.ToLower(strings.TrimSpace(part))
 			if value != "" {
-				out = append(out, value)
+				out = append(out, normalizeExternalCloudType(value))
 			}
 		}
 	}
 	return out
+}
+
+func normalizeExternalCloudType(value string) string {
+	switch value {
+	case "百度", "百度云", "百度云盘", "百度网盘":
+		return "baidu"
+	case "阿里", "阿里云", "阿里云盘", "阿里盘", "alipan", "aliyundrive":
+		return "aliyun"
+	case "夸克", "夸克云盘", "夸克网盘":
+		return "quark"
+	case "光鸭", "光鸭盘", "光鸭资源":
+		return "guangya"
+	case "天翼", "天翼云", "天翼云盘":
+		return "tianyi"
+	case "115网盘", "115云盘":
+		return "115"
+	case "迅雷", "迅雷云盘", "迅雷网盘":
+		return "xunlei"
+	case "移动", "移动云盘", "中国移动", "和彩云", "和彩云网盘":
+		return "mobile"
+	case "uc", "uc云盘", "uc网盘":
+		return "uc"
+	case "pikpak", "pikpak网盘":
+		return "pikpak"
+	case "123", "123pan", "123云盘", "123网盘", "123盘", "pan123":
+		return "123"
+	case "磁力":
+		return "magnet"
+	case "电驴", "电驴链接":
+		return "ed2k"
+	default:
+		return value
+	}
 }
 
 func addExternalResourceFilter(filters *[]externalResourceFilter, seen map[string]struct{}, filter externalResourceFilter) {
@@ -275,7 +308,7 @@ func addExternalResourceFilter(filters *[]externalResourceFilter, seen map[strin
 
 func isCloudDriveProvider(value string) bool {
 	switch value {
-	case "quark", "baidu", "aliyun", "uc", "xunlei", "tianyi", "115", "pan123", "mobile", "weiyun", "lanzou", "jianguoyun", "pikpak":
+	case "quark", "baidu", "aliyun", "uc", "xunlei", "tianyi", "115", "mobile", "pikpak", "123", "guangya", "weiyun", "lanzou", "jianguoyun":
 		return true
 	default:
 		return false

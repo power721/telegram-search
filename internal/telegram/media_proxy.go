@@ -14,10 +14,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-const (
-	videoStreamPart = 512 * 1024
-	imageStreamPart = 128 * 1024
-)
+const imageStreamPart = 128 * 1024
 
 func (g *GotdClient) VideoFile(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (VideoFile, error) {
 	var out VideoFile
@@ -39,7 +36,7 @@ func (g *GotdClient) VideoFile(ctx context.Context, session AccountSession, chan
 func (g *GotdClient) StreamVideoRange(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int, file VideoFile, offset int64, length int64, w io.Writer) error {
 	return g.withClient(ctx, session.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
 		loc := documentFileLocation(file, "")
-		written, err := streamFileRange(ctx, client.API(), w, loc, offset, length)
+		written, err := streamFileRange(ctx, client.API(), w, loc, offset, length, g.runtime.Stream)
 		if err == nil {
 			return nil
 		}
@@ -54,7 +51,7 @@ func (g *GotdClient) StreamVideoRange(ctx context.Context, session AccountSessio
 		if refreshErr != nil {
 			return fmt.Errorf("%w; refresh file reference: %v", err, refreshErr)
 		}
-		_, err = streamFileRange(ctx, client.API(), w, documentFileLocation(videoFileFromDocument(doc), ""), offset, length)
+		_, err = streamFileRange(ctx, client.API(), w, documentFileLocation(videoFileFromDocument(doc), ""), offset, length, g.runtime.Stream)
 		return err
 	})
 }
@@ -178,41 +175,46 @@ func documentFileLocation(file VideoFile, thumbSize string) *tg.InputDocumentFil
 	}
 }
 
-func streamFileRange(ctx context.Context, api *tg.Client, w io.Writer, loc tg.InputFileLocationClass, offset int64, remain int64) (int64, error) {
-	var written int64
-	for remain > 0 {
-		limit := videoStreamPart
-		if remain < int64(limit) {
-			limit = int(remain)
-		}
-		res, err := api.UploadGetFile(ctx, &tg.UploadGetFileRequest{
-			Location: loc,
-			Offset:   offset,
-			Limit:    limit,
-			Precise:  true,
-		})
-		if err != nil {
-			return written, err
-		}
-		f, ok := res.(*tg.UploadFile)
-		if !ok {
-			return written, fmt.Errorf("unexpected upload.getFile result %T", res)
-		}
-		if len(f.Bytes) == 0 {
-			return written, io.ErrUnexpectedEOF
-		}
-		if _, err := w.Write(f.Bytes); err != nil {
-			return written, err
-		}
-		n := int64(len(f.Bytes))
-		written += n
-		offset += n
-		remain -= n
-		if n < int64(limit) && remain > 0 {
-			return written, io.ErrUnexpectedEOF
-		}
+type telegramFileChunkSource struct {
+	api *tg.Client
+	loc tg.InputFileLocationClass
+}
+
+func (s telegramFileChunkSource) ChunkSize(start, end int64) int64 {
+	return streamChunkSize(start, end)
+}
+
+func (s telegramFileChunkSource) Chunk(ctx context.Context, offset int64, limit int64) ([]byte, error) {
+	res, err := s.api.UploadGetFile(ctx, &tg.UploadGetFileRequest{
+		Location: s.loc,
+		Offset:   offset,
+		Limit:    int(limit),
+		Precise:  true,
+	})
+	if err != nil {
+		return nil, err
 	}
-	return written, nil
+	f, ok := res.(*tg.UploadFile)
+	if !ok {
+		return nil, fmt.Errorf("unexpected upload.getFile result %T", res)
+	}
+	if len(f.Bytes) == 0 {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return f.Bytes, nil
+}
+
+func streamRangeFromSource(ctx context.Context, w io.Writer, offset int64, remain int64, cfg StreamConfig, source streamChunkSource) (int64, error) {
+	if remain <= 0 {
+		return 0, nil
+	}
+	reader := newRangePrefetchReader(ctx, offset, offset+remain-1, cfg, source)
+	defer reader.Close()
+	return io.CopyN(w, reader, remain)
+}
+
+func streamFileRange(ctx context.Context, api *tg.Client, w io.Writer, loc tg.InputFileLocationClass, offset int64, remain int64, cfg StreamConfig) (int64, error) {
+	return streamRangeFromSource(ctx, w, offset, remain, cfg, telegramFileChunkSource{api: api, loc: loc})
 }
 
 func downloadMessageImage(ctx context.Context, api *tg.Client, msg *tg.Message) (ImageFile, error) {

@@ -99,6 +99,26 @@ func TestRangePrefetchReaderReportsChunkTimeout(t *testing.T) {
 	}
 }
 
+func TestStreamRangeFromSourceUsesPrefetchReader(t *testing.T) {
+	src := newTestChunkSource(4, 1024)
+	var out bytes.Buffer
+
+	written, err := streamRangeFromSource(context.Background(), &out, 100, 2201, StreamConfig{
+		Concurrency:  2,
+		Buffers:      2,
+		ChunkTimeout: time.Second,
+	}, src)
+	if err != nil {
+		t.Fatalf("streamRangeFromSource returned error: %v", err)
+	}
+	if written != 2201 {
+		t.Fatalf("written = %d, want 2201", written)
+	}
+	if !bytes.Equal(out.Bytes(), src.bytes[100:2301]) {
+		t.Fatal("streamed bytes did not match requested range")
+	}
+}
+
 type testChunkSource struct {
 	bytes     []byte
 	chunkSize int64

@@ -32,17 +32,37 @@ go build -ldflags "-X 'tg-search/internal/build.Version=${VERSION}'" -o /tmp/tg-
 /tmp/tg-search -config config.yaml
 ```
 
+Run with Docker in one command:
+
+```bash
+docker run -d --name tg-search --restart unless-stopped -p 9900:9900 -v tg-search-data:/data/tg-search haroldli/tg-search:latest
+```
+
+Then open `http://127.0.0.1:9900` for the admin shell, or check the service:
+
+```bash
+docker logs -f tg-search
+curl http://127.0.0.1:9900/api/health
+```
+
+To upgrade the container later:
+
+```bash
+docker pull haroldli/tg-search:latest
+docker rm -f tg-search
+docker run -d --name tg-search --restart unless-stopped -p 9900:9900 -v tg-search-data:/data/tg-search haroldli/tg-search:latest
+```
+
 Run with Docker Compose:
 
 ```bash
 mkdir -p data
-cp config.yaml data/config.yaml
 docker compose up -d
 docker compose logs -f tg-search
 curl http://127.0.0.1:9900/api/health
 ```
 
-The container stores database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`, mounted as `./data` in the example Compose file.
+The container stores config, database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`. The one-command Docker example keeps them in the `tg-search-data` Docker volume. The Compose example mounts them as `./data`. If `config.yaml` does not exist, the app creates one on first start.
 
 Back up and restore local runtime data:
 

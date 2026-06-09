@@ -18,6 +18,7 @@ RUN CGO_ENABLED=0 go build -ldflags "-X 'tg-search/internal/build.Version=${VERS
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 COPY --from=go-build /out/tg-search /usr/local/bin/tg-search
 COPY docker/config.yaml /app/config.yaml

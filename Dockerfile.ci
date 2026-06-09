@@ -3,6 +3,7 @@ FROM alpine:3.22
 ARG TARGETARCH
 
 RUN apk add --no-cache ca-certificates tzdata
+ENV TZ=Asia/Shanghai
 WORKDIR /app
 
 COPY --chmod=755 dist/linux/${TARGETARCH}/tg-search /usr/local/bin/tg-search

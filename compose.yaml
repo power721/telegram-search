@@ -8,5 +8,3 @@ services:
       - "9900:9900"
     volumes:
       - ./data:/data/tg-search
-    environment:
-      - TZ=Asia/Shanghai

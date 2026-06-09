@@ -16,12 +16,14 @@ const externalSearchDefaultLimit = 50
 const externalSearchMaxLimit = 3000
 
 type externalSearchRequest struct {
-	Keyword    string   `json:"kw"`
-	Query      string   `json:"q"`
-	ResultType string   `json:"res"`
-	CloudTypes []string `json:"cloud_types"`
-	Limit      int      `json:"limit"`
-	Offset     int      `json:"offset"`
+	Keyword              string   `json:"kw"`
+	Query                string   `json:"q"`
+	ResultType           string   `json:"res"`
+	CloudTypes           []string `json:"cloud_types"`
+	IncludeMediaMetadata bool     `json:"include_media_metadata"`
+	MediaMetadata        bool     `json:"media_metadata"`
+	Limit                int      `json:"limit"`
+	Offset               int      `json:"offset"`
 }
 
 type externalAPIResponse struct {
@@ -43,6 +45,7 @@ type externalSearchResult struct {
 	Content  string         `json:"content,omitempty"`
 	Links    []externalLink `json:"links"`
 	Images   []string       `json:"images,omitempty"`
+	externalMedia
 }
 
 type externalLink struct {
@@ -51,6 +54,7 @@ type externalLink struct {
 	Password  string    `json:"password,omitempty"`
 	Datetime  time.Time `json:"datetime,omitempty"`
 	WorkTitle string    `json:"work_title,omitempty"`
+	externalMedia
 }
 
 type externalMergedLink struct {
@@ -59,6 +63,19 @@ type externalMergedLink struct {
 	Note     string    `json:"note,omitempty"`
 	Datetime time.Time `json:"datetime"`
 	Images   []string  `json:"images,omitempty"`
+	externalMedia
+}
+
+type externalMedia struct {
+	MediaTitle    string `json:"media_title,omitempty"`
+	MediaYear     string `json:"media_year,omitempty"`
+	MediaSeason   string `json:"media_season,omitempty"`
+	MediaEpisode  string `json:"media_episode,omitempty"`
+	MediaQuality  string `json:"media_quality,omitempty"`
+	MediaSize     string `json:"media_size,omitempty"`
+	MediaTMDBID   string `json:"media_tmdb_id,omitempty"`
+	MediaCategory string `json:"media_category,omitempty"`
+	MediaTags     string `json:"media_tags,omitempty"`
 }
 
 type externalResourceFilter struct {
@@ -88,8 +105,12 @@ func (h handlers) externalSearch(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, externalAPIResponse{Code: http.StatusInternalServerError, Message: "search failed: " + err.Error()})
 		return
 	}
-	response := buildExternalSearchResponse(items, total, resultType)
+	response := buildExternalSearchResponse(items, total, resultType, req.includeMediaMetadata())
 	c.JSON(http.StatusOK, externalAPIResponse{Code: 0, Message: "success", Data: response})
+}
+
+func (r externalSearchRequest) includeMediaMetadata() bool {
+	return r.IncludeMediaMetadata || r.MediaMetadata
 }
 
 func readExternalSearchRequest(c *gin.Context) (externalSearchRequest, bool) {
@@ -102,12 +123,17 @@ func readExternalSearchRequest(c *gin.Context) (externalSearchRequest, bool) {
 		if !ok {
 			return externalSearchRequest{}, false
 		}
+		includeMediaMetadata, ok := optionalQueryBool(c, "include_media_metadata", "media_metadata")
+		if !ok {
+			return externalSearchRequest{}, false
+		}
 		return externalSearchRequest{
-			Keyword:    firstQuery(c, "kw", "q", "keyword"),
-			ResultType: c.Query("res"),
-			CloudTypes: splitCSV(c.Query("cloud_types")),
-			Limit:      limit,
-			Offset:     offset,
+			Keyword:              firstQuery(c, "kw", "q", "keyword"),
+			ResultType:           c.Query("res"),
+			CloudTypes:           splitCSV(c.Query("cloud_types")),
+			IncludeMediaMetadata: includeMediaMetadata,
+			Limit:                limit,
+			Offset:               offset,
 		}, true
 	}
 	var req externalSearchRequest
@@ -115,6 +141,33 @@ func readExternalSearchRequest(c *gin.Context) (externalSearchRequest, bool) {
 		return externalSearchRequest{}, false
 	}
 	return req, true
+}
+
+func optionalQueryBool(c *gin.Context, keys ...string) (bool, bool) {
+	for _, key := range keys {
+		raw := strings.TrimSpace(c.Query(key))
+		if raw == "" {
+			continue
+		}
+		value, err := parseExternalBool(raw)
+		if err != nil {
+			errorText(c, http.StatusBadRequest, key+" must be a boolean")
+			return false, false
+		}
+		return value, true
+	}
+	return false, true
+}
+
+func parseExternalBool(value string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "t", "yes", "y", "on":
+		return true, nil
+	case "0", "false", "f", "no", "n", "off":
+		return false, nil
+	default:
+		return false, strconv.ErrSyntax
+	}
 }
 
 func optionalQueryNonNegativeInt(c *gin.Context, key string) (int, bool) {
@@ -315,22 +368,23 @@ func isCloudDriveProvider(value string) bool {
 	}
 }
 
-func buildExternalSearchResponse(items []resource.Item, total int, resultType string) externalSearchResponse {
+func buildExternalSearchResponse(items []resource.Item, total int, resultType string, includeMediaMetadata bool) externalSearchResponse {
 	results := make([]externalSearchResult, 0, len(items))
 	merged := map[string][]externalMergedLink{}
 	for _, item := range items {
-		result := externalResultFromResource(item)
+		result := externalResultFromResource(item, includeMediaMetadata)
 		if len(result.Links) == 0 {
 			continue
 		}
 		results = append(results, result)
 		for _, link := range result.Links {
 			merged[link.Type] = append(merged[link.Type], externalMergedLink{
-				URL:      link.URL,
-				Password: link.Password,
-				Note:     firstNonEmptyString(link.WorkTitle, result.Title),
-				Datetime: link.Datetime,
-				Images:   result.Images,
+				URL:           link.URL,
+				Password:      link.Password,
+				Note:          firstNonEmptyString(link.WorkTitle, result.Title),
+				Datetime:      link.Datetime,
+				Images:        result.Images,
+				externalMedia: link.externalMedia,
 			})
 		}
 	}
@@ -344,8 +398,8 @@ func buildExternalSearchResponse(items []resource.Item, total int, resultType st
 	return response
 }
 
-func externalResultFromResource(item resource.Item) externalSearchResult {
-	title := firstNonEmptyString(item.Title, item.Note, item.FileName, item.URL)
+func externalResultFromResource(item resource.Item, includeMediaMetadata bool) externalSearchResult {
+	title := externalResourceTitle(item, includeMediaMetadata)
 	link := externalLink{
 		Type:      externalResourceType(item),
 		URL:       externalResourceURL(item),
@@ -353,11 +407,18 @@ func externalResultFromResource(item resource.Item) externalSearchResult {
 		Datetime:  item.Datetime,
 		WorkTitle: title,
 	}
+	media := externalMediaFromResource(item)
+	if includeMediaMetadata {
+		link.externalMedia = media
+	}
 	result := externalSearchResult{
 		UniqueID: item.ID,
 		Datetime: item.Datetime,
 		Title:    title,
 		Links:    []externalLink{},
+	}
+	if includeMediaMetadata {
+		result.externalMedia = media
 	}
 	if imageURL := externalResourceImageURL(item); imageURL != "" {
 		result.Images = []string{imageURL}
@@ -366,6 +427,27 @@ func externalResultFromResource(item resource.Item) externalSearchResult {
 		result.Links = append(result.Links, link)
 	}
 	return result
+}
+
+func externalResourceTitle(item resource.Item, includeMediaMetadata bool) string {
+	if includeMediaMetadata {
+		return firstNonEmptyString(item.Title, item.MediaTitle, item.Note, item.FileName, item.URL)
+	}
+	return firstNonEmptyString(item.Note, item.FileName, item.URL)
+}
+
+func externalMediaFromResource(item resource.Item) externalMedia {
+	return externalMedia{
+		MediaTitle:    item.MediaTitle,
+		MediaYear:     item.MediaYear,
+		MediaSeason:   item.MediaSeason,
+		MediaEpisode:  item.MediaEpisode,
+		MediaQuality:  item.MediaQuality,
+		MediaSize:     item.MediaSize,
+		MediaTMDBID:   item.MediaTMDBID,
+		MediaCategory: item.MediaCategory,
+		MediaTags:     item.MediaTags,
+	}
 }
 
 func externalResourceType(item resource.Item) string {

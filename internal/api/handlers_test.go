@@ -752,7 +752,18 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	if err != nil {
 		t.Fatalf("save messages: %v", err)
 	}
-	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/ubuntu", Password: "pass", Note: "Ubuntu Quark"}}); err != nil {
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type:          "quark",
+		URL:           "https://pan.quark.cn/s/ubuntu",
+		Password:      "pass",
+		Note:          "Ubuntu Quark",
+		MediaTitle:    "Ubuntu Movie",
+		MediaYear:     "2026",
+		MediaQuality:  "4K",
+		MediaTMDBID:   "12345",
+		MediaCategory: "movie",
+		MediaTags:     "linux,release",
+	}}); err != nil {
 		t.Fatalf("save quark link: %v", err)
 	}
 	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "magnet", URL: "magnet:?xt=urn:btih:abcdef", Note: "Ubuntu Magnet"}}); err != nil {
@@ -844,12 +855,61 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 		"channel_title",
 		"private_channel",
 		"raw message secret",
+		"media_title",
+		"Ubuntu Movie",
 		"https://example.com/ubuntu",
 		"ubuntu-archive.zip",
 	} {
 		if strings.Contains(responseText, forbidden) {
 			t.Fatalf("external response leaked %q: %s", forbidden, responseText)
 		}
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&include_media_metadata=true", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("external search with media metadata status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var metadataBody struct {
+		Code int `json:"code"`
+		Data struct {
+			Results []struct {
+				MediaTitle string `json:"media_title"`
+				Links      []struct {
+					MediaTitle    string `json:"media_title"`
+					MediaYear     string `json:"media_year"`
+					MediaQuality  string `json:"media_quality"`
+					MediaTMDBID   string `json:"media_tmdb_id"`
+					MediaCategory string `json:"media_category"`
+					MediaTags     string `json:"media_tags"`
+				} `json:"links"`
+			} `json:"results"`
+			MergedByType map[string][]struct {
+				MediaTitle    string `json:"media_title"`
+				MediaYear     string `json:"media_year"`
+				MediaQuality  string `json:"media_quality"`
+				MediaTMDBID   string `json:"media_tmdb_id"`
+				MediaCategory string `json:"media_category"`
+				MediaTags     string `json:"media_tags"`
+			} `json:"merged_by_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &metadataBody); err != nil {
+		t.Fatalf("invalid metadata JSON: %v", err)
+	}
+	quarkMetadata := metadataBody.Data.MergedByType["quark"][0]
+	if quarkMetadata.MediaTitle != "Ubuntu Movie" || quarkMetadata.MediaYear != "2026" || quarkMetadata.MediaQuality != "4K" || quarkMetadata.MediaTMDBID != "12345" || quarkMetadata.MediaCategory != "movie" || quarkMetadata.MediaTags != "linux,release" {
+		t.Fatalf("merged quark metadata = %+v, want populated media metadata; body=%s", quarkMetadata, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&include_media_metadata=maybe", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("invalid include_media_metadata code = %d body=%s, want 400", w.Code, w.Body.String())
 	}
 }
 

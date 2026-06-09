@@ -155,6 +155,69 @@ describe('TasksView', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/tasks?limit=50&offset=50')
   })
 
+  it('submits task search and filter queries', async () => {
+    const wrapper = mount(TasksView, {
+      global: {
+        stubs: {
+          'n-button': {
+            template: '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot /></button>',
+            props: ['disabled'],
+            emits: ['click']
+          },
+          'n-input': {
+            template: '<input :value="value" @input="$emit(\'update:value\', $event.target.value)" />',
+            props: ['value'],
+            emits: ['update:value']
+          },
+          'n-select': {
+            template:
+              '<select :value="value" @change="$emit(\'update:value\', $event.target.value)"><option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option></select>',
+            props: ['value', 'options'],
+            emits: ['update:value']
+          },
+          'n-tag': { template: '<span><slot /></span>' },
+          'n-drawer': true,
+          'n-drawer-content': true,
+          'n-descriptions': { template: '<div><slot /></div>' },
+          'n-descriptions-item': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.find('.task-search').setValue('temporary')
+    await wrapper.find('.task-status-filter').setValue('failed')
+    await wrapper.find('.task-type-filter').setValue('history_sync')
+    await wrapper.find('.task-filters').trigger('submit')
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenLastCalledWith('/api/tasks?status=failed&type=history_sync&q=temporary&limit=50')
+  })
+
+  it('sorts tasks from table headers', async () => {
+    const wrapper = mount(TasksView, {
+      global: {
+        stubs: {
+          'n-button': { template: '<button :disabled="disabled"><slot /></button>', props: ['disabled'] },
+          'n-tag': { template: '<span><slot /></span>' },
+          'n-drawer': true,
+          'n-drawer-content': true,
+          'n-descriptions': { template: '<div><slot /></div>' },
+          'n-descriptions-item': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.find('[data-sort-key="progress"]').trigger('click')
+    await flushPromises()
+    expect(apiGet).toHaveBeenLastCalledWith('/api/tasks?sort=progress&order=asc&limit=50')
+
+    await wrapper.find('[data-sort-key="progress"]').trigger('click')
+    await flushPromises()
+    expect(apiGet).toHaveBeenLastCalledWith('/api/tasks?sort=progress&order=desc&limit=50')
+  })
+
   it('confirms before deleting selected tasks', async () => {
     const wrapper = mount(TasksView, {
       global: {

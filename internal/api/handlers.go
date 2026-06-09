@@ -622,6 +622,9 @@ func (h handlers) tasks(c *gin.Context) {
 	filter := taskpkg.ListFilter{
 		Status: c.Query("status"),
 		Type:   c.Query("type"),
+		Query:  c.Query("q"),
+		Sort:   c.Query("sort"),
+		Order:  c.Query("order"),
 		Limit:  limit,
 		Offset: offset,
 	}

@@ -60,18 +60,18 @@ function taskTypeLabel(type: string) {
 
 function linkTypeLabel(type: string) {
   const labels: Record<string, string> = {
-    '115': '115',
-    '123': '123',
+    '115': '115云盘',
+    '123': '123网盘',
     aliyun: '阿里云盘',
     baidu: '百度网盘',
     ed2k: 'ED2K',
-    guangya: '光亚盘',
-    magnet: '磁力',
+    guangya: '光鸭云盘',
+    magnet: '磁力链接',
     mobile: '移动云盘',
     pikpak: 'PikPak',
-    quark: '夸克',
+    quark: '夸克网盘',
     tianyi: '天翼云盘',
-    uc: 'UC',
+    uc: 'UC网盘',
     url: '普通链接',
     xunlei: '迅雷云盘'
   }

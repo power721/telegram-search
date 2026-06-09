@@ -82,6 +82,15 @@ export interface VersionInfoResponse {
   update_available: boolean
 }
 
+export interface SystemInfoResponse {
+  name: string
+  version: string
+  architecture: string
+  go_version: string
+  cpu_count: number
+  hostname: string
+}
+
 export interface TelegramAPISettingsResponse {
   configured: boolean
   app_id: number

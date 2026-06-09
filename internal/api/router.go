@@ -122,6 +122,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.Use(h.requireAdminSession())
 	adminOnly.GET("/listen-rules", h.getListenRules)
 	adminOnly.PUT("/listen-rules", h.updateListenRules)
+	adminOnly.GET("/settings/system-info", h.getSystemInfoSettings)
 	adminOnly.GET("/storage/usage", h.storageUsage)
 	adminOnly.GET("/status", h.status)
 	adminOnly.GET("/tasks", h.tasks)

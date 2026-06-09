@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +27,46 @@ func (h handlers) getVersionSettings(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, info)
+}
+
+func (h handlers) getSystemInfoSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, loadSystemInfo())
+}
+
+func loadSystemInfo() model.SystemInfoResponse {
+	hostname, _ := os.Hostname()
+	return model.SystemInfoResponse{
+		Name:         systemName(runtime.GOOS),
+		Version:      systemVersion(runtime.GOOS),
+		Architecture: runtime.GOARCH,
+		GoVersion:    runtime.Version(),
+		CPUCount:     runtime.NumCPU(),
+		Hostname:     hostname,
+	}
+}
+
+func systemName(goos string) string {
+	switch goos {
+	case "linux":
+		return "Linux"
+	case "darwin":
+		return "macOS"
+	case "windows":
+		return "Windows"
+	default:
+		return goos
+	}
+}
+
+func systemVersion(goos string) string {
+	if goos != "linux" {
+		return ""
+	}
+	data, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func loadVersionInfo(ctx context.Context, client *http.Client, checkUpdate bool) (model.VersionInfoResponse, error) {

@@ -378,6 +378,8 @@ Creates a listen rule.
 
 Public integration search endpoint protected by API key. It returns sanitized resource results and does not require an admin session.
 
+`kw`, `q`, or `keyword` is optional. When omitted or blank, the endpoint returns the latest matching resources by `limit`. `limit` defaults to `50` and is capped at `3000`.
+
 ## Admin Search
 
 ### `GET /api/admin/search/global?q=ubuntu`

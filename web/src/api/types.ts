@@ -97,6 +97,36 @@ export interface TelegramAPISettingsResponse {
   app_hash_set: boolean
 }
 
+export interface RuntimeSettings {
+  sync: {
+    workers: number
+    history_batch_size: number
+    telegram_request_interval: string
+  }
+  storage: {
+    max_db_size: number
+    max_media_cache: number
+  }
+  telegram: {
+    proxy: string
+    reconnect_timeout: string
+    dial_timeout: string
+    rate_limit: {
+      enabled: boolean
+      rate_per_second: number
+      burst: number
+    }
+    stream: {
+      concurrency: number
+      buffers: number
+      chunk_timeout: string
+    }
+    media: {
+      concurrency: number
+    }
+  }
+}
+
 export interface TelegramAccount {
   id: number
   phone: string

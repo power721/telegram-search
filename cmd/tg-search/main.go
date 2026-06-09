@@ -97,6 +97,16 @@ func run(configPath string) error {
 	users := repository.NewUserRepository(conn)
 	apiKeys := repository.NewAPIKeyRepository(conn)
 	settings := repository.NewSettingsRepository(conn)
+	runtimeSettings, err := settings.LoadRuntimeSettings(ctx, cfg)
+	if err != nil {
+		logs.App.Error("load runtime settings failed", zap.Error(err))
+		return err
+	}
+	cfg, err = config.ApplyRuntimeSettings(cfg, runtimeSettings)
+	if err != nil {
+		logs.App.Error("apply runtime settings failed", zap.Error(err))
+		return err
+	}
 	watchFilter := messagefilter.New(messagefilter.NewSettingsRuleStore(watchRules, settings))
 	taskRepository := taskpkg.NewRepository(conn)
 	taskService := taskpkg.NewService(taskRepository)

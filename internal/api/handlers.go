@@ -393,6 +393,31 @@ func (h handlers) updateTelegramAPISettings(c *gin.Context) {
 	c.JSON(http.StatusOK, repository.RedactTelegramAPI(settings))
 }
 
+func (h handlers) getRuntimeSettings(c *gin.Context) {
+	settings, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, settings)
+}
+
+func (h handlers) updateRuntimeSettings(c *gin.Context) {
+	var settings config.RuntimeSettings
+	if !bindJSON(c, &settings) {
+		return
+	}
+	if _, err := config.ApplyRuntimeSettings(h.deps.RuntimeConfig, settings); err != nil {
+		errorText(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := h.deps.Settings.SaveRuntimeSettings(c.Request.Context(), settings); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, settings)
+}
+
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {
 	var req struct {
 		AppID   int    `json:"app_id"`

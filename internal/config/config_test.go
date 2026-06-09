@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,6 +156,121 @@ telegram:
 	}
 	if cfg.Telegram.Media.Concurrency != 4 {
 		t.Fatalf("telegram media concurrency = %d, want 4", cfg.Telegram.Media.Concurrency)
+	}
+}
+
+func TestApplyRuntimeSettingsOverridesOperationalConfig(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = 9900
+	cfg.Storage.Path = "data"
+
+	settings := RuntimeSettings{
+		Sync: RuntimeSyncSettings{
+			Workers:                 8,
+			HistoryBatchSize:        250,
+			TelegramRequestInterval: Duration(1500 * time.Millisecond),
+		},
+		Storage: RuntimeStorageSettings{
+			MaxDBSize:     Size(30 * 1000 * 1000 * 1000),
+			MaxMediaCache: Size(40 * 1000 * 1000 * 1000),
+		},
+		Telegram: RuntimeTelegramSettings{
+			Proxy:            "socks5://127.0.0.1:1080",
+			ReconnectTimeout: Duration(6 * time.Minute),
+			DialTimeout:      Duration(15 * time.Second),
+			RateLimit: TelegramRateLimitConfig{
+				Enabled:       false,
+				RatePerSecond: 12,
+				Burst:         6,
+			},
+			Stream: TelegramStreamConfig{
+				Concurrency:  4,
+				Buffers:      8,
+				ChunkTimeout: Duration(30 * time.Second),
+			},
+			Media: TelegramMediaConfig{
+				Concurrency: 3,
+			},
+		},
+	}
+
+	got, err := ApplyRuntimeSettings(cfg, settings)
+	if err != nil {
+		t.Fatalf("ApplyRuntimeSettings returned error: %v", err)
+	}
+
+	if got.Server.Host != "127.0.0.1" || got.Server.Port != 9900 || got.Storage.Path != "data" {
+		t.Fatalf("base server/storage paths changed: %+v", got)
+	}
+	if got.Sync.Workers != 8 || got.Sync.HistoryBatchSize != 250 || time.Duration(got.Sync.TelegramRequestInterval) != 1500*time.Millisecond {
+		t.Fatalf("sync config = %+v", got.Sync)
+	}
+	if got.Storage.MaxDBSize != Size(30*1000*1000*1000) || got.Storage.MaxMediaCache != Size(40*1000*1000*1000) {
+		t.Fatalf("storage limits = %+v", got.Storage)
+	}
+	if got.Telegram.Proxy != "socks5://127.0.0.1:1080" {
+		t.Fatalf("telegram proxy = %q", got.Telegram.Proxy)
+	}
+	if got.Telegram.RateLimit.Enabled || got.Telegram.RateLimit.RatePerSecond != 12 || got.Telegram.RateLimit.Burst != 6 {
+		t.Fatalf("rate limit = %+v", got.Telegram.RateLimit)
+	}
+	if got.Telegram.Stream.Concurrency != 4 || got.Telegram.Stream.Buffers != 8 || time.Duration(got.Telegram.Stream.ChunkTimeout) != 30*time.Second {
+		t.Fatalf("stream config = %+v", got.Telegram.Stream)
+	}
+	if got.Telegram.Media.Concurrency != 3 {
+		t.Fatalf("media concurrency = %d, want 3", got.Telegram.Media.Concurrency)
+	}
+}
+
+func TestRuntimeSettingsFromConfigExcludesStartupOnlyFields(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = 9901
+	cfg.Storage.Path = "data"
+
+	settings := RuntimeSettingsFromConfig(cfg)
+
+	if settings.Sync.Workers != cfg.Sync.Workers {
+		t.Fatalf("settings sync workers = %d, want %d", settings.Sync.Workers, cfg.Sync.Workers)
+	}
+	if settings.Storage.MaxDBSize != cfg.Storage.MaxDBSize {
+		t.Fatalf("settings max db size = %d, want %d", settings.Storage.MaxDBSize, cfg.Storage.MaxDBSize)
+	}
+	if settings.Telegram.Media.Concurrency != cfg.Telegram.Media.Concurrency {
+		t.Fatalf("settings media concurrency = %d, want %d", settings.Telegram.Media.Concurrency, cfg.Telegram.Media.Concurrency)
+	}
+}
+
+func TestRuntimeSettingsJSONAcceptsReadableDurations(t *testing.T) {
+	var settings RuntimeSettings
+	err := json.Unmarshal([]byte(`{
+		"sync":{"workers":8,"history_batch_size":250,"telegram_request_interval":"1500ms"},
+		"storage":{"max_db_size":30000000000,"max_media_cache":40000000000},
+		"telegram":{
+			"proxy":"socks5://127.0.0.1:1080",
+			"reconnect_timeout":"6m",
+			"dial_timeout":"15s",
+			"rate_limit":{"enabled":false,"rate_per_second":12,"burst":6},
+			"stream":{"concurrency":4,"buffers":8,"chunk_timeout":"30s"},
+			"media":{"concurrency":3}
+		}
+	}`), &settings)
+	if err != nil {
+		t.Fatalf("decode runtime settings JSON: %v", err)
+	}
+	if settings.Sync.TelegramRequestInterval != Duration(1500*time.Millisecond) {
+		t.Fatalf("telegram request interval = %s, want 1500ms", settings.Sync.TelegramRequestInterval)
+	}
+	if settings.Telegram.Stream.ChunkTimeout != Duration(30*time.Second) {
+		t.Fatalf("chunk timeout = %s, want 30s", settings.Telegram.Stream.ChunkTimeout)
+	}
+	data, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatalf("marshal runtime settings JSON: %v", err)
+	}
+	if !strings.Contains(string(data), `"telegram_request_interval":"1.5s"`) || !strings.Contains(string(data), `"chunk_timeout":"30s"`) {
+		t.Fatalf("runtime settings JSON uses unreadable durations: %s", data)
 	}
 }
 

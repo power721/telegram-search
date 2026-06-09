@@ -269,6 +269,204 @@ ed2k://|file|斗破苍穹.2017 - S05E202 - 第 202 集 - 2160p.WEB-DL.SDR.HEVC.A
 	}
 }
 
+func TestExtractAssignsMediaMetadataToCloudDriveLinks(t *testing.T) {
+	text := `名称：开始推理吧 第四季 (2026)  刘宇宁 金靖 张凌赫 程鑫  综艺  真人秀真人秀  0607期
+
+描述：又名: 开始推理吧 4
+
+链接：
+🔗 百度网盘：https://pan.baidu.com/s/1sQSU-e5CoYds6MeFEymS1A?pwd=3345
+🔑 提取码：3345
+🏷 标签：#刘宇宁 #金靖 #真人秀 #开始推理吧`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "开始推理吧 第四季" {
+		t.Fatalf("media title = %q, want 开始推理吧 第四季", link.MediaTitle)
+	}
+	if link.MediaYear != "2026" || link.MediaEpisode != "0607期" || link.MediaCategory != "综艺" {
+		t.Fatalf("metadata = %+v, want year 2026 episode 0607期 category 综艺", link)
+	}
+	if link.MediaTags != "刘宇宁 金靖 真人秀 开始推理吧" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataSkipsNearbyNoiseBeforeLink(t *testing.T) {
+	text := `憨婿
+4K S01E01 - E25 HiveWeb
+
+简介：理工高材生韦浩意外魂穿大庸朝
+分享：Pluto (https://hdhive.com/user/17888)
+大小：2.6GB
+链接：直达链接 (https://pan.baidu.com/s/1yHyPAA47gToHykEQfrn3Pw?pwd=t67z)
+标签：#憨婿 #剧情`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want hdhive fallback and baidu link: %+v", len(links), links)
+	}
+	link := links[1]
+	if link.Type != "baidu" || link.MediaTitle != "憨婿" || link.Note != "憨婿" {
+		t.Fatalf("baidu link = %+v, want media title 憨婿", link)
+	}
+	if link.MediaSeason != "S01" || link.MediaEpisode != "E01" || link.MediaQuality != "4K" || link.MediaSize != "2.6GB" {
+		t.Fatalf("metadata = %+v, want season/episode/quality/size", link)
+	}
+}
+
+func TestExtractMediaMetadataFromStructuredTVMessage(t *testing.T) {
+	text := `📺 电视剧：塬上风云 (2026) - S01E30
+🍿 TMDB ID: 323346
+🎭 类型: 剧情,War & Politics
+📂 分类: 国产剧
+🎞️ 质量: WEB-DL 2160p HDR10
+💾 大小: 3.23 GB
+
+🔗 链接: https://115cdn.com/s/swsznow33xj?password=q474`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "塬上风云" || link.MediaYear != "2026" || link.MediaSeason != "S01" || link.MediaEpisode != "E30" {
+		t.Fatalf("title/sequence metadata = %+v", link)
+	}
+	if link.MediaTMDBID != "323346" || link.MediaCategory != "国产剧" || link.MediaQuality != "WEB-DL 2160p HDR10" || link.MediaSize != "3.23 GB" {
+		t.Fatalf("structured metadata = %+v", link)
+	}
+}
+
+func TestExtractMediaMetadataFromShortDramaTitle(t *testing.T) {
+	text := `短剧-完了，这破农场来的全是祖宗第二季（80集）
+
+夸克：https://pan.quark.cn/s/8fd1235933b5
+度盘：https://pan.baidu.com/s/1idK69_EZ6stsf5ra1qPwjQ?pwd=3l6e`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "完了，这破农场来的全是祖宗第二季" || link.MediaEpisode != "80集" || link.MediaCategory != "短剧" {
+			t.Fatalf("link = %+v, want short drama metadata", link)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromMagnetAndED2KURL(t *testing.T) {
+	text := `资源
+magnet:?xt=urn:btih:abcdef&dn=维京传奇.2013.S01.2160p.WEB-DL.mkv
+ed2k://|file|刀.1995.USA.UHD.Blu-ray.2160p.DV.HDR.mkv|94070593331|ABCDEF0123456789|/`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	if links[0].MediaTitle != "维京传奇.2013.S01.2160p.WEB-DL" || links[0].MediaYear != "2013" || links[0].MediaSeason != "S01" {
+		t.Fatalf("magnet metadata = %+v", links[0])
+	}
+	if links[1].MediaTitle != "刀.1995.USA.UHD.Blu-ray.2160p.DV.HDR" || links[1].MediaYear != "1995" || links[1].MediaQuality == "" || links[1].MediaSize == "" {
+		t.Fatalf("ed2k metadata = %+v", links[1])
+	}
+}
+
+func TestExtractMediaMetadataFromResourceNameAndPikPak(t *testing.T) {
+	text := `资源名称：圆桌派
+
+描述：圆桌派全季全集，《圆桌派》，别名《圆桌π》是一档的聊天文化类网络电视节目。
+
+🧲 链接: https://mypikpak.com/s/VO
+
+👉使用 PikPak 秒存，立即在线观看👈 (https://toapp.mypikpak.com/toapp?__add_url=https://mypikpak.com/s/VO&source=pptg&__campaign=/s/VO)
+
+📁 文件大小：86.7GB
+🏷 文件类型：#脱口秀#综艺##文化节目#中国文化`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want only real pikpak resource: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "pikpak" || link.URL != "https://mypikpak.com/s/VO" {
+		t.Fatalf("link = %+v, want pikpak resource", link)
+	}
+	if link.MediaTitle != "圆桌派" || link.Note != "圆桌派" || link.MediaSize != "86.7GB" || link.MediaCategory != "综艺" {
+		t.Fatalf("metadata = %+v, want title/size/category", link)
+	}
+	if link.MediaTags != "脱口秀 综艺 文化节目 中国文化" {
+		t.Fatalf("tags = %q", link.MediaTags)
+	}
+}
+
+func TestExtractMediaMetadataFromPlainTVTitle(t *testing.T) {
+	text := `电视剧 超感迷宫 2025 4K 全20集
+链接：https://cloud.189.cn/t/Y7rUvynue6vm`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "超感迷宫" || link.MediaYear != "2025" || link.MediaQuality != "4K" || link.MediaEpisode != "20集" || link.MediaCategory != "电视剧" {
+		t.Fatalf("metadata = %+v, want plain tv title metadata", link)
+	}
+}
+
+func TestExtractMediaMetadataFromAngleBracketCategory(t *testing.T) {
+	text := `《国产剧》迷墙 (2026)  2160p WEB-DL H265 DDP5.1 主演: 郭京飞 / 任素汐 / 谷嘉诚 / 漆昱辰 / 温峥嵘
+
+123云盘：https://1856557151.share.123pan.cn/123pan/oJqrvd-YON9d
+
+百度网盘：https://pan.baidu.com/s/184SrcMA15CApBQsvjtLFVQ?pwd=x7hv`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "迷墙" || link.MediaYear != "2026" || link.MediaCategory != "国产剧" {
+			t.Fatalf("link = %+v, want title/year/category", link)
+		}
+		if link.MediaQuality != "2160p WEB-DL H265 DDP5.1" {
+			t.Fatalf("quality = %q", link.MediaQuality)
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromInlineDriveLinksAndTags(t *testing.T) {
+	text := `海贼王合集 国语日语
+
+◎年  代 1999
+◎产  地 日本
+◎类  别 喜剧 / 动作 / 动画 / 奇幻 / 冒险
+◎豆  瓣 9.5
+
+大小：1.5T
+标签：#海贼王 #航海王 #ワンピース #OnePiece #动画 #动漫 #爷青回 阿里   https://www.aliyundrive.com/s/QyVTWdmGM1o 115     https://115cdn.com/s/swfx55h3ffc?password=s367#
+访问码：s367`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want aliyun and 115 links: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "海贼王合集 国语日语" || link.MediaYear != "1999" || link.MediaSize != "1.5T" {
+			t.Fatalf("link = %+v, want title/year/size", link)
+		}
+		if link.MediaTags != "海贼王 航海王 ワンピース OnePiece 动画 动漫 爷青回 阿里" {
+			t.Fatalf("tags = %q", link.MediaTags)
+		}
+	}
+	if links[1].Type != "115" || links[1].Password != "s367" {
+		t.Fatalf("second link = %+v, want 115 password", links[1])
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

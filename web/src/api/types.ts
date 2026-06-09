@@ -258,6 +258,15 @@ export interface Link {
   note?: string
   source_snippet?: string
   category?: string
+  media_title?: string
+  media_year?: string
+  media_season?: string
+  media_episode?: string
+  media_quality?: string
+  media_size?: string
+  media_tmdb_id?: string
+  media_category?: string
+  media_tags?: string
 }
 
 export interface MediaURLs {
@@ -356,6 +365,15 @@ export interface ResourceItem {
   note?: string
   title?: string
   source_snippet?: string
+  media_title?: string
+  media_year?: string
+  media_season?: string
+  media_episode?: string
+  media_quality?: string
+  media_size?: string
+  media_tmdb_id?: string
+  media_category?: string
+  media_tags?: string
   datetime?: string
   channel_id?: number
   telegram_channel_id?: number

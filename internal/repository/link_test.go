@@ -38,6 +38,11 @@ func TestLinkRepositoryPersistsResourceFields(t *testing.T) {
 		URL:           "https://example.com/ubuntu.iso",
 		SourceSnippet: "Ubuntu ISO https://example.com/ubuntu.iso",
 		Note:          "Ubuntu ISO",
+		MediaTitle:    "Ubuntu",
+		MediaYear:     "2026",
+		MediaQuality:  "ISO",
+		MediaSize:     "5.8 GB",
+		MediaTags:     "linux release",
 	}})
 	if err != nil {
 		t.Fatalf("save links: %v", err)
@@ -52,5 +57,8 @@ func TestLinkRepositoryPersistsResourceFields(t *testing.T) {
 	}
 	if results[0].Category != "http" || results[0].SourceSnippet != "Ubuntu ISO https://example.com/ubuntu.iso" {
 		t.Fatalf("resource fields = category %q snippet %q", results[0].Category, results[0].SourceSnippet)
+	}
+	if results[0].MediaTitle != "Ubuntu" || results[0].MediaYear != "2026" || results[0].MediaQuality != "ISO" || results[0].MediaSize != "5.8 GB" || results[0].MediaTags != "linux release" {
+		t.Fatalf("media fields = %+v", results[0])
 	}
 }

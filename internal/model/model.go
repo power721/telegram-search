@@ -291,6 +291,15 @@ type Link struct {
 	Note          string    `json:"note,omitempty"`
 	SourceSnippet string    `json:"source_snippet,omitempty"`
 	Category      string    `json:"category,omitempty"`
+	MediaTitle    string    `json:"media_title,omitempty"`
+	MediaYear     string    `json:"media_year,omitempty"`
+	MediaSeason   string    `json:"media_season,omitempty"`
+	MediaEpisode  string    `json:"media_episode,omitempty"`
+	MediaQuality  string    `json:"media_quality,omitempty"`
+	MediaSize     string    `json:"media_size,omitempty"`
+	MediaTMDBID   string    `json:"media_tmdb_id,omitempty"`
+	MediaCategory string    `json:"media_category,omitempty"`
+	MediaTags     string    `json:"media_tags,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 }
 
@@ -386,6 +395,15 @@ type MergedLink struct {
 	URL               string    `json:"url"`
 	Password          string    `json:"password,omitempty"`
 	Note              string    `json:"note,omitempty"`
+	MediaTitle        string    `json:"media_title,omitempty"`
+	MediaYear         string    `json:"media_year,omitempty"`
+	MediaSeason       string    `json:"media_season,omitempty"`
+	MediaEpisode      string    `json:"media_episode,omitempty"`
+	MediaQuality      string    `json:"media_quality,omitempty"`
+	MediaSize         string    `json:"media_size,omitempty"`
+	MediaTMDBID       string    `json:"media_tmdb_id,omitempty"`
+	MediaCategory     string    `json:"media_category,omitempty"`
+	MediaTags         string    `json:"media_tags,omitempty"`
 	Datetime          time.Time `json:"datetime"`
 	Source            string    `json:"source,omitempty"`
 	ChannelID         int64     `json:"channel_id"`

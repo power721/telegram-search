@@ -89,7 +89,7 @@ assert_contains() {
 }
 
 assert_contains "npm run web:build"
-assert_contains "go build -trimpath -ldflags -s -w -X 'tg-search/internal/build.Version="
+assert_contains "go build -trimpath -buildvcs=false -ldflags -s -w -X 'tg-search/internal/build.Version="
 assert_contains "-o $ROOT_DIR/dist/local/tg-search ./cmd/tg-search"
 assert_contains "docker build -f $ROOT_DIR/Dockerfile.local"
 assert_contains "--tag=haroldli/tg-search:latest $ROOT_DIR"

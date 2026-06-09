@@ -175,7 +175,7 @@ build_local_binary() {
   echo "=== build linux/$arch binary locally ==="
   (
     cd "$BUILD_DIR"
-    CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags "-s -w -X 'tg-search/internal/build.Version=${VERSION}'" -o "$LOCAL_BINARY" ./cmd/tg-search
+    CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -buildvcs=false -ldflags "-s -w -X 'tg-search/internal/build.Version=${VERSION}'" -o "$LOCAL_BINARY" ./cmd/tg-search
   )
 }
 

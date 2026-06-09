@@ -304,15 +304,16 @@ type Link struct {
 }
 
 type File struct {
-	ID        int64     `json:"id"`
-	MessageID int64     `json:"message_id"`
-	FileName  string    `json:"file_name"`
-	Extension string    `json:"extension"`
-	MimeType  string    `json:"mime_type"`
-	SizeBytes int64     `json:"size_bytes"`
-	Category  string    `json:"category"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID             int64     `json:"id"`
+	MessageID      int64     `json:"message_id"`
+	TelegramFileID int64     `json:"telegram_file_id,omitempty"`
+	FileName       string    `json:"file_name"`
+	Extension      string    `json:"extension"`
+	MimeType       string    `json:"mime_type"`
+	SizeBytes      int64     `json:"size_bytes"`
+	Category       string    `json:"category"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type SearchResult struct {

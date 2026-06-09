@@ -34,6 +34,7 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertColumnExists(t, conn, "telegram_channels", "web_access")
 	assertColumnExists(t, conn, "telegram_channels", "web_access_checked_at")
 	assertColumnExists(t, conn, "telegram_links", "note")
+	assertColumnExists(t, conn, "telegram_files", "telegram_file_id")
 }
 
 func TestMigrateCreatesFreshFoundationSchema(t *testing.T) {

@@ -255,3 +255,4 @@ else
   echo -e "\e[32m云服务器请用公网IP访问，端口：$PORT\e[0m"
 fi
 echo ""
+date

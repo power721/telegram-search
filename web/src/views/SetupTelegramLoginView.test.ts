@@ -73,6 +73,29 @@ describe('SetupTelegramLoginView', () => {
     vi.clearAllMocks()
   })
 
+  it('renders Chinese placeholders for phone and verification code inputs', async () => {
+    const wrapper = mount(SetupTelegramLoginView, {
+      global: {
+        stubs: {
+          'n-form': { template: '<form><slot /></form>' },
+          'n-form-item': { props: ['label'], template: '<label>{{ label }}<slot /></label>' },
+          'n-input': {
+            props: ['value', 'autocomplete', 'placeholder'],
+            template: '<input :value="value" :autocomplete="autocomplete" :placeholder="placeholder" />'
+          },
+          'n-button': { emits: ['click'], template: `<button @click="$emit('click')"><slot /></button>` },
+          'n-button-group': { template: '<div><slot /></div>' }
+        }
+      }
+    })
+
+    const codeButton = wrapper.findAll('button').find((button) => button.text() === '验证码登录')
+    await codeButton?.trigger('click')
+
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('请输入手机号码')
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="one-time-code"]').element.placeholder).toBe('请输入验证码')
+  })
+
   it('renders qr login by default and can switch to code login', async () => {
     const wrapper = mount(SetupTelegramLoginView, {
       global: {

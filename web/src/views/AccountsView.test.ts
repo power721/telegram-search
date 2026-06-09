@@ -110,6 +110,16 @@ describe('AccountsView', () => {
     expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+10000000001')
   })
 
+  it('renders Chinese placeholders in the telegram login dialog', async () => {
+    const wrapper = mountAccountsView()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((button) => button.text() === '添加账号')!.trigger('click')
+
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('请输入手机号码')
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="one-time-code"]').element.placeholder).toBe('请输入验证码')
+  })
+
   it('closes the telegram login dialog from close and cancel controls', async () => {
     const wrapper = mountAccountsView()
     await flushPromises()
@@ -221,10 +231,10 @@ function mountAccountsView() {
           template: '<label>{{ label }}<slot /></label>'
         },
         NInput: {
-          props: ['value', 'autocomplete'],
+          props: ['value', 'autocomplete', 'placeholder'],
           emits: ['update:value'],
           template:
-            '<input :value="value" :autocomplete="autocomplete" @input="$emit(\'update:value\', $event.target.value)" />'
+            '<input :value="value" :autocomplete="autocomplete" :placeholder="placeholder" @input="$emit(\'update:value\', $event.target.value)" />'
         },
         NModal: {
           props: ['show'],

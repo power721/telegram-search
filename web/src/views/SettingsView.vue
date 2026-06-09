@@ -103,6 +103,7 @@ function formatTime(value?: string) {
               v-model:value="credentialsUsername"
               data-testid="admin-username-input"
               autocomplete="username"
+              placeholder="请输入用户名"
             />
           </n-form-item>
           <n-form-item label="当前密码">
@@ -111,6 +112,7 @@ function formatTime(value?: string) {
               data-testid="current-password-input"
               type="password"
               autocomplete="current-password"
+              placeholder="请输入密码"
             />
           </n-form-item>
           <n-form-item label="新密码">

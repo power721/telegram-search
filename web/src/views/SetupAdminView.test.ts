@@ -1,12 +1,10 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import LoginView from './LoginView.vue'
-
-const push = vi.fn()
+import SetupAdminView from './SetupAdminView.vue'
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push })
+  useRouter: () => ({ push: vi.fn() })
 }))
 
 vi.mock('naive-ui', async () => {
@@ -17,24 +15,13 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-vi.mock('@/api/client', () => ({
-  apiPost: vi.fn().mockResolvedValue({ id: 1, username: 'admin', role: 'admin' }),
-  apiGet: vi.fn()
-}))
-
-describe('LoginView', () => {
+describe('SetupAdminView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    push.mockReset()
   })
 
-  it('renders the login heading', () => {
-    const wrapper = mount(LoginView)
-    expect(wrapper.text()).toContain('登录 TG Search')
-  })
-
-  it('renders Chinese placeholders for admin login inputs', () => {
-    const wrapper = mount(LoginView, {
+  it('renders Chinese placeholders for admin account inputs', () => {
+    const wrapper = mount(SetupAdminView, {
       global: {
         stubs: {
           'n-form': { template: '<form><slot /></form>' },
@@ -49,6 +36,6 @@ describe('LoginView', () => {
     })
 
     expect(wrapper.get<HTMLInputElement>('input[autocomplete="username"]').element.placeholder).toBe('请输入用户名')
-    expect(wrapper.get<HTMLInputElement>('input[autocomplete="current-password"]').element.placeholder).toBe('请输入密码')
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="new-password"]').element.placeholder).toBe('请输入密码')
   })
 })

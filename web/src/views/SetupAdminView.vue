@@ -33,10 +33,10 @@ async function submit() {
       <h1>创建管理员账号</h1>
       <n-form @submit.prevent="submit">
         <n-form-item label="用户名">
-          <n-input v-model:value="username" autocomplete="username" />
+          <n-input v-model:value="username" autocomplete="username" placeholder="请输入用户名" />
         </n-form-item>
         <n-form-item label="密码">
-          <n-input v-model:value="password" type="password" autocomplete="new-password" />
+          <n-input v-model:value="password" type="password" autocomplete="new-password" placeholder="请输入密码" />
         </n-form-item>
         <n-button type="primary" block :loading="loading" @click="submit">创建管理员</n-button>
       </n-form>

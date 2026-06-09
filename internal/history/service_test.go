@@ -861,6 +861,60 @@ func TestHistorySyncTaskFloodWaitNotifiesSink(t *testing.T) {
 	}
 }
 
+func TestHistorySyncTaskWorkerProcessesQueuedHistorySync(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {
+			{TelegramMessageID: 3, Text: "first https://pan.quark.cn/s/task", RawJSON: "{}", Date: now},
+			{TelegramMessageID: 2, Text: "second", RawJSON: "{}", Date: now},
+		},
+		2: {},
+	}}
+	historyService := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 2,
+	})
+	taskRepo := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepo)
+	queued, err := taskService.Enqueue(ctx, model.TaskTypeHistorySync, taskpkg.HistorySyncPayload{ChannelIDs: []int64{channelID}})
+	if err != nil {
+		t.Fatalf("enqueue history sync task: %v", err)
+	}
+	worker := taskpkg.NewWorker(taskpkg.WorkerOptions{
+		Service:    taskService,
+		Repository: taskRepo,
+		Handlers: map[string]taskpkg.Handler{
+			model.TaskTypeHistorySync: historyService.RunHistorySyncTask,
+		},
+	})
+
+	processed, err := worker.ProcessOnce(ctx)
+	if err != nil {
+		t.Fatalf("ProcessOnce returned error: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("processed = %d, want 1", processed)
+	}
+	finished, err := taskRepo.FindByID(ctx, queued.ID)
+	if err != nil {
+		t.Fatalf("find finished task: %v", err)
+	}
+	if finished.Status != model.TaskStatusSucceeded || finished.Progress != 1 || finished.Total != 1 {
+		t.Fatalf("finished task = %+v, want succeeded progress 1/1", finished)
+	}
+	latest, err := messages.Latest(ctx, repository.LatestParams{Limit: 10})
+	if err != nil {
+		t.Fatalf("latest messages: %v", err)
+	}
+	if len(latest) != 2 {
+		t.Fatalf("stored messages = %+v, want 2 history messages", latest)
+	}
+}
+
 func TestGapRecoveryTaskWorkerProcessesQueuedGap(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)

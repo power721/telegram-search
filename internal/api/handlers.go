@@ -1559,6 +1559,10 @@ func (h handlers) syncChannel(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if h.deps.Tasks != nil {
+		h.enqueueHistorySyncTask(c, taskpkg.HistorySyncPayload{ChannelID: id})
+		return
+	}
 	if h.deps.SyncQueue != nil {
 		jobCtx := context.WithoutCancel(c.Request.Context())
 		job := h.deps.SyncQueue.Enqueue(jobCtx, "channel-sync", func(ctx context.Context) error {
@@ -1602,6 +1606,13 @@ func (h handlers) syncChannels(c *gin.Context) {
 		}
 		maxMessages = *req.MaxMessages
 	}
+	if h.deps.Tasks != nil {
+		h.enqueueHistorySyncTask(c, taskpkg.HistorySyncPayload{
+			ChannelIDs:  append([]int64(nil), req.ChannelIDs...),
+			MaxMessages: maxMessages,
+		})
+		return
+	}
 	if h.deps.SyncQueue != nil {
 		channelIDs := append([]int64(nil), req.ChannelIDs...)
 		limit := maxMessages
@@ -1618,6 +1629,22 @@ func (h handlers) syncChannels(c *gin.Context) {
 	}
 	result := h.deps.History.SyncManyWithMaxMessages(c.Request.Context(), req.ChannelIDs, maxMessages)
 	c.JSON(http.StatusAccepted, localizeSyncManyResult(result))
+}
+
+func (h handlers) enqueueHistorySyncTask(c *gin.Context, payload taskpkg.HistorySyncPayload) {
+	task, err := h.deps.Tasks.Enqueue(c.Request.Context(), model.TaskTypeHistorySync, payload)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	localized := localizeTask(task)
+	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: localized})
+	c.JSON(http.StatusAccepted, gin.H{
+		"task_id": task.ID,
+		"job_id":  strconv.FormatInt(task.ID, 10),
+		"status":  task.Status,
+		"task":    localized,
+	})
 }
 
 func (h handlers) checkChannelWebAccess(c *gin.Context) {

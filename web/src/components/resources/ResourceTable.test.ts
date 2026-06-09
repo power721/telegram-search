@@ -51,6 +51,43 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain(expected)
   })
 
+  it('shows the specific cloud drive type for cloud drive resources', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'link:https://www.alipan.com/s/course',
+            kind: 'link',
+            type: 'aliyun',
+            category: 'cloud_drive',
+            title: 'Course Pack',
+            url: 'https://www.alipan.com/s/course'
+          },
+          {
+            id: 'link:magnet',
+            kind: 'link',
+            type: 'magnet',
+            category: 'magnet',
+            title: 'Magnet Resource',
+            url: 'magnet:?xt=urn:btih:abc'
+          },
+          {
+            id: 'link:legacy-cloud-drive',
+            kind: 'link',
+            type: 'url',
+            category: 'cloud_drive',
+            title: 'Legacy Cloud Resource',
+            url: 'https://pan.quark.cn/s/legacy'
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.text()).toContain('阿里云盘')
+    expect(wrapper.text()).toContain('磁力')
+    expect(wrapper.text()).toContain('网盘')
+  })
+
   it('renders nested media metadata', () => {
     const wrapper = mount(ResourceTable, {
       props: {

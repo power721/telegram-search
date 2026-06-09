@@ -32,6 +32,32 @@ function categoryLabel(category: string) {
   return labels[category] ?? category
 }
 
+function cloudDriveTypeLabel(type?: string) {
+  if (!type || type === 'url') return ''
+  const labels: Record<string, string> = {
+    '115': '115云盘',
+    '123': '123网盘',
+    aliyun: '阿里云盘',
+    baidu: '百度网盘',
+    guangya: '光鸭云盘',
+    jianguoyun: '坚果云',
+    lanzou: '蓝奏云',
+    mobile: '移动云盘',
+    pikpak: 'PikPak',
+    quark: '夸克网盘',
+    tianyi: '天翼云盘',
+    uc: 'UC网盘',
+    weiyun: '微云',
+    xunlei: '迅雷云盘'
+  }
+  return labels[type] ?? type
+}
+
+function resourceTypeLabel(item: ResourceItem) {
+  if (item.category !== 'cloud_drive') return categoryLabel(item.category)
+  return cloudDriveTypeLabel(item.type) || categoryLabel(item.category)
+}
+
 function itemLabel(item: ResourceItem) {
   return item.media?.title || item.title || item.file_name || item.url || '-'
 }
@@ -118,7 +144,7 @@ function formatDate(value?: string) {
             <p v-if="item.media?.tags" class="media-tags">{{ item.media.tags }}</p>
           </div>
         </div>
-        <span>{{ categoryLabel(item.category) }}</span>
+        <span>{{ resourceTypeLabel(item) }}</span>
         <span>
           <a
             v-if="messageHref(item)"

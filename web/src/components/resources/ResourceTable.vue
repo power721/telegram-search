@@ -323,7 +323,10 @@ function formatDate(value?: string) {
               size="small"
               @click="closeVideoPlayer"
             >
-              ×
+              <svg class="video-player-close-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
             </n-button>
           </div>
         </div>
@@ -607,11 +610,14 @@ function formatDate(value?: string) {
   width: 16px;
 }
 
-.video-player-close {
-  font-size: 20px;
-  height: 32px;
-  line-height: 1;
-  min-width: 32px;
+.video-player-close-icon {
+  fill: none;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  width: 20px;
 }
 
 .video-player {

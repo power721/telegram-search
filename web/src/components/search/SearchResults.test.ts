@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import type { GlobalSearchResult } from '@/api/types'
+import searchResultsSource from './SearchResults.vue?raw'
 import SearchResults from './SearchResults.vue'
 
 describe('SearchResults', () => {
@@ -18,6 +19,11 @@ describe('SearchResults', () => {
 
     expect(wrapper.text()).toContain('暂无链接结果')
     expect(wrapper.text()).toContain('暂无文件结果')
+  })
+
+  it('styles external links as visible links', () => {
+    expect(searchResultsSource).toMatch(/\.external-link\s*\{[\s\S]*color:\s*var\(--app-accent\);/)
+    expect(searchResultsSource).toMatch(/\.external-link\s*\{[\s\S]*text-decoration:\s*underline;/)
   })
 
   it('does not link result rows to Telegram message positions', () => {

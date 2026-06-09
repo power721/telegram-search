@@ -20,6 +20,11 @@ describe('ResourceTable', () => {
     expect(wrapper.find('.empty-state').text()).toContain('暂无资源')
   })
 
+  it('styles external links as visible links', () => {
+    expect(resourceTableSource).toMatch(/\.external-link\s*\{[\s\S]*color:\s*var\(--app-accent\);/)
+    expect(resourceTableSource).toMatch(/\.external-link\s*\{[\s\S]*text-decoration:\s*underline;/)
+  })
+
   it('shows each resource message publish time', () => {
     const publishedAt = '2026-06-08T04:30:00Z'
     const wrapper = mount(ResourceTable, {

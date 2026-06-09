@@ -141,15 +141,23 @@ function formatDate(value?: string) {
 
 .external-link,
 .channel-link {
-  color: inherit;
   text-decoration: none;
 }
 
 .external-link {
-  color: var(--app-text-muted);
+  color: var(--app-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-.external-link:hover,
+.external-link:hover {
+  color: var(--app-accent-hover);
+}
+
+.channel-link {
+  color: inherit;
+}
+
 .channel-link:hover {
   color: var(--app-accent);
 }

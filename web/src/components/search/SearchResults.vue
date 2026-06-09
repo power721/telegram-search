@@ -233,12 +233,13 @@ small {
 }
 
 .external-link {
-  color: inherit;
-  text-decoration: none;
+  color: var(--app-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .external-link:hover {
-  color: var(--app-accent);
+  color: var(--app-accent-hover);
 }
 
 @media (max-width: 900px) {

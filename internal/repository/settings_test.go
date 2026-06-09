@@ -100,8 +100,8 @@ func TestTelegramAPISettingsDefaultsWhenNotStored(t *testing.T) {
 		t.Fatalf("settings = %+v, want default Telegram API credentials", settings)
 	}
 	redacted := RedactTelegramAPI(settings)
-	if !redacted.Configured || redacted.AppID != 26375241 || !redacted.AppHashSet {
-		t.Fatalf("redacted = %+v, want default credentials marked configured", redacted)
+	if redacted.Configured || redacted.AppID != 0 || redacted.AppHashSet {
+		t.Fatalf("redacted = %+v, want default credentials hidden from settings response", redacted)
 	}
 }
 

@@ -310,7 +310,7 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	}
 }
 
-func TestSyncChannelSkipsWhenHistorySyncDisabled(t *testing.T) {
+func TestSyncChannelIgnoresHistorySyncDisabledFlag(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
@@ -333,8 +333,8 @@ func TestSyncChannelSkipsWhenHistorySyncDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SyncChannel returned error: %v", err)
 	}
-	if result.Messages != 0 || fake.fetched != 0 {
-		t.Fatalf("result = %+v fetched=%d, want no history fetch", result, fake.fetched)
+	if result.Messages != 1 || fake.fetched != 1 {
+		t.Fatalf("result = %+v fetched=%d, want manual sync to fetch history", result, fake.fetched)
 	}
 }
 
@@ -1071,7 +1071,7 @@ func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {
 	}
 }
 
-func TestSyncManySkipsHistoryDisabledChannels(t *testing.T) {
+func TestSyncManyIgnoresHistorySyncDisabledFlag(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
 	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
@@ -1091,11 +1091,11 @@ func TestSyncManySkipsHistoryDisabledChannels(t *testing.T) {
 	})
 
 	result := service.SyncMany(ctx, []int64{channelID})
-	if result.Queued != 0 || result.Skipped != 1 || fake.fetched != 0 {
-		t.Fatalf("result = %+v fetched=%d, want queued=0 skipped=1 and no fetch", result, fake.fetched)
+	if result.Queued != 1 || result.Skipped != 0 || fake.fetched != 1 {
+		t.Fatalf("result = %+v fetched=%d, want manual sync to queue and fetch history", result, fake.fetched)
 	}
-	if len(result.Failures) != 0 || len(result.Results) != 0 {
-		t.Fatalf("result = %+v, want no failures or stored results for skipped channel", result)
+	if len(result.Failures) != 0 || len(result.Results) != 1 {
+		t.Fatalf("result = %+v, want one stored result and no failures", result)
 	}
 }
 

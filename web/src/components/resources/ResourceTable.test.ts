@@ -51,6 +51,25 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain(expected)
   })
 
+  it('shows formatted file size in the metadata row for file resources', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:ubuntu.iso',
+            kind: 'file',
+            category: 'files',
+            file_name: 'ubuntu.iso',
+            size_bytes: 5000
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.text()).not.toContain('大小')
+    expect(wrapper.find('.media-meta').text()).toBe('4.9 KB')
+  })
+
   it('shows the specific cloud drive type for cloud drive resources', () => {
     const wrapper = mount(ResourceTable, {
       props: {

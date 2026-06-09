@@ -89,10 +89,27 @@ function mediaMetaParts(item: ResourceItem) {
     item.media?.season,
     item.media?.episode,
     item.media?.quality,
-    item.media?.size,
+    item.media?.size || fileSizeLabel(item),
     item.media?.category,
     item.media?.tmdb_id ? `TMDB ${item.media.tmdb_id}` : ''
   ].filter(Boolean)
+}
+
+function fileSizeLabel(item: ResourceItem) {
+  if (item.kind !== 'file' || !item.size_bytes) return ''
+  return formatBytes(item.size_bytes)
+}
+
+function formatBytes(value?: number) {
+  if (!value) return '-'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let bytes = value
+  let unit = 0
+  while (bytes >= 1024 && unit < units.length - 1) {
+    bytes /= 1024
+    unit += 1
+  }
+  return `${bytes >= 10 || unit === 0 ? bytes.toFixed(0) : bytes.toFixed(1)} ${units[unit]}`
 }
 
 function messageHref(item: ResourceItem) {

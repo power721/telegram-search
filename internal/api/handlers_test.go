@@ -329,14 +329,20 @@ func TestResourcesAPI(t *testing.T) {
 		t.Fatalf("resources body = %+v, want link and file", body)
 	}
 	var linkItem *resource.Item
+	var fileItem *resource.Item
 	for i := range body.Items {
 		if body.Items[i].Kind == "link" {
 			linkItem = &body.Items[i]
-			break
+		}
+		if body.Items[i].Kind == "file" {
+			fileItem = &body.Items[i]
 		}
 	}
 	if linkItem == nil || linkItem.Media == nil || linkItem.Media.Title != "Ubuntu Movie" || linkItem.Media.Year != "2026" || linkItem.Media.Quality != "4K" || linkItem.Media.TMDBID != "12345" || linkItem.Media.Category != "movie" || linkItem.Media.Tags != "linux,release" || linkItem.Media.Summary != "webpage_photo" {
 		t.Fatalf("resource media metadata = %+v, want nested media metadata", linkItem)
+	}
+	if fileItem == nil || fileItem.FileName != "ubuntu.iso" || fileItem.SizeBytes != 5000 {
+		t.Fatalf("resource file item = %+v, want ubuntu.iso with size_bytes", fileItem)
 	}
 	for _, forbidden := range []string{"media_title", "media_year", "media_quality", "media_tmdb_id", "media_category", "media_tags", "media_summary"} {
 		if strings.Contains(w.Body.String(), forbidden) {

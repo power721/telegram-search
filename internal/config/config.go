@@ -48,6 +48,7 @@ type TelegramConfig struct {
 	DialTimeout      Duration                `yaml:"dial_timeout"`
 	RateLimit        TelegramRateLimitConfig `yaml:"rate_limit"`
 	Stream           TelegramStreamConfig    `yaml:"stream"`
+	Media            TelegramMediaConfig     `yaml:"media"`
 }
 
 type TelegramRateLimitConfig struct {
@@ -60,6 +61,10 @@ type TelegramStreamConfig struct {
 	Concurrency  int      `yaml:"concurrency"`
 	Buffers      int      `yaml:"buffers"`
 	ChunkTimeout Duration `yaml:"chunk_timeout"`
+}
+
+type TelegramMediaConfig struct {
+	Concurrency int `yaml:"concurrency"`
 }
 
 func Load(path string) (Config, error) {
@@ -182,6 +187,9 @@ func defaultConfig() Config {
 				Buffers:      4,
 				ChunkTimeout: Duration(20 * time.Second),
 			},
+			Media: TelegramMediaConfig{
+				Concurrency: 2,
+			},
 		},
 	}
 }
@@ -271,6 +279,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Telegram.Stream.ChunkTimeout.Std() <= 0 {
 		cfg.Telegram.Stream.ChunkTimeout = defaults.Telegram.Stream.ChunkTimeout
 	}
+	if cfg.Telegram.Media.Concurrency == 0 {
+		cfg.Telegram.Media.Concurrency = defaults.Telegram.Media.Concurrency
+	}
 }
 
 func validate(cfg Config) error {
@@ -303,6 +314,9 @@ func validate(cfg Config) error {
 	}
 	if cfg.Telegram.RateLimit.Burst <= 0 {
 		return errors.New("telegram.rate_limit.burst must be greater than zero")
+	}
+	if cfg.Telegram.Media.Concurrency <= 0 {
+		return errors.New("telegram.media.concurrency must be greater than zero")
 	}
 	return nil
 }

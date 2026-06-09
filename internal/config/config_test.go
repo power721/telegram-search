@@ -93,6 +93,9 @@ server:
 	if time.Duration(cfg.Telegram.Stream.ChunkTimeout) != 20*time.Second {
 		t.Fatalf("telegram stream chunk timeout = %s, want 20s", cfg.Telegram.Stream.ChunkTimeout)
 	}
+	if cfg.Telegram.Media.Concurrency != 2 {
+		t.Fatalf("telegram media concurrency = %d, want 2", cfg.Telegram.Media.Concurrency)
+	}
 }
 
 func TestLoadAppliesTelegramRuntimeConfig(t *testing.T) {
@@ -111,6 +114,8 @@ telegram:
     concurrency: 3
     buffers: 6
     chunk_timeout: 15s
+  media:
+    concurrency: 4
 `), 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -147,6 +152,9 @@ telegram:
 	}
 	if time.Duration(cfg.Telegram.Stream.ChunkTimeout) != 15*time.Second {
 		t.Fatalf("telegram stream chunk timeout = %s, want 15s", cfg.Telegram.Stream.ChunkTimeout)
+	}
+	if cfg.Telegram.Media.Concurrency != 4 {
+		t.Fatalf("telegram media concurrency = %d, want 4", cfg.Telegram.Media.Concurrency)
 	}
 }
 

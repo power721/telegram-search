@@ -9,10 +9,12 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"tg-search/internal/apikey"
+	"tg-search/internal/medialimit"
 	"tg-search/internal/model"
 	"tg-search/internal/telegram"
 )
@@ -381,6 +383,56 @@ func TestServeTelegramImage(t *testing.T) {
 	}
 }
 
+func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
+	deps := testDeps(t)
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	ctx := context.Background()
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	fake := &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}, delay: 20 * time.Millisecond}
+	deps.Telegram = fake
+	deps.MediaLimiter = medialimit.New(1)
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/888", time.Now().Add(time.Hour)), nil)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Errorf("status = %d body=%s, want 200", w.Code, w.Body.String())
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if got := fake.maxActive(); got != 1 {
+		t.Fatalf("max active media downloads = %d, want 1", got)
+	}
+}
+
 func TestServeTelegramImageHead(t *testing.T) {
 	deps := testDeps(t)
 	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
@@ -486,6 +538,7 @@ func signedMediaPath(t *testing.T, key string, path string, expiresAt time.Time)
 
 type mediaProxyClient struct {
 	telegram.NopClient
+	mu          sync.Mutex
 	file        telegram.VideoFile
 	image       telegram.ImageFile
 	videoErr    error
@@ -497,9 +550,16 @@ type mediaProxyClient struct {
 	offset      int64
 	length      int64
 	streamCalls int
+	delay       time.Duration
+	active      int
+	maxActiveN  int
 }
 
 func (f *mediaProxyClient) VideoFile(ctx context.Context, session telegram.AccountSession, channel telegram.MediaChannelRef, messageID int) (telegram.VideoFile, error) {
+	if err := f.enter(ctx); err != nil {
+		return telegram.VideoFile{}, err
+	}
+	defer f.leave()
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID
@@ -510,6 +570,10 @@ func (f *mediaProxyClient) VideoFile(ctx context.Context, session telegram.Accou
 }
 
 func (f *mediaProxyClient) StreamVideoRange(ctx context.Context, session telegram.AccountSession, channel telegram.MediaChannelRef, messageID int, file telegram.VideoFile, offset int64, length int64, w io.Writer) error {
+	if err := f.enter(ctx); err != nil {
+		return err
+	}
+	defer f.leave()
 	f.streamCalls++
 	f.session = session
 	f.channel = channel
@@ -525,6 +589,10 @@ func (f *mediaProxyClient) StreamVideoRange(ctx context.Context, session telegra
 }
 
 func (f *mediaProxyClient) DownloadMessageImage(ctx context.Context, session telegram.AccountSession, channel telegram.MediaChannelRef, messageID int) (telegram.ImageFile, error) {
+	if err := f.enter(ctx); err != nil {
+		return telegram.ImageFile{}, err
+	}
+	defer f.leave()
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID
@@ -532,4 +600,38 @@ func (f *mediaProxyClient) DownloadMessageImage(ctx context.Context, session tel
 		return telegram.ImageFile{}, f.imageErr
 	}
 	return f.image, nil
+}
+
+func (f *mediaProxyClient) enter(ctx context.Context) error {
+	f.mu.Lock()
+	f.active++
+	if f.active > f.maxActiveN {
+		f.maxActiveN = f.active
+	}
+	delay := f.delay
+	f.mu.Unlock()
+	if delay <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		f.leave()
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (f *mediaProxyClient) leave() {
+	f.mu.Lock()
+	f.active--
+	f.mu.Unlock()
+}
+
+func (f *mediaProxyClient) maxActive() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.maxActiveN
 }

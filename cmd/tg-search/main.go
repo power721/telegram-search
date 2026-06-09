@@ -21,6 +21,7 @@ import (
 	"tg-search/internal/history"
 	"tg-search/internal/link"
 	"tg-search/internal/logger"
+	"tg-search/internal/medialimit"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
@@ -108,6 +109,7 @@ func run(configPath string) error {
 	tgClient := telegram.NewGotdClient(telegramCredentials, logs.Telegram, telegramRuntime)
 	retryPolicy := retry.DefaultPolicy()
 	telegramGovernor := telegramguard.New(telegramguard.Options{Interval: cfg.Sync.TelegramRequestInterval.Std()})
+	mediaLimiter := medialimit.New(cfg.Telegram.Media.Concurrency)
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
@@ -197,7 +199,7 @@ func run(configPath string) error {
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Tasks: taskService, TaskRepository: taskRepository, Events: eventBroker,
-		Telegram: tgClient, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
+		Telegram: tgClient, MediaLimiter: mediaLimiter, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{
 		Addr:              config.Address(cfg),

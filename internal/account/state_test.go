@@ -34,9 +34,13 @@ func TestCanTransition(t *testing.T) {
 		{model.AccountStatusLoginRequired, model.AccountStatusOnline},
 		{model.AccountStatusOnline, model.AccountStatusSyncing},
 		{model.AccountStatusOnline, model.AccountStatusReconnecting},
+		{model.AccountStatusOnline, model.AccountStatusLoginRequired},
 		{model.AccountStatusSyncing, model.AccountStatusOnline},
+		{model.AccountStatusSyncing, model.AccountStatusLoginRequired},
 		{model.AccountStatusReconnecting, model.AccountStatusDisconnected},
+		{model.AccountStatusReconnecting, model.AccountStatusLoginRequired},
 		{model.AccountStatusFloodWait, model.AccountStatusReconnecting},
+		{model.AccountStatusFloodWait, model.AccountStatusLoginRequired},
 		{model.AccountStatusDisconnected, model.AccountStatusReconnecting},
 		{model.AccountStatusOnline, model.AccountStatusOnline},
 	}

@@ -596,58 +596,121 @@ func TestSetupAPIKeyAutoGeneratesAndSkipIsDisabled(t *testing.T) {
 	}
 }
 
-func TestBusinessAPIAcceptsAdminSessionOrAPIKey(t *testing.T) {
+func TestAPIKeyOnlyAllowsResourceEndpoints(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
 	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resources", nil)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("status without key code = %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("resources without credentials code = %d body=%s, want 401", w.Code, w.Body.String())
 	}
 
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	req.AddCookie(cookie)
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status with admin session only code = %d body=%s", w.Code, w.Body.String())
-	}
+	for _, path := range []string{"/api/resources", "/api/resources/grouped"} {
+		t.Run("api key "+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-API-Key", key)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("%s with api key code = %d body=%s, want 200", path, w.Code, w.Body.String())
+			}
+		})
 
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	req.Header.Set("Authorization", "Bearer "+key)
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("status bearer code = %d body=%s", w.Code, w.Body.String())
-	}
+		t.Run("admin "+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.AddCookie(cookie)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("%s with admin session code = %d body=%s, want 200", path, w.Code, w.Body.String())
+			}
+		})
 
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
+		t.Run("invalid api key "+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-API-Key", "invalid")
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("%s with invalid api key code = %d body=%s, want 401", path, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestAPIKeyAllowsResourceDetail(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu resources", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", SizeBytes: 5000, Category: "software"}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?type=files&q=ubuntu", nil)
 	req.Header.Set("X-API-Key", key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("status x-api-key code = %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("resources code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var list resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("invalid list JSON: %v", err)
+	}
+	if len(list.Items) == 0 {
+		t.Fatalf("resources list has no items: %+v", list)
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	req.Header.Set("X-API-Key", "invalid")
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusUnauthorized {
-		t.Fatalf("status invalid key code = %d body=%s, want 401", w.Code, w.Body.String())
-	}
-
-	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/status", nil)
-	req.AddCookie(cookie)
-	req.Header.Set("X-API-Key", "invalid")
+	req = httptest.NewRequest(http.MethodGet, "/api/resources/"+url.PathEscape(list.Items[0].ID), nil)
+	req.Header.Set("Authorization", "Bearer "+key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("status admin session with invalid key code = %d body=%s", w.Code, w.Body.String())
+		t.Fatalf("resource detail code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+}
+
+func TestAPIKeyCannotAccessAdminOnlyEndpoints(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+	cookie := createAdminSession(t, router)
+
+	for _, path := range []string{"/api/status", "/api/tasks", "/api/search/global?q=ubuntu"} {
+		t.Run("api key denied "+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-API-Key", key)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("%s with api key code = %d body=%s, want 401", path, w.Code, w.Body.String())
+			}
+		})
+
+		t.Run("admin allowed "+path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.AddCookie(cookie)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Fatalf("%s with admin session code = %d body=%s, want 200", path, w.Code, w.Body.String())
+			}
+		})
 	}
 }
 

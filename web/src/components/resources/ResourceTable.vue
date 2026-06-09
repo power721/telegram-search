@@ -78,14 +78,16 @@ function formatDate(value?: string) {
     <template v-for="item in items" :key="item.id">
       <article class="table-row">
         <div class="resource-cell">
-          <img
-            v-if="showImageThumb(item)"
-            class="resource-thumb"
-            :src="item.media?.image_url"
-            alt=""
-            loading="lazy"
-            @error="markImageThumbFailed(item)"
-          />
+          <span v-if="showImageThumb(item)" class="resource-thumb-frame">
+            <img
+              class="resource-thumb"
+              :src="item.media?.image_url"
+              alt=""
+              loading="lazy"
+              @error="markImageThumbFailed(item)"
+            />
+            <img class="resource-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+          </span>
           <video
             v-else-if="showVideoThumb(item)"
             class="resource-thumb"
@@ -126,7 +128,7 @@ function formatDate(value?: string) {
 
 <style scoped>
 .resource-table {
-  overflow: hidden;
+  overflow: visible;
   width: 100%;
 }
 
@@ -142,7 +144,12 @@ function formatDate(value?: string) {
   align-items: center;
   border-top: 1px solid var(--app-border-subtle);
   color: inherit;
+  position: relative;
   text-decoration: none;
+}
+
+.table-row:hover {
+  z-index: 3;
 }
 
 .table-row strong,
@@ -173,6 +180,13 @@ function formatDate(value?: string) {
   min-width: 0;
 }
 
+.resource-thumb-frame {
+  flex: 0 0 88px;
+  height: 55px;
+  position: relative;
+  width: 88px;
+}
+
 .resource-thumb {
   aspect-ratio: 16 / 10;
   background: var(--app-bg-muted);
@@ -182,6 +196,36 @@ function formatDate(value?: string) {
   height: 55px;
   object-fit: cover;
   width: 88px;
+}
+
+.resource-thumb-preview {
+  aspect-ratio: 16 / 10;
+  background: var(--app-bg-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.18);
+  height: auto;
+  left: calc(100% + 10px);
+  max-width: min(240px, calc(100vw - 32px));
+  opacity: 0;
+  object-fit: cover;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%) scale(0.96);
+  transform-origin: left center;
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease;
+  visibility: hidden;
+  width: 240px;
+  z-index: 20;
+}
+
+.resource-thumb-frame:hover .resource-thumb-preview {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+  visibility: visible;
 }
 
 .external-link,
@@ -218,6 +262,18 @@ function formatDate(value?: string) {
 
   .table-row {
     grid-template-columns: 1fr;
+  }
+
+  .resource-thumb-preview {
+    left: 0;
+    top: calc(100% + 8px);
+    transform: scale(0.96);
+    transform-origin: top left;
+    width: min(240px, calc(100vw - 32px));
+  }
+
+  .resource-thumb-frame:hover .resource-thumb-preview {
+    transform: scale(1);
   }
 }
 </style>

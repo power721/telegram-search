@@ -97,6 +97,30 @@ describe('ResourceTable', () => {
     expect(image.attributes('src')).toBe('/i/resources/77')
   })
 
+  it('renders an enlarged hover preview for image thumbnails', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'link:https://example.com/course',
+            kind: 'link',
+            category: 'cloud_drive',
+            title: 'Course Pack',
+            media: {
+              image_url: '/i/resources/77'
+            }
+          }
+        ]
+      }
+    })
+
+    const preview = wrapper.find('.resource-thumb-frame img.resource-thumb-preview')
+    expect(preview.exists()).toBe(true)
+    expect(preview.attributes('src')).toBe('/i/resources/77')
+    expect(preview.attributes('aria-hidden')).toBe('true')
+    expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
+  })
+
   it('renders video previews when only a video URL is available', () => {
     const wrapper = mount(ResourceTable, {
       props: {

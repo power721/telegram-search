@@ -310,6 +310,13 @@ ALTER TABLE telegram_files ADD COLUMN telegram_file_id INTEGER NOT NULL DEFAULT 
 CREATE INDEX IF NOT EXISTS idx_telegram_files_telegram_file_id ON telegram_files(telegram_file_id);
 `,
 	},
+	{
+		version: 6,
+		name:    "api_key_usage_count",
+		sql: `
+ALTER TABLE api_keys ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

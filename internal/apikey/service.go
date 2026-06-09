@@ -100,7 +100,7 @@ func (s *Service) Verify(ctx context.Context, plaintext string) (int64, bool, er
 	}
 	for _, candidate := range candidates {
 		if bcrypt.CompareHashAndPassword([]byte(candidate.KeyHash), []byte(plaintext)) == nil {
-			if err := s.keys.UpdateLastUsed(ctx, candidate.ID, time.Now().UTC()); err != nil {
+			if err := s.keys.RecordUsage(ctx, candidate.ID, time.Now().UTC()); err != nil {
 				return 0, false, err
 			}
 			return candidate.ID, true, nil
@@ -134,7 +134,7 @@ func (s *Service) VerifyMediaSignature(ctx context.Context, method string, path 
 	if !hmac.Equal(gotBytes, expectedBytes) {
 		return false, nil
 	}
-	if err := s.keys.UpdateLastUsed(ctx, active.ID, now.UTC()); err != nil {
+	if err := s.keys.RecordUsage(ctx, active.ID, now.UTC()); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -170,6 +170,7 @@ func toResponse(key model.APIKey, plaintext string) model.APIKeyResponse {
 		Name:       key.Name,
 		Prefix:     key.Prefix,
 		Key:        plaintext,
+		UsageCount: key.UsageCount,
 		LastUsedAt: key.LastUsedAt,
 		CreatedAt:  key.CreatedAt,
 		UpdatedAt:  key.UpdatedAt,

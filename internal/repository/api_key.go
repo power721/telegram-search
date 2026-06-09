@@ -38,11 +38,11 @@ VALUES
 func (r *APIKeyRepository) Active(ctx context.Context) (model.APIKey, error) {
 	var key model.APIKey
 	err := r.db.QueryRowContext(ctx, `
-SELECT id, name, key_hash, key_ciphertext, prefix, enabled, last_used_at, created_at, updated_at
+SELECT id, name, key_hash, key_ciphertext, prefix, enabled, usage_count, last_used_at, created_at, updated_at
 FROM api_keys
 WHERE enabled = 1
 ORDER BY id DESC
-LIMIT 1`).Scan(&key.ID, &key.Name, &key.KeyHash, &key.KeyCiphertext, &key.Prefix, &key.Enabled, &key.LastUsedAt, &key.CreatedAt, &key.UpdatedAt)
+LIMIT 1`).Scan(&key.ID, &key.Name, &key.KeyHash, &key.KeyCiphertext, &key.Prefix, &key.Enabled, &key.UsageCount, &key.LastUsedAt, &key.CreatedAt, &key.UpdatedAt)
 	if err != nil {
 		return model.APIKey{}, fmt.Errorf("active api key: %w", err)
 	}
@@ -59,7 +59,7 @@ func (r *APIKeyRepository) DisableEnabled(ctx context.Context) error {
 
 func (r *APIKeyRepository) EnabledByPrefix(ctx context.Context, prefix string) ([]model.APIKey, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, name, key_hash, key_ciphertext, prefix, enabled, last_used_at, created_at, updated_at
+SELECT id, name, key_hash, key_ciphertext, prefix, enabled, usage_count, last_used_at, created_at, updated_at
 FROM api_keys
 WHERE enabled = 1 AND prefix = ?
 ORDER BY id DESC`, prefix)
@@ -70,7 +70,7 @@ ORDER BY id DESC`, prefix)
 	var keys []model.APIKey
 	for rows.Next() {
 		var key model.APIKey
-		if err := rows.Scan(&key.ID, &key.Name, &key.KeyHash, &key.KeyCiphertext, &key.Prefix, &key.Enabled, &key.LastUsedAt, &key.CreatedAt, &key.UpdatedAt); err != nil {
+		if err := rows.Scan(&key.ID, &key.Name, &key.KeyHash, &key.KeyCiphertext, &key.Prefix, &key.Enabled, &key.UsageCount, &key.LastUsedAt, &key.CreatedAt, &key.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan api key: %w", err)
 		}
 		keys = append(keys, key)
@@ -81,9 +81,9 @@ ORDER BY id DESC`, prefix)
 	return keys, nil
 }
 
-func (r *APIKeyRepository) UpdateLastUsed(ctx context.Context, id int64, at time.Time) error {
-	if _, err := r.db.ExecContext(ctx, `UPDATE api_keys SET last_used_at = ?, updated_at = ? WHERE id = ?`, at, at, id); err != nil {
-		return fmt.Errorf("update api key last used: %w", err)
+func (r *APIKeyRepository) RecordUsage(ctx context.Context, id int64, at time.Time) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE api_keys SET usage_count = usage_count + 1, last_used_at = ?, updated_at = ? WHERE id = ?`, at, at, id); err != nil {
+		return fmt.Errorf("record api key usage: %w", err)
 	}
 	return nil
 }

@@ -58,6 +58,31 @@ func TestServiceRegenerateInvalidatesOldKey(t *testing.T) {
 	}
 }
 
+func TestServiceVerifyRecordsUsageCount(t *testing.T) {
+	ctx := context.Background()
+	conn := testDB(t)
+	service := NewService(repository.NewAPIKeyRepository(conn), repository.NewSettingsRepository(conn))
+	key, err := service.EnsureActive(ctx)
+	if err != nil {
+		t.Fatalf("ensure active: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, ok, err := service.Verify(ctx, key.Key); err != nil || !ok {
+			t.Fatalf("verify %d ok=%v err=%v, want valid", i+1, ok, err)
+		}
+	}
+	current, err := service.Active(ctx)
+	if err != nil {
+		t.Fatalf("active: %v", err)
+	}
+	if current.UsageCount != 2 {
+		t.Fatalf("usage count = %d, want 2", current.UsageCount)
+	}
+	if current.LastUsedAt == nil {
+		t.Fatal("last used = nil, want usage timestamp")
+	}
+}
+
 func TestServiceVerifyMediaSignature(t *testing.T) {
 	ctx := context.Background()
 	conn := testDB(t)

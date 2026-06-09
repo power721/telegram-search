@@ -37,6 +37,7 @@ vi.mock('@/api/client', () => ({
       name: 'default',
       prefix: '12345678',
       key: '12345678123456781234567812345678',
+      usage_count: 7,
       created_at: '2026-06-08T00:00:00Z'
     })
   }),
@@ -45,6 +46,7 @@ vi.mock('@/api/client', () => ({
     name: 'default',
     prefix: '87654321',
     key: '87654321876543218765432187654321',
+    usage_count: 0,
     created_at: '2026-06-08T01:00:00Z'
   }),
   apiPut: vi.fn((path: string) => {
@@ -97,6 +99,7 @@ describe('SettingsView', () => {
     expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
     expect(wrapper.text()).not.toContain('前缀')
     expect(wrapper.text()).not.toContain('12345678123456781234567812345678')
+    expect(wrapper.get('[data-testid="api-key-usage-count"]').text()).toBe('7')
 
     const input = wrapper.get<HTMLInputElement>('[data-testid="api-key-input"]')
     expect(input.element.type).toBe('password')
@@ -221,6 +224,7 @@ describe('SettingsView', () => {
         name: 'default',
         prefix: '12345678',
         key: '12345678123456781234567812345678',
+        usage_count: 7,
         created_at: '2026-06-08T00:00:00Z'
       })
     })

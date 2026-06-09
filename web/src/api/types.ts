@@ -29,6 +29,7 @@ export interface APIKeyResponse {
   name: string
   prefix: string
   key: string
+  usage_count: number
   last_used_at?: string
   created_at?: string
   updated_at?: string

@@ -73,7 +73,7 @@ func TestAPIKeyRepositoryActiveLifecycle(t *testing.T) {
 	}
 }
 
-func TestAPIKeyRepositoryVerificationCandidatesAndLastUsed(t *testing.T) {
+func TestAPIKeyRepositoryVerificationCandidatesAndUsage(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
 	if err != nil {
@@ -99,14 +99,21 @@ func TestAPIKeyRepositoryVerificationCandidatesAndLastUsed(t *testing.T) {
 	if len(candidates) != 1 || candidates[0].ID != id {
 		t.Fatalf("candidates = %+v, want created key", candidates)
 	}
-	if err := repo.UpdateLastUsed(ctx, id, now); err != nil {
-		t.Fatalf("update last used: %v", err)
+	if err := repo.RecordUsage(ctx, id, now); err != nil {
+		t.Fatalf("record usage: %v", err)
+	}
+	if err := repo.RecordUsage(ctx, id, now.Add(time.Second)); err != nil {
+		t.Fatalf("record second usage: %v", err)
 	}
 	active, err := repo.Active(ctx)
 	if err != nil {
 		t.Fatalf("active key: %v", err)
 	}
-	if active.LastUsedAt == nil || !active.LastUsedAt.Equal(now) {
-		t.Fatalf("last used = %v, want %v", active.LastUsedAt, now)
+	wantLastUsed := now.Add(time.Second)
+	if active.LastUsedAt == nil || !active.LastUsedAt.Equal(wantLastUsed) {
+		t.Fatalf("last used = %v, want %v", active.LastUsedAt, wantLastUsed)
+	}
+	if active.UsageCount != 2 {
+		t.Fatalf("usage count = %d, want 2", active.UsageCount)
 	}
 }

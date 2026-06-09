@@ -137,6 +137,10 @@ function formatTime(value?: string) {
   return value ? new Date(value).toLocaleString() : '-'
 }
 
+function formatCount(value = 0) {
+  return value.toLocaleString()
+}
+
 function formatBytes(value = 0) {
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} GB`
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
@@ -236,6 +240,10 @@ function formatBytes(value = 0) {
             <div>
               <dt>最后使用</dt>
               <dd>{{ formatTime(apiKey.current.last_used_at) }}</dd>
+            </div>
+            <div>
+              <dt>使用次数</dt>
+              <dd data-testid="api-key-usage-count">{{ formatCount(apiKey.current.usage_count) }}</dd>
             </div>
           </dl>
           <div v-if="apiKey.current" class="api-key-field">

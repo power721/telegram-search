@@ -55,6 +55,7 @@ type APIKey struct {
 	KeyCiphertext string     `json:"-"`
 	Prefix        string     `json:"prefix"`
 	Enabled       bool       `json:"enabled"`
+	UsageCount    int64      `json:"usage_count"`
 	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`
@@ -65,6 +66,7 @@ type APIKeyResponse struct {
 	Name       string     `json:"name"`
 	Prefix     string     `json:"prefix"`
 	Key        string     `json:"key"`
+	UsageCount int64      `json:"usage_count"`
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`

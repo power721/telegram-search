@@ -21,8 +21,8 @@ function itemLabel(item: ResourceItem) {
   return item.title || item.file_name || item.url || '-'
 }
 
-function resourceHref(item: ResourceItem) {
-  return telegramMessageHref(item) ?? item.url
+function messageHref(item: ResourceItem) {
+  return telegramMessageHref(item)
 }
 
 function formatDate(value?: string) {
@@ -49,30 +49,27 @@ function formatDate(value?: string) {
       <span>调整筛选条件或同步频道后，资源会显示在这里。</span>
     </div>
     <template v-for="item in items" :key="item.id">
-      <a
-        v-if="resourceHref(item)"
-        class="table-row resource-link"
-        :href="resourceHref(item)"
-        rel="noopener noreferrer"
-        target="_blank"
-      >
+      <article class="table-row">
         <div>
           <strong>{{ itemLabel(item) }}</strong>
-          <p v-if="item.url">{{ item.url }}</p>
+          <p v-if="item.url">
+            <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
+          </p>
           <p v-else>{{ item.file_name || '-' }}</p>
         </div>
         <span>{{ categoryLabel(item.category) }}</span>
-        <span>{{ item.channel_title || 'Telegram' }}</span>
-        <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
-      </a>
-      <article v-else class="table-row">
-        <div>
-          <strong>{{ itemLabel(item) }}</strong>
-          <p v-if="item.url">{{ item.url }}</p>
-          <p v-else>{{ item.file_name || '-' }}</p>
-        </div>
-        <span>{{ categoryLabel(item.category) }}</span>
-        <span>{{ item.channel_title || 'Telegram' }}</span>
+        <span>
+          <a
+            v-if="messageHref(item)"
+            class="channel-link"
+            :href="messageHref(item)"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {{ item.channel_title || 'Telegram' }}
+          </a>
+          <template v-else>{{ item.channel_title || 'Telegram' }}</template>
+        </span>
         <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
       </article>
     </template>
@@ -110,7 +107,18 @@ function formatDate(value?: string) {
   margin: 4px 0 0;
 }
 
-.resource-link:hover strong {
+.external-link,
+.channel-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.external-link {
+  color: var(--app-text-muted);
+}
+
+.external-link:hover,
+.channel-link:hover {
   color: var(--app-accent);
 }
 

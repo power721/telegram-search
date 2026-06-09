@@ -35,7 +35,17 @@ go build -ldflags "-X 'tg-search/internal/build.Version=${VERSION}'" -o /tmp/tg-
 /tmp/tg-search -config config.yaml
 ```
 
-Run with Docker in one command:
+Install and open with Docker in one command:
+
+```bash
+scripts/install-docker.sh
+```
+
+The script pulls `haroldli/tg-search:latest`, replaces any existing `tg-search`
+container, starts it with the `tg-search-data` Docker volume, and opens
+`http://127.0.0.1:9900`.
+
+Run with Docker manually:
 
 ```bash
 docker run -d --name tg-search --restart unless-stopped -p 9900:9900 -v tg-search-data:/data/tg-search haroldli/tg-search:latest

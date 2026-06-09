@@ -27,8 +27,9 @@ storage:
 Build and run:
 
 ```bash
-go build ./...
-go run ./cmd/tg-search -config config.yaml
+VERSION=$(git describe --tags --always)
+go build -ldflags "-X 'tg-search/internal/build.Version=${VERSION}'" -o /tmp/tg-search ./cmd/tg-search
+/tmp/tg-search -config config.yaml
 ```
 
 Run with Docker Compose:
@@ -192,7 +193,7 @@ npm run web:build
 
 ## Release
 
-Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and pushes Docker images for `linux/amd64` and `linux/arm64` to Docker Hub as `<DOCKERHUB_USERNAME>/tg-search:latest` and `<DOCKERHUB_USERNAME>/tg-search:<version>` with the leading `v` removed from the Git tag. Docker Hub publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub secrets.
+Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, injects the Git tag into `internal/build.Version`, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and pushes Docker images for `linux/amd64` and `linux/arm64` to Docker Hub as `<DOCKERHUB_USERNAME>/tg-search:latest` and `<DOCKERHUB_USERNAME>/tg-search:<version>` with the leading `v` removed from the Git tag. Docker Hub publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub secrets.
 
 Operational docs:
 

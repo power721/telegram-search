@@ -13,6 +13,8 @@ import (
 	"github.com/gotd/td/telegram/query/dialogs"
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
+
+	"tg-search/internal/build"
 )
 
 type GotdClient struct {
@@ -239,7 +241,7 @@ func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func
 		Device: gotdtelegram.DeviceConfig{
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
-			AppVersion:     "1.0.0",
+			AppVersion:     build.Version,
 			SystemLangCode: "zh-CN",
 			LangCode:       "zh",
 		},

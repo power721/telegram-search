@@ -12,6 +12,7 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/zap"
 
+	"tg-search/internal/build"
 	"tg-search/internal/model"
 	localsession "tg-search/internal/session"
 	"tg-search/internal/telegram"
@@ -55,7 +56,7 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 		Device: gotdtelegram.DeviceConfig{
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
-			AppVersion:     "1.0.0",
+			AppVersion:     build.Version,
 			SystemLangCode: "zh-CN",
 			LangCode:       "zh",
 		},

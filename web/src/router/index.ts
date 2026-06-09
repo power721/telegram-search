@@ -17,6 +17,7 @@ import ChannelsView from '@/views/ChannelsView.vue'
 import ResourcesView from '@/views/ResourcesView.vue'
 import TasksView from '@/views/TasksView.vue'
 import LogsView from '@/views/LogsView.vue'
+import ApiHelpView from '@/views/ApiHelpView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -64,7 +65,8 @@ export const router = createRouter({
         { path: 'accounts', name: 'accounts', component: AccountsView },
         { path: 'tasks', name: 'tasks', component: TasksView },
         { path: 'logs', name: 'logs', component: LogsView },
-        { path: 'settings', name: 'settings', component: SettingsView }
+        { path: 'settings', name: 'settings', component: SettingsView },
+        { path: 'api-help', name: 'api-help', component: ApiHelpView }
       ]
     }
   ]

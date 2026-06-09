@@ -24,7 +24,7 @@ const activeItem = computed(() => navItems.find((item) => item.name === activeNa
       <div class="brand-block">
         <div class="brand-mark" aria-hidden="true">tg</div>
         <div>
-          <div class="brand">tg-search</div>
+          <div class="brand">TG Search</div>
           <div class="brand-subtitle">本地索引控制台</div>
         </div>
       </div>

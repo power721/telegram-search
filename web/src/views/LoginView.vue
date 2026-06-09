@@ -29,7 +29,7 @@ async function submit() {
   <main class="login-page">
     <section class="login-panel">
       <p class="eyebrow">管理控制台</p>
-      <h1>登录 tg-search</h1>
+      <h1>登录 TG Search</h1>
       <n-form @submit.prevent="submit">
         <n-form-item label="用户名">
           <n-input v-model:value="username" autocomplete="username" />

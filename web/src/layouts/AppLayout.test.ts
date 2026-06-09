@@ -21,7 +21,7 @@ describe('AppLayout', () => {
     expect(wrapper.find('.app-toolbar').exists()).toBe(true)
     expect(wrapper.find('.content-frame').exists()).toBe(true)
     expect(wrapper.find('.nav-item.active span').text()).toBe('资源')
-    expect(wrapper.text()).toContain('tg-search')
+    expect(wrapper.text()).toContain('TG Search')
     expect(wrapper.text()).toContain('本地索引控制台')
   })
 })

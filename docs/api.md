@@ -27,14 +27,24 @@ telegram_sync_cursors      -> per account/channel cursor state
 
 ## Authentication
 
-Business API endpoints require an API key. Send it with either header:
+Administrator browser/API routes require an authenticated admin session cookie created by `POST /api/auth/login`.
+
+API keys are limited external credentials. They can access only:
+
+- `GET /api/resources`
+- `GET /api/resources/grouped`
+- `GET /api/resources/:id`
+
+Send API keys with one of:
 
 ```text
 Authorization: Bearer <api-key>
 X-API-Key: <api-key>
 ```
 
-Health, readiness, first-run setup, admin login/session, and API key management endpoints are available without an API key where required for bootstrap. API key management requires an authenticated admin session.
+The `api_key` query parameter is also accepted for resource endpoints and future media proxy endpoints that cannot set headers.
+
+Health, readiness, first-run setup, and admin login/session endpoints remain available without an API key where required for bootstrap. API key management requires an authenticated admin session.
 
 ## Setup
 

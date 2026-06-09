@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"tg-search/internal/model"
+	"tg-search/internal/retry"
 	"tg-search/internal/telegram"
 )
 
@@ -77,6 +78,7 @@ func (h handlers) serveTelegramVideo(c *gin.Context) {
 	}
 	file, err := h.deps.Telegram.VideoFile(c.Request.Context(), media.session, media.channel, media.messageID)
 	if err != nil {
+		h.markMediaAccountAuthFailure(c.Request.Context(), media.session, err)
 		errorText(c, mediaErrorStatus(err), err.Error())
 		return
 	}
@@ -117,6 +119,7 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	}
 	image, err := h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
 	if err != nil {
+		h.markMediaAccountAuthFailure(c.Request.Context(), media.session, err)
 		errorText(c, mediaErrorStatus(err), err.Error())
 		return
 	}
@@ -214,6 +217,13 @@ func (h handlers) accountSession(account model.Account) telegram.AccountSession 
 	}
 }
 
+func (h handlers) markMediaAccountAuthFailure(ctx context.Context, session telegram.AccountSession, err error) {
+	if h.deps.Accounts == nil || session.AccountID <= 0 || retry.Classify(err).Kind != retry.KindAuth {
+		return
+	}
+	_ = h.deps.Accounts.UpdateStatus(ctx, session.AccountID, model.AccountStatusLoginRequired)
+}
+
 func parseRange(h string, size int64) (start, end int64, partial bool, err error) {
 	if size <= 0 {
 		return 0, 0, false, fmt.Errorf("invalid size")
@@ -268,6 +278,8 @@ func mediaErrorStatus(err error) int {
 	switch {
 	case strings.Contains(msg, "bad range"), strings.Contains(msg, "invalid range"):
 		return http.StatusRequestedRangeNotSatisfiable
+	case retry.Classify(err).Kind == retry.KindAuth:
+		return http.StatusServiceUnavailable
 	case strings.Contains(msg, "not found"), strings.Contains(msg, "no rows"), strings.Contains(msg, "has no"), strings.Contains(msg, "no usable photo size"):
 		return http.StatusNotFound
 	case strings.Contains(msg, "required"), strings.Contains(msg, "positive integer"):

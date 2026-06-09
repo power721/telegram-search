@@ -374,6 +374,46 @@ func TestServeTelegramImageHead(t *testing.T) {
 	}
 }
 
+func TestServeTelegramImageMarksAccountLoginRequiredOnAuthFailure(t *testing.T) {
+	deps := testDeps(t)
+	ctx := context.Background()
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, _ = deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: 4096}})
+	deps.Telegram = &mediaProxyClient{imageErr: errors.New("callback: rpcDoRequest: rpc error code 401: AUTH_KEY_UNREGISTERED")}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/888", time.Now().Add(time.Hour)), nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body=%s, want 503", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Telegram 登录已失效，请重新登录") {
+		t.Fatalf("body = %s, want localized auth failure", w.Body.String())
+	}
+	account, err := deps.Accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusLoginRequired {
+		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+}
+
 func signedMediaPath(t *testing.T, key string, path string, expiresAt time.Time) string {
 	t.Helper()
 	exp := strconv.FormatInt(expiresAt.Unix(), 10)
@@ -388,6 +428,8 @@ type mediaProxyClient struct {
 	telegram.NopClient
 	file        telegram.VideoFile
 	image       telegram.ImageFile
+	videoErr    error
+	imageErr    error
 	data        []byte
 	session     telegram.AccountSession
 	channel     telegram.MediaChannelRef
@@ -401,6 +443,9 @@ func (f *mediaProxyClient) VideoFile(ctx context.Context, session telegram.Accou
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID
+	if f.videoErr != nil {
+		return telegram.VideoFile{}, f.videoErr
+	}
 	return f.file, nil
 }
 
@@ -423,5 +468,8 @@ func (f *mediaProxyClient) DownloadMessageImage(ctx context.Context, session tel
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID
+	if f.imageErr != nil {
+		return telegram.ImageFile{}, f.imageErr
+	}
 	return f.image, nil
 }

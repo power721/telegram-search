@@ -194,7 +194,9 @@ func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.Ga
 		}
 		batch, err := s.telegram.FetchHistory(ctx, accountSession, ref, offsetID, s.historyBatchSize)
 		if err != nil {
-			return result, fmt.Errorf("fetch gap recovery history: %w", err)
+			err = fmt.Errorf("fetch gap recovery history: %w", err)
+			s.markAccountAuthFailure(ctx, account.ID, err)
+			return result, err
 		}
 		if len(batch) == 0 {
 			break
@@ -508,6 +510,7 @@ func (s *Service) syncListenBacklogChannel(ctx context.Context, channel model.Ch
 		}
 	})
 	if err != nil {
+		s.markChannelAuthFailure(ctx, channel.ID, err)
 		return result, err
 	}
 	if result.Messages > 0 {
@@ -684,6 +687,7 @@ func (s *Service) syncChannelWithRetry(ctx context.Context, channelID int64, pro
 			zap.Duration("duration", time.Since(started)),
 			zap.Error(err),
 		)
+		s.markChannelAuthFailure(ctx, channelID, err)
 		return result, err
 	}
 	if result.Messages > 0 {
@@ -874,6 +878,24 @@ func (s *Service) markChannelAccountStatus(ctx context.Context, channelID int64,
 		return
 	}
 	_ = s.accounts.UpdateStatus(ctx, channel.AccountID, status)
+}
+
+func (s *Service) markChannelAuthFailure(ctx context.Context, channelID int64, err error) {
+	if s.accounts == nil || s.channels == nil || retry.Classify(err).Kind != retry.KindAuth {
+		return
+	}
+	channel, findErr := s.channels.FindByID(ctx, channelID)
+	if findErr != nil {
+		return
+	}
+	s.markAccountAuthFailure(ctx, channel.AccountID, err)
+}
+
+func (s *Service) markAccountAuthFailure(ctx context.Context, accountID int64, err error) {
+	if s.accounts == nil || accountID <= 0 || retry.Classify(err).Kind != retry.KindAuth {
+		return
+	}
+	_ = s.accounts.UpdateStatus(ctx, accountID, model.AccountStatusLoginRequired)
 }
 
 func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int64, cursor int64, cursorDate time.Time, messages []model.Message) (int, error) {

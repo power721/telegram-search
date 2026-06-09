@@ -112,6 +112,10 @@ func localizedErrorMessage(status int, msg string) string {
 		return "同步档位无效"
 	case strings.Contains(lower, "flood_wait") || strings.Contains(lower, "flood wait"):
 		return "Telegram 请求触发限流，请稍后重试"
+	case strings.Contains(lower, "auth_key_unregistered") ||
+		strings.Contains(lower, "auth_key_invalid") ||
+		strings.Contains(lower, "session_revoked"):
+		return "Telegram 登录已失效，请重新登录"
 	case strings.Contains(lower, "phone_code_invalid") || strings.Contains(lower, "code invalid"):
 		return "验证码错误"
 	case strings.Contains(lower, "phone_code_expired") || strings.Contains(lower, "code expired"):

@@ -546,6 +546,71 @@ func TestSyncChannelMarksAccountFloodWaitBeforeRetry(t *testing.T) {
 	}
 }
 
+func TestSyncChannelMarksAccountLoginRequiredOnAuthFailure(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+
+	fake := &authFailureHistoryClient{}
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: fake, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+		RetryPolicy: retry.Policy{
+			BaseDelay: time.Millisecond,
+			MaxDelay:  time.Millisecond,
+			MaxTries:  3,
+			Sleep:     func(context.Context, time.Duration) error { return nil },
+		},
+	})
+
+	_, err := service.SyncChannel(ctx, channelID)
+	if err == nil {
+		t.Fatal("SyncChannel returned nil error")
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusLoginRequired {
+		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("fetch calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestRecoverGapMarksAccountLoginRequiredOnAuthFailure(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Telegram: &authFailureHistoryClient{}, Sessions: session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor: link.NewExtractor(), HistoryBatchSize: 10,
+	})
+
+	_, err := service.RecoverGapWithProgress(ctx, taskpkg.GapRecoveryPayload{
+		AccountID:         accountID,
+		ChannelID:         channelID,
+		FromMessageID:     10,
+		ToMessageID:       12,
+		TriggerMessageID:  13,
+		TelegramChannelID: 200,
+	}, nil)
+	if err == nil {
+		t.Fatal("RecoverGapWithProgress returned nil error")
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+	if account.Status != model.AccountStatusLoginRequired {
+		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+}
+
 func TestSyncChannelAppliesWatchRuleAndIgnoresEnabled(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
@@ -1034,6 +1099,16 @@ func (f *floodThenEmptyHistoryClient) FetchHistory(ctx context.Context, account 
 		return nil, retry.FloodWait(60, errors.New("FLOOD_WAIT_60"))
 	}
 	return nil, nil
+}
+
+type authFailureHistoryClient struct {
+	telegram.NopClient
+	calls int
+}
+
+func (f *authFailureHistoryClient) FetchHistory(ctx context.Context, account telegram.AccountSession, channel telegram.ChannelRef, offsetID int64, limit int) ([]telegram.Message, error) {
+	f.calls++
+	return nil, errors.New("callback: rpcDoRequest: rpc error code 401: AUTH_KEY_UNREGISTERED")
 }
 
 func TestSyncManyDeduplicatesChannelIDsAndRespectsWorkerLimit(t *testing.T) {

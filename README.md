@@ -20,6 +20,9 @@ storage:
   path: /data/tg-search
   max_db_size: 10GB
   max_media_cache: 20GB
+telegram:
+  media:
+    concurrency: 2
 ```
 
 Telegram App ID and App Hash are configured in the admin setup flow or later from Settings.

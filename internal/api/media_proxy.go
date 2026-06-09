@@ -76,7 +76,12 @@ func (h handlers) serveTelegramVideo(c *gin.Context) {
 	if !ok {
 		return
 	}
-	file, err := h.deps.Telegram.VideoFile(c.Request.Context(), media.session, media.channel, media.messageID)
+	var file telegram.VideoFile
+	err := h.runMediaDownload(c.Request.Context(), func() error {
+		var err error
+		file, err = h.deps.Telegram.VideoFile(c.Request.Context(), media.session, media.channel, media.messageID)
+		return err
+	})
 	if err != nil {
 		h.markMediaAccountAuthFailure(c.Request.Context(), media.session, err)
 		errorText(c, mediaErrorStatus(err), err.Error())
@@ -106,7 +111,9 @@ func (h handlers) serveTelegramVideo(c *gin.Context) {
 	if c.Request.Method == http.MethodHead {
 		return
 	}
-	if err := h.deps.Telegram.StreamVideoRange(c.Request.Context(), media.session, media.channel, media.messageID, file, start, length, c.Writer); err != nil {
+	if err := h.runMediaDownload(c.Request.Context(), func() error {
+		return h.deps.Telegram.StreamVideoRange(c.Request.Context(), media.session, media.channel, media.messageID, file, start, length, c.Writer)
+	}); err != nil {
 		c.Error(err)
 		return
 	}
@@ -117,7 +124,12 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	if !ok {
 		return
 	}
-	image, err := h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
+	var image telegram.ImageFile
+	err := h.runMediaDownload(c.Request.Context(), func() error {
+		var err error
+		image, err = h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
+		return err
+	})
 	if err != nil {
 		h.markMediaAccountAuthFailure(c.Request.Context(), media.session, err)
 		errorText(c, mediaErrorStatus(err), err.Error())
@@ -165,6 +177,13 @@ func (h handlers) mediaRequestContext(c *gin.Context) (mediaRequest, bool) {
 		return mediaRequest{}, false
 	}
 	return media, true
+}
+
+func (h handlers) runMediaDownload(ctx context.Context, fn func() error) error {
+	if h.deps.MediaLimiter == nil {
+		return fn()
+	}
+	return h.deps.MediaLimiter.Run(ctx, fn)
 }
 
 func (h handlers) resolveMediaFileSession(ctx context.Context, fileID int64) (mediaRequest, error) {

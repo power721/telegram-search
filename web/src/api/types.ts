@@ -274,6 +274,19 @@ export interface MediaURLs {
   video_url?: string
 }
 
+export interface ResourceMedia extends MediaURLs {
+  title?: string
+  year?: string
+  season?: string
+  episode?: string
+  quality?: string
+  size?: string
+  tmdb_id?: string
+  category?: string
+  tags?: string
+  summary?: string
+}
+
 export interface MessageSearchResult {
   id: number
   channel_id: number
@@ -367,15 +380,6 @@ export interface ResourceItem {
   note?: string
   title?: string
   source_snippet?: string
-  media_title?: string
-  media_year?: string
-  media_season?: string
-  media_episode?: string
-  media_quality?: string
-  media_size?: string
-  media_tmdb_id?: string
-  media_category?: string
-  media_tags?: string
   datetime?: string
   channel_id?: number
   telegram_channel_id?: number
@@ -383,8 +387,7 @@ export interface ResourceItem {
   channel_username?: string
   telegram_message_id?: number
   message_type?: string
-  media_summary?: string
-  media?: MediaURLs
+  media?: ResourceMedia
 }
 
 export interface ResourcesResponse {

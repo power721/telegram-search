@@ -33,18 +33,18 @@ function categoryLabel(category: string) {
 }
 
 function itemLabel(item: ResourceItem) {
-  return item.media_title || item.title || item.file_name || item.url || '-'
+  return item.media?.title || item.title || item.file_name || item.url || '-'
 }
 
 function mediaMetaParts(item: ResourceItem) {
   return [
-    item.media_year,
-    item.media_season,
-    item.media_episode,
-    item.media_quality,
-    item.media_size,
-    item.media_category,
-    item.media_tmdb_id ? `TMDB ${item.media_tmdb_id}` : ''
+    item.media?.year,
+    item.media?.season,
+    item.media?.episode,
+    item.media?.quality,
+    item.media?.size,
+    item.media?.category,
+    item.media?.tmdb_id ? `TMDB ${item.media.tmdb_id}` : ''
   ].filter(Boolean)
 }
 
@@ -115,7 +115,7 @@ function formatDate(value?: string) {
             </p>
             <p v-else>{{ item.file_name || '-' }}</p>
             <p v-if="mediaMetaParts(item).length > 0" class="media-meta">{{ mediaMetaParts(item).join(' · ') }}</p>
-            <p v-if="item.media_tags" class="media-tags">{{ item.media_tags }}</p>
+            <p v-if="item.media?.tags" class="media-tags">{{ item.media.tags }}</p>
           </div>
         </div>
         <span>{{ categoryLabel(item.category) }}</span>

@@ -63,7 +63,9 @@ func (h handlers) attachMediaToResourceItems(ctx context.Context, items []resour
 		if err != nil {
 			return nil, err
 		}
-		items[i].Media = media
+		if media != nil {
+			items[i].SetMediaURLs(media.ImageURL, media.VideoURL)
+		}
 	}
 	return items, nil
 }

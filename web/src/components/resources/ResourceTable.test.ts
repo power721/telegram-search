@@ -51,6 +51,37 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain(expected)
   })
 
+  it('renders nested media metadata', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'link:https://example.com/course',
+            kind: 'link',
+            category: 'cloud_drive',
+            title: 'Fallback Title',
+            url: 'https://example.com/course',
+            media: {
+              title: 'Course Pack',
+              year: '2026',
+              season: 'S01',
+              episode: 'E02',
+              quality: '4K',
+              size: '12GB',
+              category: 'course',
+              tmdb_id: '12345',
+              tags: 'linux,release'
+            }
+          }
+        ]
+      }
+    })
+
+    expect(wrapper.text()).toContain('Course Pack')
+    expect(wrapper.text()).toContain('2026 · S01 · E02 · 4K · 12GB · course · TMDB 12345')
+    expect(wrapper.text()).toContain('linux,release')
+  })
+
   it('opens the Telegram message position from the resource title and channel column', () => {
     const wrapper = mount(ResourceTable, {
       props: {

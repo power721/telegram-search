@@ -105,7 +105,7 @@ func (h handlers) externalSearch(c *gin.Context) {
 		return
 	}
 	response := buildExternalSearchResponse(items, total, resultType, req.includeMediaMetadata())
-	c.JSON(http.StatusOK, externalAPIResponse{Code: 0, Message: "success", Data: response})
+	c.PureJSON(http.StatusOK, externalAPIResponse{Code: 0, Message: "success", Data: response})
 }
 
 func (r externalSearchRequest) includeMediaMetadata() bool {

@@ -114,12 +114,12 @@ func TestExtractRealMessageCorpus(t *testing.T) {
 			t.Fatalf("type %s count = %d, want 1: %+v", typ, len(byType[typ]), links)
 		}
 	}
-	if len(byType["url"]) != 0 {
-		t.Fatalf("fallback url count = %d, want telegram links ignored: %+v", len(byType["url"]), byType["url"])
+	if len(byType["url"]) != 3 {
+		t.Fatalf("fallback url count = %d, want telegram fallback links extracted for rule filtering: %+v", len(byType["url"]), byType["url"])
 	}
 }
 
-func TestExtractIgnoresTelegramLinks(t *testing.T) {
+func TestExtractIncludesTelegramLinksForRuleFiltering(t *testing.T) {
 	text := `频道：https://t.me/+Djia5z2lVsI5ODRl
 群组：http://t.me/Quark_Share_Group
 投稿：https://T.ME/QuarkRobot
@@ -127,14 +127,14 @@ func TestExtractIgnoresTelegramLinks(t *testing.T) {
 官网：https://example.com/post`
 
 	links := NewExtractor().Extract(text)
-	if len(links) != 2 {
-		t.Fatalf("len = %d, want only non-telegram links: %+v", len(links), links)
+	if len(links) != 5 {
+		t.Fatalf("len = %d, want telegram and resource links: %+v", len(links), links)
 	}
-	if links[0].Type != "quark" || links[0].URL != "https://pan.quark.cn/s/abc123" {
-		t.Fatalf("first link = %+v, want quark link", links[0])
+	if links[0].Type != "url" || links[0].URL != "https://t.me/+Djia5z2lVsI5ODRl" {
+		t.Fatalf("first link = %+v, want telegram fallback link", links[0])
 	}
-	if links[1].Type != "url" || links[1].URL != "https://example.com/post" {
-		t.Fatalf("second link = %+v, want fallback url", links[1])
+	if links[3].Type != "quark" || links[3].URL != "https://pan.quark.cn/s/abc123" {
+		t.Fatalf("fourth link = %+v, want quark link", links[3])
 	}
 }
 
@@ -411,8 +411,8 @@ func TestExtractMediaMetadataFromResourceNameAndPikPak(t *testing.T) {
 🏷 文件类型：#脱口秀#综艺##文化节目#中国文化`
 
 	links := NewExtractor().Extract(text)
-	if len(links) != 1 {
-		t.Fatalf("len = %d, want only real pikpak resource: %+v", len(links), links)
+	if len(links) != 2 {
+		t.Fatalf("len = %d, want pikpak resource and toapp fallback for rule filtering: %+v", len(links), links)
 	}
 	link := links[0]
 	if link.Type != "pikpak" || link.URL != "https://mypikpak.com/s/VO" {
@@ -790,7 +790,7 @@ S01E01-E08 4K SDR 内嵌简中 DDP.2.0 HiveWeb
 	}
 }
 
-func TestExtractIgnoresCollectionAndTMDBReferenceLinks(t *testing.T) {
+func TestExtractIncludesCollectionReferenceLinksForRuleFiltering(t *testing.T) {
 	text := `🎥 迈克尔·杰克逊：巨星之路 (2026)
 
 🗂 所属合集：Michael Collection (https://telegra.ph/Michael-Collection-06-09)
@@ -799,8 +799,8 @@ func TestExtractIgnoresCollectionAndTMDBReferenceLinks(t *testing.T) {
 🔖 标签: #迈克尔杰克逊巨星之路 #电影 #22.61G #4K #DDP #DV #HEVC #WEB-DL #MichaelCollection`
 
 	links := NewExtractor().Extract(text)
-	if len(links) != 0 {
-		t.Fatalf("len = %d, want collection reference ignored: %+v", len(links), links)
+	if len(links) != 1 || links[0].URL != "https://telegra.ph/Michael-Collection-06-09" {
+		t.Fatalf("links = %+v, want collection reference extracted for rule filtering", links)
 	}
 }
 
@@ -820,10 +820,10 @@ TMDB: 44277 (https://www.themoviedb.org/tv/44277)
 标签：#神探狄仁杰 #剧情 #悬疑`
 
 	links := NewExtractor().Extract(text)
-	if len(links) != 3 {
-		t.Fatalf("len = %d, want user/resource/tv fallback URLs and TMDB ignored: %+v", len(links), links)
+	if len(links) != 4 {
+		t.Fatalf("len = %d, want user/TMDB/resource/tv fallback URLs: %+v", len(links), links)
 	}
-	resource := links[1]
+	resource := links[2]
 	if resource.URL != "https://hdhive.com/resource/115/01e82030dcab468697a8113343684ff9" || resource.MediaTitle != "神探狄仁杰" {
 		t.Fatalf("resource = %+v", resource)
 	}

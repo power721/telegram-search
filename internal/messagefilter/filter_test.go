@@ -136,6 +136,48 @@ func TestFilterAppliesLinkTypes(t *testing.T) {
 	}
 }
 
+func TestFilterIgnoresConfiguredLinkPatterns(t *testing.T) {
+	rules := fakeRules{byChannel: map[int64]model.WatchRule{
+		1: {
+			ChannelID:           1,
+			Enabled:             true,
+			MessageTypes:        []string{"link"},
+			LinkTypes:           []string{"http"},
+			IgnoredLinkPatterns: []string{"t.me", "*.t.me", "example.com"},
+		},
+	}}
+	filter := New(rules)
+
+	result, err := filter.Apply(context.Background(), Request{
+		ChannelID: 1,
+		Text:      "频道 https://t.me/channel 镜像 https://cdn.t.me/file 页面 https://example.com/post 官网 https://example.org/post",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if !result.Keep || len(result.Links) != 1 || result.Links[0].URL != "https://example.org/post" {
+		t.Fatalf("result = %+v, want only non-ignored example.org link", result)
+	}
+}
+
+func TestFilterUsesDefaultIgnoredLinkPatterns(t *testing.T) {
+	rules := fakeRules{byChannel: map[int64]model.WatchRule{
+		1: {ChannelID: 1, Enabled: true, MessageTypes: []string{"link"}, LinkTypes: []string{"http"}},
+	}}
+	filter := New(rules)
+
+	result, err := filter.Apply(context.Background(), Request{
+		ChannelID: 1,
+		Text:      "频道 https://t.me/channel 官网 https://example.com/post",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if !result.Keep || len(result.Links) != 1 || result.Links[0].URL != "https://example.com/post" {
+		t.Fatalf("result = %+v, want default t.me ignored", result)
+	}
+}
+
 func TestFilterHandlesMissingAndDisabledRules(t *testing.T) {
 	rules := fakeRules{byChannel: map[int64]model.WatchRule{
 		2: {ChannelID: 2, Enabled: false, Includes: []string{"庆余年"}},

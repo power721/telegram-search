@@ -29,13 +29,15 @@ const canConfirmSync = computed(() => Number.isInteger(syncMaxMessages.value) &&
 
 const defaultMessageTypes = ['link', 'text', 'image', 'video', 'audio']
 const defaultLinkTypes = ['cloud_drive', 'magnet', 'ed2k', 'other']
+const defaultIgnoredLinkPatterns = ['t.me', 'toapp.mypikpak.com', 'telegra.ph', 'www.themoviedb.org']
 
 const ruleForm = ref({
   enabled: true,
   includes: '',
   excludes: '',
   message_types: [...defaultMessageTypes],
-  link_types: [...defaultLinkTypes]
+  link_types: [...defaultLinkTypes],
+  ignored_link_patterns: joinTerms(defaultIgnoredLinkPatterns)
 })
 
 const ruleTitle = computed(() => {
@@ -317,17 +319,25 @@ function applyRuleToForm(rule?: Partial<ListenRulesPayload & Pick<WatchRule, 'en
     includes: joinTerms(rule?.includes),
     excludes: joinTerms(rule?.excludes),
     message_types: rule?.message_types?.length ? [...rule.message_types] : [...defaultMessageTypes],
-    link_types: rule?.link_types?.length ? [...rule.link_types] : [...defaultLinkTypes]
+    link_types: rule?.link_types?.length ? [...rule.link_types] : [...defaultLinkTypes],
+    ignored_link_patterns:
+      rule?.ignored_link_patterns !== undefined
+        ? joinTerms(rule.ignored_link_patterns)
+        : joinTerms(defaultIgnoredLinkPatterns)
   }
 }
 
 function rulePayload(): ListenRulesPayload {
-  return {
+  const payload: ListenRulesPayload = {
     includes: terms(ruleForm.value.includes),
     excludes: terms(ruleForm.value.excludes),
     message_types: [...ruleForm.value.message_types],
     link_types: [...ruleForm.value.link_types]
   }
+  if (ruleScope.value === 'global') {
+    payload.ignored_link_patterns = terms(ruleForm.value.ignored_link_patterns)
+  }
+  return payload
 }
 
 async function openGlobalRules() {
@@ -580,6 +590,13 @@ async function useGlobalRule() {
           </n-form-item>
           <n-form-item label="排除关键词">
             <n-input v-model:value="ruleForm.excludes" class="rule-excludes" placeholder="多个关键词用英文逗号分隔" />
+          </n-form-item>
+          <n-form-item v-if="ruleScope === 'global'" label="忽略链接">
+            <n-input
+              v-model:value="ruleForm.ignored_link_patterns"
+              class="rule-ignored-links"
+              placeholder="t.me, *.t.me, example.com"
+            />
           </n-form-item>
           <n-form-item label="消息类型">
             <n-checkbox-group v-model:value="ruleForm.message_types" class="rule-message-types">

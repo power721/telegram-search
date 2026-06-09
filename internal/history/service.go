@@ -1115,12 +1115,10 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 			if err != nil {
 				return 0, fmt.Errorf("filter history message: %w", err)
 			}
-			if result.RuleApplied {
-				if !result.Keep {
-					continue
-				}
-				extracted = result.Links
+			if !result.Keep {
+				continue
 			}
+			extracted = result.Links
 		}
 		filtered = append(filtered, msg)
 		linksByTelegramID[msg.TelegramMessageID] = extracted

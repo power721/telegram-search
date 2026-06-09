@@ -141,9 +141,6 @@ func (e *Extractor) Extract(text string) []model.Link {
 		if url == "" {
 			continue
 		}
-		if isIgnoredURL(url) {
-			continue
-		}
 		if candidate.Type != "url" && overlapsSpan(candidate.MatchStart, candidate.MatchEnd, providerSpans) {
 			continue
 		}
@@ -400,19 +397,6 @@ func keepQueryCodeOnly(raw string, key string) string {
 
 func isCodeRune(r rune) bool {
 	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_'
-}
-
-func isIgnoredURL(raw string) bool {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return false
-	}
-	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
-		return false
-	}
-	host := strings.ToLower(parsed.Hostname())
-	return host == "t.me" || host == "toapp.mypikpak.com" || host == "telegra.ph" || host == "www.themoviedb.org"
 }
 
 func queryPassword(typ string, raw string) string {

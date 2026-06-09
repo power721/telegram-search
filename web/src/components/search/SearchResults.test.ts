@@ -151,4 +151,99 @@ describe('SearchResults', () => {
       'https://example.com/resource'
     ])
   })
+
+  it('renders enlarged hover previews for message, link, and file image results', () => {
+    const result = {
+      messages: {
+        items: [
+          {
+            id: 1,
+            text: 'photo result',
+            media: {
+              image_url: '/i/photos/42'
+            }
+          }
+        ],
+        total: 1
+      },
+      links: {
+        items: [
+          {
+            id: 3,
+            message_id: 1,
+            type: 'url',
+            url: 'https://example.com/poster',
+            media: {
+              image_url: '/i/links/44'
+            }
+          }
+        ],
+        total: 1
+      },
+      files: {
+        items: [
+          {
+            id: 2,
+            message_id: 1,
+            file_name: 'poster.jpg',
+            extension: '.jpg',
+            mime_type: 'image/jpeg',
+            size_bytes: 100,
+            category: 'image',
+            media: {
+              image_url: '/i/files/43'
+            }
+          }
+        ],
+        total: 1
+      },
+      channels: { items: [], total: 0 }
+    } as unknown as GlobalSearchResult
+
+    const wrapper = mount(SearchResults, {
+      props: { result }
+    })
+
+    const thumbs = wrapper.findAll('img.search-thumb')
+    expect(thumbs.map((image) => image.attributes('src'))).toEqual(['/i/photos/42', '/i/links/44', '/i/files/43'])
+    const previews = wrapper.findAll('.search-thumb-frame img.search-thumb-preview')
+    expect(previews.map((image) => image.attributes('src'))).toEqual(['/i/photos/42', '/i/links/44', '/i/files/43'])
+    for (const preview of previews) {
+      expect(preview.attributes('aria-hidden')).toBe('true')
+    }
+    expect(searchResultsSource).toMatch(/--search-thumb-preview-width:\s*600px;/)
+    expect(searchResultsSource).toMatch(/\.search-thumb-frame:hover\s+\.search-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
+  })
+
+  it('falls back to video preview when an image thumbnail fails', async () => {
+    const result = {
+      messages: {
+        items: [
+          {
+            id: 1,
+            text: 'video result',
+            media: {
+              image_url: '/i/videos/42',
+              video_url: '/v/videos/42'
+            }
+          }
+        ],
+        total: 1
+      },
+      links: { items: [], total: 0 },
+      files: { items: [], total: 0 },
+      channels: { items: [], total: 0 }
+    } as unknown as GlobalSearchResult
+
+    const wrapper = mount(SearchResults, {
+      props: { result }
+    })
+
+    await wrapper.find('img.search-thumb').trigger('error')
+
+    expect(wrapper.find('img.search-thumb').exists()).toBe(false)
+    const video = wrapper.find('video.search-thumb')
+    expect(video.exists()).toBe(true)
+    expect(video.attributes('src')).toBe('/v/videos/42')
+  })
 })

@@ -307,11 +307,14 @@ export interface MessageSearchResult {
 export interface LinkSearchResult extends Link {
   message_text?: string
   message_date?: string
+  message_type?: string
+  media_summary?: string
   channel_id?: number
   telegram_channel_id?: number
   channel_title?: string
   channel_username?: string
   telegram_message_id?: number
+  media?: MediaURLs
   source?: 'local' | 'remote'
 }
 
@@ -331,6 +334,7 @@ export interface FileSearchResult {
   channel_title?: string
   channel_username?: string
   telegram_message_id?: number
+  media?: MediaURLs
   source?: 'local' | 'remote'
 }
 

@@ -2232,8 +2232,8 @@ func TestReadAPIsFilterByAccount(t *testing.T) {
 	deps := testDeps(t)
 	account1, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "one", Status: model.AccountStatusOnline})
 	account2, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Username: "two", Status: model.AccountStatusOnline})
-	channel1, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account1, TelegramChannelID: 1, Title: "one-channel", Type: model.ChannelTypeChannel})
-	channel2, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account2, TelegramChannelID: 2, Title: "two-channel", Type: model.ChannelTypeChannel})
+	channel1, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account1, TelegramChannelID: 1, Title: "one-channel", Type: model.ChannelTypeChannel, MemberCount: 10})
+	channel2, _ := deps.Channels.Save(ctx, model.Channel{AccountID: account2, TelegramChannelID: 2, Title: "two-channel", Type: model.ChannelTypeChannel, MemberCount: 10})
 	now := time.Now().UTC()
 	stored1, _ := deps.Messages.SaveBatch(ctx, []model.Message{{AccountID: account1, ChannelID: channel1, TelegramMessageID: 1, Text: "shared title one", RawJSON: "{}", Date: now}})
 	stored2, _ := deps.Messages.SaveBatch(ctx, []model.Message{{AccountID: account2, ChannelID: channel2, TelegramMessageID: 2, Text: "shared title two", RawJSON: "{}", Date: now}})
@@ -2594,6 +2594,7 @@ func TestChannelsAPIIncludesIndexedMessageCount(t *testing.T) {
 		Title:             "Public Channel",
 		Username:          "public_channel",
 		Type:              model.ChannelTypeChannel,
+		MemberCount:       10,
 	})
 	now := time.Now().UTC()
 	_, _ = deps.Messages.SaveBatch(ctx, []model.Message{
@@ -2627,6 +2628,189 @@ func TestChannelsAPIIncludesIndexedMessageCount(t *testing.T) {
 	}
 }
 
+func TestChannelsAPIDeduplicatesGlobalDuplicateOwners(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	account1, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	account2, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusOnline})
+	firstID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         account1,
+		TelegramChannelID: 30,
+		Title:             "Shared Channel",
+		Username:          "shared_channel",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       10,
+	})
+	secondID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         account2,
+		TelegramChannelID: 30,
+		Title:             "Shared Channel",
+		Username:          "shared_channel",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       10,
+	})
+	if err := deps.Channels.UpdateControl(ctx, secondID, model.ChannelControl{
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Normal",
+		ListenEnabled:       true,
+		RemoteSearchAllowed: true,
+	}); err != nil {
+		t.Fatalf("enable second channel: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ID        int64 `json:"id"`
+			AccountID int64 `json:"account_id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("global items len = %d, want one representative channel: %s", len(body.Items), w.Body.String())
+	}
+	if body.Items[0].ID != secondID || body.Items[0].AccountID != account2 {
+		t.Fatalf("global item = %+v, want enabled duplicate owner id %d account %d", body.Items[0], secondID, account2)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/channels?account_id="+strconv.FormatInt(account1, 10), nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("account status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	body.Items = nil
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid account JSON: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ID != firstID {
+		t.Fatalf("account items = %+v, want first account channel id %d", body.Items, firstID)
+	}
+}
+
+func TestChannelsAPIKeepsSavedMessagesPerAccount(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	account1, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	account2, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusOnline})
+	firstID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         account1,
+		TelegramChannelID: 0,
+		Title:             "Saved Messages",
+		Type:              model.ChannelTypeSavedMessages,
+	})
+	secondID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         account2,
+		TelegramChannelID: 0,
+		Title:             "Saved Messages",
+		Type:              model.ChannelTypeSavedMessages,
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/channels", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ID   int64  `json:"id"`
+			Type string `json:"type"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items len = %d, want saved messages for both accounts: %s", len(body.Items), w.Body.String())
+	}
+	ids := map[int64]bool{}
+	for _, item := range body.Items {
+		ids[item.ID] = true
+		if item.Type != model.ChannelTypeSavedMessages {
+			t.Fatalf("item = %+v, want saved_messages", item)
+		}
+	}
+	if !ids[firstID] || !ids[secondID] {
+		t.Fatalf("ids = %+v, want %d and %d", ids, firstID, secondID)
+	}
+}
+
+func TestChannelsAPIHidesZeroMemberChannelsAndGroups(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	visibleID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 30,
+		Title:             "Visible Channel",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       10,
+	})
+	hiddenChannelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 31,
+		Title:             "Banned Channel",
+		Type:              model.ChannelTypeChannel,
+		MemberCount:       0,
+	})
+	hiddenGroupID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 32,
+		Title:             "Banned Group",
+		Type:              model.ChannelTypeSupergroup,
+		MemberCount:       0,
+	})
+	savedID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 0,
+		Title:             "Saved Messages",
+		Type:              model.ChannelTypeSavedMessages,
+		MemberCount:       0,
+	})
+	router := NewRouter(deps)
+
+	for _, path := range []string{"/api/channels", "/api/channels?account_id=" + strconv.FormatInt(accountID, 10)} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		withAdminSession(t, deps, req)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status = %d body=%s, want 200", path, w.Code, w.Body.String())
+		}
+		var body struct {
+			Items []struct {
+				ID int64 `json:"id"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+			t.Fatalf("%s invalid JSON: %v", path, err)
+		}
+		ids := map[int64]bool{}
+		for _, item := range body.Items {
+			ids[item.ID] = true
+		}
+		if !ids[visibleID] || !ids[savedID] {
+			t.Fatalf("%s ids = %+v, want visible channel %d and saved messages %d", path, ids, visibleID, savedID)
+		}
+		if ids[hiddenChannelID] || ids[hiddenGroupID] {
+			t.Fatalf("%s ids = %+v, want hidden zero-member channel %d and group %d omitted", path, ids, hiddenChannelID, hiddenGroupID)
+		}
+	}
+}
+
 func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -2637,6 +2821,7 @@ func TestChannelWebAccessCheckAPIUpdatesChannelList(t *testing.T) {
 		Title:             "Public Channel",
 		Username:          "public_channel",
 		Type:              model.ChannelTypeChannel,
+		MemberCount:       10,
 	})
 	checker := &apiWebAccessChecker{results: map[string]bool{"public_channel": true}}
 	deps.ChannelWebAccess = channel.NewWebAccessService(deps.Channels, checker)

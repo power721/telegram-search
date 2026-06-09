@@ -1169,7 +1169,110 @@ func (h handlers) channels(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	items = hideUnavailableChannels(items)
+	if accountID == 0 {
+		items = deduplicateGlobalChannels(items)
+	}
 	c.JSON(http.StatusOK, gin.H{"items": localizeChannels(items)})
+}
+
+func hideUnavailableChannels(channels []model.Channel) []model.Channel {
+	out := make([]model.Channel, 0, len(channels))
+	for _, channel := range channels {
+		if shouldHideUnavailableChannel(channel) {
+			continue
+		}
+		out = append(out, channel)
+	}
+	return out
+}
+
+func shouldHideUnavailableChannel(channel model.Channel) bool {
+	if channel.Type == model.ChannelTypeSavedMessages {
+		return false
+	}
+	return channel.MemberCount == 0
+}
+
+type channelDedupKey struct {
+	telegramChannelID int64
+	channelType       string
+	accountID         int64
+	rowID             int64
+}
+
+func deduplicateGlobalChannels(channels []model.Channel) []model.Channel {
+	out := make([]model.Channel, 0, len(channels))
+	positions := make(map[channelDedupKey]int, len(channels))
+	for _, channel := range channels {
+		key := globalChannelDedupKey(channel)
+		position, ok := positions[key]
+		if !ok {
+			positions[key] = len(out)
+			out = append(out, channel)
+			continue
+		}
+		if preferGlobalChannelRepresentative(channel, out[position]) {
+			out[position] = channel
+		}
+	}
+	return out
+}
+
+func globalChannelDedupKey(channel model.Channel) channelDedupKey {
+	key := channelDedupKey{
+		telegramChannelID: channel.TelegramChannelID,
+		channelType:       channel.Type,
+	}
+	if channel.Type == model.ChannelTypeSavedMessages || channel.TelegramChannelID <= 0 {
+		key.accountID = channel.AccountID
+		key.rowID = channel.ID
+	}
+	return key
+}
+
+func preferGlobalChannelRepresentative(candidate model.Channel, current model.Channel) bool {
+	candidateScore := globalChannelRepresentativeScore(candidate)
+	currentScore := globalChannelRepresentativeScore(current)
+	if candidateScore != currentScore {
+		return candidateScore > currentScore
+	}
+	if candidate.IndexedMessageCount != current.IndexedMessageCount {
+		return candidate.IndexedMessageCount > current.IndexedMessageCount
+	}
+	if candidate.LastSyncTime != nil && current.LastSyncTime != nil && !candidate.LastSyncTime.Equal(*current.LastSyncTime) {
+		return candidate.LastSyncTime.After(*current.LastSyncTime)
+	}
+	if candidate.LastSyncTime != nil && current.LastSyncTime == nil {
+		return true
+	}
+	if candidate.LastSyncTime == nil && current.LastSyncTime != nil {
+		return false
+	}
+	if !candidate.UpdatedAt.Equal(current.UpdatedAt) {
+		return candidate.UpdatedAt.After(current.UpdatedAt)
+	}
+	return candidate.ID < current.ID
+}
+
+func globalChannelRepresentativeScore(channel model.Channel) int {
+	score := 0
+	if channel.HistorySyncEnabled {
+		score += 4
+	}
+	if channel.ListenEnabled {
+		score += 4
+	}
+	if channel.SyncState == "synced" || channel.SyncState == "syncing" || channel.SyncState == "pending" {
+		score += 2
+	}
+	if channel.ListenState == "enabled" {
+		score += 2
+	}
+	if channel.RemoteSearchAllowed {
+		score += 1
+	}
+	return score
 }
 
 func (h handlers) channel(c *gin.Context) {

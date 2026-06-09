@@ -9,10 +9,17 @@ import (
 	"time"
 
 	"tg-search/internal/model"
+	"tg-search/internal/searchrank"
 )
 
 type LinkRepository struct {
 	db *sql.DB
+}
+
+type mergedLinkCandidate struct {
+	id  int64
+	typ string
+	model.MergedLink
 }
 
 const linkResourceCategoryExpr = `CASE
@@ -331,14 +338,9 @@ ORDER BY m.date DESC, l.id DESC`
 	}
 	defer rows.Close()
 
-	type candidate struct {
-		id  int64
-		typ string
-		model.MergedLink
-	}
-	byURL := map[string]candidate{}
+	byURL := map[string]mergedLinkCandidate{}
 	for rows.Next() {
-		var item candidate
+		var item mergedLinkCandidate
 		var channelTitle string
 		var channelUsername string
 		if err := rows.Scan(&item.id, &item.typ, &item.URL, &item.Password, &item.Note, &item.MediaTitle, &item.MediaYear, &item.MediaSeason, &item.MediaEpisode, &item.MediaQuality, &item.MediaSize, &item.MediaTMDBID, &item.MediaCategory, &item.MediaTags, &item.Datetime, &item.ChannelID, &channelTitle, &channelUsername, &item.TelegramMessageID); err != nil {
@@ -354,13 +356,13 @@ ORDER BY m.date DESC, l.id DESC`
 		return model.MergedLinksResponse{}, err
 	}
 
-	items := make([]candidate, 0, len(byURL))
+	items := make([]mergedLinkCandidate, 0, len(byURL))
 	for _, item := range byURL {
 		items = append(items, item)
 	}
 	sort.SliceStable(items, func(i, j int) bool {
-		leftScore := titleMarkerScore(items[i].Note)
-		rightScore := titleMarkerScore(items[j].Note)
+		leftScore := mergedQualityScore(items[i], params.Keyword)
+		rightScore := mergedQualityScore(items[j], params.Keyword)
 		if leftScore != rightScore {
 			return leftScore > rightScore
 		}
@@ -413,15 +415,34 @@ func linkCategory(link model.Link) string {
 	}
 }
 
-func titleMarkerScore(note string) int {
-	lower := strings.ToLower(note)
-	markers := []string{"合集", "系列", "全", "完", "最新", "complete"}
-	for i, marker := range markers {
-		if strings.Contains(lower, marker) {
-			return len(markers) - i
-		}
+func mergedQualityScore(item mergedLinkCandidate, query string) int {
+	return searchrank.TextMatchScore(query, item.MediaTitle, item.Note, item.MediaTags, item.URL) +
+		searchrank.TitleMarkerScore(item.MediaTitle, item.Note) +
+		searchrank.MetadataScore(item.MediaTitle, item.MediaYear, item.MediaSeason, item.MediaEpisode, item.MediaQuality, item.MediaSize, item.MediaTMDBID, item.MediaCategory, item.MediaTags) +
+		mergedTypeScore(item.typ) +
+		linkPasswordScore(item.Password)
+}
+
+func mergedTypeScore(typ string) int {
+	switch typ {
+	case "quark", "aliyun", "baidu", "115", "uc", "xunlei", "tianyi", "mobile", "123", "pikpak", "guangya":
+		return 80
+	case "magnet":
+		return 40
+	case "ed2k":
+		return 35
+	case "url":
+		return 10
+	default:
+		return 20
 	}
-	return 0
+}
+
+func linkPasswordScore(password string) int {
+	if strings.TrimSpace(password) == "" {
+		return 0
+	}
+	return 10
 }
 
 func loadLinks(ctx context.Context, db *sql.DB, messageID int64) ([]model.Link, error) {

@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -247,12 +246,7 @@ func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTyp
 			items = append(items, item)
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		if !items[i].Datetime.Equal(items[j].Datetime) {
-			return items[i].Datetime.After(items[j].Datetime)
-		}
-		return items[i].ID < items[j].ID
-	})
+	resource.SortItemsByQuality(items, keyword)
 	if offset > len(items) {
 		return []resource.Item{}, total, nil
 	}

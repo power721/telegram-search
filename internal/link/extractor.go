@@ -879,8 +879,12 @@ func isCatalogItemLine(line string) bool {
 func titleFromExplicitLine(line string) (string, string) {
 	category := ""
 	if match := regexp.MustCompile(`^《([^》]+)》\s*(.+)$`).FindStringSubmatch(line); len(match) == 3 {
-		category = strings.TrimSpace(match[1])
-		return normalizeMediaTitle(match[2]), category
+		head := strings.TrimSpace(match[1])
+		if isMediaCategoryLabel(head) {
+			category = head
+			return normalizeMediaTitle(match[2]), category
+		}
+		return normalizeMediaTitle(head), category
 	}
 	if match := regexp.MustCompile(`^\[([^\]]+)\]\s*(.+)$`).FindStringSubmatch(line); len(match) == 3 {
 		category = strings.TrimSpace(match[1])
@@ -899,6 +903,15 @@ func titleFromExplicitLine(line string) (string, string) {
 		return normalizeMediaTitle(match[2]), match[1]
 	}
 	return "", ""
+}
+
+func isMediaCategoryLabel(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "电影", "电视剧", "剧集", "国产剧", "国剧", "港剧", "台剧", "日剧", "韩剧", "美剧", "英剧", "动漫", "动画", "综艺", "短剧", "纪录片":
+		return true
+	default:
+		return false
+	}
 }
 
 func titleFromPlainLine(line string) (string, string) {

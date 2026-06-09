@@ -547,6 +547,36 @@ func TestExtractMediaMetadataFromUpdatedEpisodeTitle(t *testing.T) {
 	}
 }
 
+func TestExtractMediaMetadataFromEmojiMovieTitleWithBracketDetails(t *testing.T) {
+	text := `📅 6月10日
+
+🎬 ✅《迷墙（2026）》【更新至 08集】【4K.SDR.60fps】【国语】【中文字幕】【单集：1.5G】
+
+类型：国产剧
+分享：星空影视分享
+💾 网盘：百度网盘
+
+📝 简介：
+倒霉透顶的小夫妻，盲打误撞住进了一幢大别墅，意外发现了一笔藏匿其中的巨款，风波袭来，让他们分不清，这到底是噩梦还是美梦。
+
+https://pan.baidu.com/s/10dWJ_mLAqiBruTnSxFjrow?pwd=1111`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.Type != "baidu" || link.URL != "https://pan.baidu.com/s/10dWJ_mLAqiBruTnSxFjrow?pwd=1111" || link.Password != "1111" {
+		t.Fatalf("link = %+v, want baidu URL with password", link)
+	}
+	if link.MediaTitle != "迷墙" || link.Note != "迷墙" {
+		t.Fatalf("title/note = %q/%q, want 迷墙", link.MediaTitle, link.Note)
+	}
+	if link.MediaYear != "2026" || link.MediaEpisode != "更新08集" || link.MediaQuality != "4K SDR 60fps" || link.MediaCategory != "国产剧" {
+		t.Fatalf("metadata = %+v, want year/update/quality/category", link)
+	}
+}
+
 func TestExtractMediaMetadataFromOneMessageMultipleTianyiTitles(t *testing.T) {
 	text := `日剧分享六
 麻烦一族.Involvement in Family Affairs.(2022) {tmdb-158896}

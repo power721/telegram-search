@@ -1149,13 +1149,24 @@ func TestTelegramAPISettings(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":0,"app_hash":""}`))
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/telegram-api", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get default telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), false, 0)
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":0,"app_hash":""}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup telegram api skip code = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 	assertTelegramAPISettingsResponse(t, w.Body.Bytes(), false, 0)
+	if raw, ok, err := deps.Settings.Get(context.Background(), "telegram_api"); err != nil || ok {
+		t.Fatalf("telegram_api setting = %q ok=%v err=%v, want not stored", raw, ok, err)
+	}
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":""}`))

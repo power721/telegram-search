@@ -247,5 +247,6 @@ describe('SearchResults', () => {
     const video = wrapper.find('video.search-thumb')
     expect(video.exists()).toBe(true)
     expect(video.attributes('src')).toBe('/v/42')
+    expect(video.attributes('preload')).toBe('none')
   })
 })

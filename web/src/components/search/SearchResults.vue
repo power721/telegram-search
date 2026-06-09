@@ -138,7 +138,7 @@ function linkMetaParts(item: {
               :src="item.media?.video_url"
               muted
               playsinline
-              preload="metadata"
+              preload="none"
             ></video>
             <div class="result-copy">
               <strong>
@@ -192,7 +192,7 @@ function linkMetaParts(item: {
               :src="item.media?.video_url"
               muted
               playsinline
-              preload="metadata"
+              preload="none"
             ></video>
             <div class="result-copy">
               <strong>
@@ -264,7 +264,7 @@ function linkMetaParts(item: {
               :src="item.media?.video_url"
               muted
               playsinline
-              preload="metadata"
+              preload="none"
             ></video>
             <div class="result-copy">
               <strong>
@@ -324,7 +324,7 @@ function linkMetaParts(item: {
               :src="item.media?.video_url"
               muted
               playsinline
-              preload="metadata"
+              preload="none"
             ></video>
             <div class="result-copy">
               <strong>

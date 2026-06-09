@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 type Manager struct {
@@ -24,10 +25,41 @@ func (m *Manager) PathForTemporary(name string) string {
 
 func (m *Manager) MoveTemporaryToAccount(tempPath string, accountID int64) (string, error) {
 	finalPath := m.PathForAccount(accountID)
+	if err := waitForFile(tempPath, 2*time.Second); err != nil {
+		return "", fmt.Errorf("move temporary session to account %d: %w", accountID, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(finalPath), 0o700); err != nil {
+		return "", fmt.Errorf("prepare account session directory: %w", err)
+	}
+	if err := os.Remove(finalPath); err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("replace account session %d: %w", accountID, err)
+	}
 	if err := os.Rename(tempPath, finalPath); err != nil {
 		return "", fmt.Errorf("move temporary session to account %d: %w", accountID, err)
 	}
 	return finalPath, nil
+}
+
+func waitForFile(path string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if info, err := os.Stat(path); err == nil {
+			if !info.IsDir() {
+				return nil
+			}
+			return fmt.Errorf("temporary session path %q is a directory", path)
+		} else {
+			lastErr = err
+			if !os.IsNotExist(err) {
+				return err
+			}
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
 }
 
 func (m *Manager) RemoveForAccount(accountID int64) error {

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestPathForAccountIsDeterministic(t *testing.T) {
@@ -65,6 +66,53 @@ func TestManagerMovesTemporaryQRSessionToAccount(t *testing.T) {
 		t.Fatalf("read final session: %v", err)
 	}
 	if string(data) != `{"auth":"temp"}` {
+		t.Fatalf("final data = %q", data)
+	}
+}
+
+func TestManagerMoveTemporaryQRSessionReplacesExistingAccountSession(t *testing.T) {
+	dir := t.TempDir()
+	manager := NewManager(dir)
+	final := manager.PathForAccount(7)
+	if err := os.WriteFile(final, []byte(`{"auth":"old"}`), 0o600); err != nil {
+		t.Fatalf("write old account session: %v", err)
+	}
+	temp := manager.PathForTemporary("qr-login-new")
+	if err := os.WriteFile(temp, []byte(`{"auth":"new"}`), 0o600); err != nil {
+		t.Fatalf("write temp session: %v", err)
+	}
+
+	if _, err := manager.MoveTemporaryToAccount(temp, 7); err != nil {
+		t.Fatalf("MoveTemporaryToAccount returned error: %v", err)
+	}
+
+	data, err := os.ReadFile(final)
+	if err != nil {
+		t.Fatalf("read final session: %v", err)
+	}
+	if string(data) != `{"auth":"new"}` {
+		t.Fatalf("final data = %q", data)
+	}
+}
+
+func TestManagerMoveTemporaryQRSessionWaitsForDelayedSessionFile(t *testing.T) {
+	dir := t.TempDir()
+	manager := NewManager(dir)
+	temp := manager.PathForTemporary("qr-login-delayed")
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		_ = os.WriteFile(temp, []byte(`{"auth":"delayed"}`), 0o600)
+	}()
+
+	final, err := manager.MoveTemporaryToAccount(temp, 9)
+	if err != nil {
+		t.Fatalf("MoveTemporaryToAccount returned error: %v", err)
+	}
+	data, err := os.ReadFile(final)
+	if err != nil {
+		t.Fatalf("read final session: %v", err)
+	}
+	if string(data) != `{"auth":"delayed"}` {
 		t.Fatalf("final data = %q", data)
 	}
 }

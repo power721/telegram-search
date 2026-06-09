@@ -31,6 +31,7 @@ var exactErrorMessages = map[string]string{
 	"invalid api key":                                     "API Key 无效",
 	"invalid credentials":                                 "用户名或密码错误",
 	"invalid id":                                          "ID 无效",
+	"invalid phone number":                                "手机号格式无效，请包含国家码，例如 +86 13800138000",
 	"invalid task status transition":                      "任务状态不允许执行该操作",
 	"link_types is required":                              "请选择链接类型",
 	"links are unavailable":                               "链接服务不可用",

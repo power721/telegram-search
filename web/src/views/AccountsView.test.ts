@@ -13,7 +13,7 @@ const messageError = vi.fn()
 const defaultAccounts = [
   {
     id: 1,
-    phone: '+10000000000',
+    phone: '+8613800138000',
     telegram_user_id: 42,
     first_name: 'Ada',
     last_name: 'Lovelace',
@@ -24,7 +24,7 @@ const defaultAccounts = [
   },
   {
     id: 2,
-    phone: '+10000000001',
+    phone: '+8613800138001',
     telegram_user_id: 43,
     first_name: 'Grace',
     last_name: 'Hopper',
@@ -75,13 +75,13 @@ describe('AccountsView', () => {
       if (path === '/api/telegram/login/sign-in') {
         return Promise.resolve({
           status: 'ONLINE',
-          account: { id: 2, phone: '+10000000001', status: 'ONLINE', last_error: '' },
+          account: { id: 2, phone: '+8613800138001', status: 'ONLINE', last_error: '' },
           metadata_sync: { status: 'succeeded', channel_count: 3 }
         })
       }
       return Promise.resolve({
         id: 1,
-        phone: '+10000000000',
+        phone: '+8613800138000',
         status: 'LOGIN_REQUIRED',
         last_error: ''
       })
@@ -123,7 +123,7 @@ describe('AccountsView', () => {
     expect(push).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Telegram 登录')
     expect(wrapper.text()).toContain('验证码登录')
-    expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+10000000001')
+    expect((wrapper.find('input[autocomplete="tel"]').element as HTMLInputElement).value).toBe('+8613800138001')
   })
 
   it('renders Chinese placeholders in the telegram login dialog', async () => {
@@ -133,7 +133,7 @@ describe('AccountsView', () => {
     await wrapper.findAll('button').find((button) => button.text() === '添加账号')!.trigger('click')
     await wrapper.findAll('button').find((button) => button.text() === '验证码登录')!.trigger('click')
 
-    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('请输入手机号码')
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('+86 13800138000')
     expect(wrapper.get<HTMLInputElement>('input[autocomplete="one-time-code"]').element.placeholder).toBe('请输入验证码')
   })
 
@@ -155,7 +155,7 @@ describe('AccountsView', () => {
         return Promise.resolve({
           login_id: 'login-1',
           status: 'online',
-          account: { id: 3, phone: '+10000000002', status: 'ONLINE', last_error: '' },
+          account: { id: 3, phone: '+8613800138002', status: 'ONLINE', last_error: '' },
           metadata_sync: { status: 'succeeded', channel_count: 2 }
         })
       }
@@ -215,9 +215,9 @@ describe('AccountsView', () => {
     await dialogLoginButtons.at(-1)!.trigger('click')
     await flushPromises()
 
-    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+10000000001' })
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+8613800138001' })
     expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/sign-in', {
-      phone: '+10000000001',
+      phone: '+8613800138001',
       code: ''
     })
     expect(push).not.toHaveBeenCalled()
@@ -234,19 +234,19 @@ describe('AccountsView', () => {
     await loginButton!.trigger('click')
 
     const phoneInput = wrapper.find('input[autocomplete="tel"]')
-    await phoneInput.setValue('+19999999999')
+    await phoneInput.setValue('+16502530000')
     await wrapper.findAll('button').find((button) => button.text() === '发送验证码')!.trigger('click')
     await flushPromises()
 
-    await phoneInput.setValue('+18888888888')
+    await phoneInput.setValue('+442071838750')
     await wrapper.find('input[autocomplete="one-time-code"]').setValue('12345')
     const dialogLoginButtons = wrapper.findAll('button').filter((button) => button.text() === '登录')
     await dialogLoginButtons.at(-1)!.trigger('click')
     await flushPromises()
 
-    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+19999999999' })
+    expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', { phone: '+16502530000' })
     expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/sign-in', {
-      phone: '+18888888888',
+      phone: '+442071838750',
       code: '12345'
     })
   })

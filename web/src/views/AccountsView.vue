@@ -373,7 +373,8 @@ onBeforeUnmount(() => {
 
         <n-form v-else @submit.prevent>
           <n-form-item label="手机号">
-            <n-input v-model:value="loginPhone" autocomplete="tel" placeholder="请输入手机号码" />
+            <n-input v-model:value="loginPhone" autocomplete="tel" placeholder="+86 13800138000" />
+            <template #feedback>请包含国家码，可输入空格、短横线或括号。</template>
           </n-form-item>
           <n-button type="primary" block :loading="telegram.loading" @click="sendCode">发送验证码</n-button>
 

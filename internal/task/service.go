@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 )
 
 var ErrInvalidTransition = errors.New("invalid task status transition")
+var ErrTaskNotDeletable = errors.New("task cannot be deleted while running or canceling")
 
 type Service struct {
 	repo *Repository
@@ -72,6 +74,52 @@ func (s *Service) Retry(ctx context.Context, id int64) error {
 	}
 	retryCount := current.RetryCount + 1
 	return s.repo.UpdateStatus(ctx, id, model.TaskStatusQueued, StatusUpdate{RetryCount: &retryCount})
+}
+
+type DeleteManyResult struct {
+	Deleted     int     `json:"deleted"`
+	RejectedIDs []int64 `json:"rejected_ids"`
+	MissingIDs  []int64 `json:"missing_ids"`
+}
+
+func (s *Service) Delete(ctx context.Context, id int64) error {
+	current, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !taskDeletable(current.Status) {
+		return ErrTaskNotDeletable
+	}
+	return s.repo.Delete(ctx, id)
+}
+
+func (s *Service) DeleteMany(ctx context.Context, ids []int64) (DeleteManyResult, error) {
+	result := DeleteManyResult{
+		RejectedIDs: []int64{},
+		MissingIDs:  []int64{},
+	}
+	seen := map[int64]struct{}{}
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		err := s.Delete(ctx, id)
+		switch {
+		case err == nil:
+			result.Deleted++
+		case errors.Is(err, ErrTaskNotDeletable):
+			result.RejectedIDs = append(result.RejectedIDs, id)
+		case errors.Is(err, sql.ErrNoRows):
+			result.MissingIDs = append(result.MissingIDs, id)
+		default:
+			return result, err
+		}
+	}
+	return result, nil
 }
 
 func (s *Service) Cancel(ctx context.Context, id int64) error {
@@ -138,4 +186,8 @@ func statusAllowed(status string, allowed ...string) bool {
 		}
 	}
 	return false
+}
+
+func taskDeletable(status string) bool {
+	return status != model.TaskStatusRunning && status != model.TaskStatusCanceling
 }

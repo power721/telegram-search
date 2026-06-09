@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPost } from '@/api/client'
+import { apiDelete, apiGet, apiPost } from '@/api/client'
 import type { Task, TasksResponse } from '@/api/types'
 
 export interface TaskFilters {
@@ -7,6 +7,12 @@ export interface TaskFilters {
   type?: string
   limit?: number
   offset?: number
+}
+
+export interface TaskDeleteManyResult {
+  deleted: number
+  rejected_ids: number[]
+  missing_ids: number[]
 }
 
 function buildTasksPath(filters: TaskFilters = {}) {
@@ -54,6 +60,20 @@ export const useTasksStore = defineStore('tasks', {
     async resumeTask(id: number) {
       return this.runAction(id, 'resume')
     },
+    async deleteTask(id: number) {
+      return this.withLoading(async () => {
+        await apiDelete<{ deleted: boolean }>(`/api/tasks/${id}`)
+        this.removeTasks([id])
+      })
+    },
+    async deleteTasks(ids: number[]) {
+      return this.withLoading(async () => {
+        const result = await apiPost<TaskDeleteManyResult>('/api/tasks/bulk-delete', { ids })
+        const blocked = new Set([...(result.rejected_ids ?? []), ...(result.missing_ids ?? [])])
+        this.removeTasks(ids.filter((id) => !blocked.has(id)))
+        return result
+      })
+    },
     applyTask(task: Task) {
       const index = this.items.findIndex((item) => item.id === task.id)
       if (index >= 0) {
@@ -63,6 +83,15 @@ export const useTasksStore = defineStore('tasks', {
       }
       if (this.selected?.id === task.id) {
         this.selected = task
+      }
+    },
+    removeTasks(ids: number[]) {
+      const targets = new Set(ids)
+      const before = this.items.length
+      this.items = this.items.filter((task) => !targets.has(task.id))
+      this.total = Math.max(0, this.total - (before - this.items.length))
+      if (this.selected && targets.has(this.selected.id)) {
+        this.selected = null
       }
     },
     async runAction(id: number, action: 'retry' | 'cancel' | 'pause' | 'resume') {

@@ -155,6 +155,99 @@ func TestRestoreUnfinishedTasks(t *testing.T) {
 	}
 }
 
+func TestDeleteTaskRejectsRunningAndCanceling(t *testing.T) {
+	ctx := context.Background()
+	repo := openTaskRepository(t)
+	service := NewService(repo)
+	failed, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 1})
+	if err != nil {
+		t.Fatalf("enqueue failed task: %v", err)
+	}
+	if err := service.Start(ctx, failed.ID); err != nil {
+		t.Fatalf("start failed task: %v", err)
+	}
+	if err := service.Fail(ctx, failed.ID, "temporary", "temporary failure"); err != nil {
+		t.Fatalf("fail task: %v", err)
+	}
+	running, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 2})
+	if err != nil {
+		t.Fatalf("enqueue running task: %v", err)
+	}
+	if err := service.Start(ctx, running.ID); err != nil {
+		t.Fatalf("start running task: %v", err)
+	}
+	canceling, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 3})
+	if err != nil {
+		t.Fatalf("enqueue canceling task: %v", err)
+	}
+	if err := service.Start(ctx, canceling.ID); err != nil {
+		t.Fatalf("start canceling task: %v", err)
+	}
+	if err := service.Cancel(ctx, canceling.ID); err != nil {
+		t.Fatalf("cancel task: %v", err)
+	}
+
+	if err := service.Delete(ctx, failed.ID); err != nil {
+		t.Fatalf("Delete failed task returned error: %v", err)
+	}
+	if _, err := repo.FindByID(ctx, failed.ID); err == nil {
+		t.Fatal("FindByID failed task succeeded after delete, want error")
+	}
+	if err := service.Delete(ctx, running.ID); !errors.Is(err, ErrTaskNotDeletable) {
+		t.Fatalf("Delete running error = %v, want ErrTaskNotDeletable", err)
+	}
+	if err := service.Delete(ctx, canceling.ID); !errors.Is(err, ErrTaskNotDeletable) {
+		t.Fatalf("Delete canceling error = %v, want ErrTaskNotDeletable", err)
+	}
+}
+
+func TestDeleteManyTasksReturnsDeletedAndRejectedIDs(t *testing.T) {
+	ctx := context.Background()
+	repo := openTaskRepository(t)
+	service := NewService(repo)
+	failed, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 1})
+	if err != nil {
+		t.Fatalf("enqueue failed task: %v", err)
+	}
+	if err := service.Start(ctx, failed.ID); err != nil {
+		t.Fatalf("start failed task: %v", err)
+	}
+	if err := service.Fail(ctx, failed.ID, "temporary", "temporary failure"); err != nil {
+		t.Fatalf("fail task: %v", err)
+	}
+	succeeded, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 2})
+	if err != nil {
+		t.Fatalf("enqueue succeeded task: %v", err)
+	}
+	if err := service.Start(ctx, succeeded.ID); err != nil {
+		t.Fatalf("start succeeded task: %v", err)
+	}
+	if err := service.Succeed(ctx, succeeded.ID, "done"); err != nil {
+		t.Fatalf("succeed task: %v", err)
+	}
+	running, err := service.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 3})
+	if err != nil {
+		t.Fatalf("enqueue running task: %v", err)
+	}
+	if err := service.Start(ctx, running.ID); err != nil {
+		t.Fatalf("start running task: %v", err)
+	}
+
+	result, err := service.DeleteMany(ctx, []int64{failed.ID, succeeded.ID, running.ID, 9999})
+	if err != nil {
+		t.Fatalf("DeleteMany returned error: %v", err)
+	}
+	if result.Deleted != 2 {
+		t.Fatalf("deleted = %d, want 2", result.Deleted)
+	}
+	if len(result.RejectedIDs) != 1 || result.RejectedIDs[0] != running.ID {
+		t.Fatalf("rejected ids = %+v, want running task id", result.RejectedIDs)
+	}
+	if len(result.MissingIDs) != 1 || result.MissingIDs[0] != 9999 {
+		t.Fatalf("missing ids = %+v, want 9999", result.MissingIDs)
+	}
+}
+
 func openTaskRepository(t *testing.T) *Repository {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1095,6 +1096,81 @@ func TestTaskAPI(t *testing.T) {
 	}
 	if canceling.Status != model.TaskStatusCanceling {
 		t.Fatalf("canceling = %+v, want canceling", canceling)
+	}
+
+	deletable, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 3})
+	if err != nil {
+		t.Fatalf("enqueue deletable task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, deletable.ID); err != nil {
+		t.Fatalf("start deletable task: %v", err)
+	}
+	if err := deps.Tasks.Fail(ctx, deletable.ID, "temporary", "temporary failure"); err != nil {
+		t.Fatalf("fail deletable task: %v", err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/tasks/"+strconv.FormatInt(deletable.ID, 10), nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if _, err := deps.TaskRepository.FindByID(ctx, deletable.ID); err == nil {
+		t.Fatal("FindByID succeeded after task delete, want missing task")
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodDelete, "/api/tasks/"+strconv.FormatInt(running.ID, 10), nil)
+	withAPIKey(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("delete running status = %d body=%s, want 409", w.Code, w.Body.String())
+	}
+
+	bulkFailed, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 4})
+	if err != nil {
+		t.Fatalf("enqueue bulk failed task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, bulkFailed.ID); err != nil {
+		t.Fatalf("start bulk failed task: %v", err)
+	}
+	if err := deps.Tasks.Fail(ctx, bulkFailed.ID, "temporary", "temporary failure"); err != nil {
+		t.Fatalf("fail bulk task: %v", err)
+	}
+	bulkSucceeded, err := deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, map[string]any{"channel_id": 5})
+	if err != nil {
+		t.Fatalf("enqueue bulk succeeded task: %v", err)
+	}
+	if err := deps.Tasks.Start(ctx, bulkSucceeded.ID); err != nil {
+		t.Fatalf("start bulk succeeded task: %v", err)
+	}
+	if err := deps.Tasks.Succeed(ctx, bulkSucceeded.ID, "done"); err != nil {
+		t.Fatalf("succeed bulk task: %v", err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/tasks/bulk-delete", bytes.NewBufferString(fmt.Sprintf(`{"ids":[%d,%d,%d,9999]}`, bulkFailed.ID, bulkSucceeded.ID, running.ID)))
+	withAPIKey(t, deps, req)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("bulk delete status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var bulkResult struct {
+		Deleted     int     `json:"deleted"`
+		RejectedIDs []int64 `json:"rejected_ids"`
+		MissingIDs  []int64 `json:"missing_ids"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &bulkResult); err != nil {
+		t.Fatalf("decode bulk delete: %v", err)
+	}
+	if bulkResult.Deleted != 2 {
+		t.Fatalf("bulk deleted = %d, want 2", bulkResult.Deleted)
+	}
+	if len(bulkResult.RejectedIDs) != 1 || bulkResult.RejectedIDs[0] != running.ID {
+		t.Fatalf("bulk rejected ids = %+v, want running task id", bulkResult.RejectedIDs)
+	}
+	if len(bulkResult.MissingIDs) != 1 || bulkResult.MissingIDs[0] != 9999 {
+		t.Fatalf("bulk missing ids = %+v, want 9999", bulkResult.MissingIDs)
 	}
 }
 

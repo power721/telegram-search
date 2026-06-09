@@ -12,23 +12,27 @@ const emit = defineEmits<{
 
 function taskTypeLabel(type: string) {
   const labels: Record<string, string> = {
+    backup: '备份',
+    channel_analysis: '频道分析',
+    gap_recovery: '缺口恢复',
     history_sync: '历史同步',
-    web_access_detection: '网页访问检测',
+    listener_recovery: '监听恢复',
     metadata_sync: '元数据同步',
-    cleanup: '清理'
+    remote_search: '远程搜索',
+    web_access_detection: '网页访问检测'
   }
   return labels[type] ?? type
 }
 
 function statusLabel(status: string) {
   const labels: Record<string, string> = {
-    pending: '待处理',
+    queued: '排队中',
     running: '运行中',
+    canceling: '取消中',
+    canceled: '已取消',
     paused: '已暂停',
     failed: '失败',
     succeeded: '成功',
-    completed: '已完成',
-    cancelled: '已取消',
     flood_wait: '等待限流解除',
     reconnecting: '重连中'
   }

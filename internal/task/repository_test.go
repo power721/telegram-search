@@ -108,6 +108,33 @@ func TestTaskRepositoryRestartQuery(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryDelete(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	repo := NewRepository(conn)
+	created, err := repo.Create(ctx, model.Task{Type: model.TaskTypeHistorySync, PayloadJSON: `{}`})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := repo.Delete(ctx, created.ID); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if _, err := repo.FindByID(ctx, created.ID); err == nil {
+		t.Fatal("FindByID succeeded after delete, want error")
+	}
+	if err := repo.Delete(ctx, created.ID); err == nil {
+		t.Fatal("Delete missing task succeeded, want error")
+	}
+}
+
 func createTaskForRestart(t *testing.T, ctx context.Context, repo *Repository, status string, nextRunAt *time.Time) model.Task {
 	t.Helper()
 	created, err := repo.Create(ctx, model.Task{Type: model.TaskTypeHistorySync, PayloadJSON: `{}`})

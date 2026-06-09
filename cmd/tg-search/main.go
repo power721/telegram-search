@@ -22,6 +22,7 @@ import (
 	"tg-search/internal/link"
 	"tg-search/internal/logger"
 	"tg-search/internal/messagefilter"
+	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/retry"
@@ -147,11 +148,22 @@ func run(configPath string) error {
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
+	taskWorker := taskpkg.NewWorker(taskpkg.WorkerOptions{
+		Service:    taskService,
+		Repository: taskRepository,
+		Events:     eventBroker,
+		Handlers: map[string]taskpkg.Handler{
+			model.TaskTypeGapRecovery: historyService.RunGapRecoveryTask,
+		},
+		PollInterval: 2 * time.Second,
+	})
 	if err := taskService.RestoreUnfinished(ctx, time.Now().UTC()); err != nil {
 		logs.App.Error("restore unfinished tasks failed", zap.Error(err))
 		return err
 	}
 	logs.App.Info("unfinished tasks restored")
+	taskWorker.Start(ctx)
+	logs.App.Info("task worker started")
 	accountManager := account.NewManager(account.ManagerOptions{
 		Accounts: accounts,
 		Updates:  updateService,
@@ -217,6 +229,10 @@ func run(configPath string) error {
 	logs.App.Info("api server shutdown completed")
 	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
 		logs.App.Error("cleanup scheduler stop failed", zap.Error(err))
+		return err
+	}
+	if err := taskWorker.Stop(shutdownCtx); err != nil {
+		logs.App.Error("task worker stop failed", zap.Error(err))
 		return err
 	}
 	if err := historyService.StopListenBacklog(shutdownCtx); err != nil {

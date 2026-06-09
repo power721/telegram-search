@@ -88,6 +88,15 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local needle="$1"
+  if [[ "$OUTPUT" == *"$needle"* ]]; then
+    printf 'expected output not to contain: %s\n' "$needle" >&2
+    printf 'actual output:\n%s\n' "$OUTPUT" >&2
+    exit 1
+  fi
+}
+
 assert_contains "npm run web:build"
 assert_contains "go build -trimpath -buildvcs=false -ldflags -s -w -X 'tg-search/internal/build.Version="
 assert_contains "-o $ROOT_DIR/dist/local/tg-search ./cmd/tg-search"
@@ -96,8 +105,8 @@ assert_contains "--tag=haroldli/tg-search:latest $ROOT_DIR"
 assert_contains "=== use image default /app/config.yaml ==="
 assert_contains "docker rm -f tg-search"
 assert_contains "docker run -d -p 7000:9900 -e TZ=Asia/Shanghai -v $TMP_DIR/data:/data/tg-search --restart=unless-stopped --name=tg-search haroldli/tg-search:latest"
-assert_contains "docker logs -f tg-search"
 assert_contains "http://192.168.1.20:7000/"
+assert_not_contains "docker logs -f tg-search"
 
 if [[ -e "$TMP_DIR/data/config.yaml" ]]; then
   printf 'script should not generate config from Telegram API environment variables\n' >&2

@@ -28,7 +28,7 @@ usage() {
 Usage: $0 [-d data_dir] [-p port] [-c config.yaml] [-v host_path:container_path]
 
 Build haroldli/tg-search:latest locally, restart the tg-search container,
-and follow container logs.
+and print the admin URL.
 
 Options:
   -d  Host data directory mounted to /data/tg-search. Default: $ROOT_DIR/data
@@ -255,5 +255,3 @@ else
   echo -e "\e[32m云服务器请用公网IP访问，端口：$PORT\e[0m"
 fi
 echo ""
-
-docker logs -f "$CONTAINER_NAME"

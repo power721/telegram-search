@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Task } from '@/api/types'
 
-type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'next_run_at' | 'message'
+type TaskSortKey = 'id' | 'type' | 'status' | 'progress' | 'retry_count' | 'created_at' | 'next_run_at' | 'message'
 type SortDirection = 'asc' | 'desc'
 
 defineProps<{
@@ -27,6 +27,16 @@ const emit = defineEmits<{
 function progressLabel(task: Task) {
   if (task.total > 0) return `${task.progress} / ${task.total}`
   return `${task.progress}`
+}
+
+function formatDate(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(date)
 }
 
 function taskTypeLabel(type: string) {
@@ -143,6 +153,11 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
               重试次数{{ sortIndicator('retry_count', sortKey, sortDirection) }}
             </button>
           </th>
+          <th :aria-sort="sortAria('created_at', sortKey, sortDirection)">
+            <button class="sort-header" type="button" data-sort-key="created_at" @click="emit('sort', 'created_at')">
+              创建时间{{ sortIndicator('created_at', sortKey, sortDirection) }}
+            </button>
+          </th>
           <th :aria-sort="sortAria('next_run_at', sortKey, sortDirection)">
             <button class="sort-header" type="button" data-sort-key="next_run_at" @click="emit('sort', 'next_run_at')">
               下次运行{{ sortIndicator('next_run_at', sortKey, sortDirection) }}
@@ -158,7 +173,7 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
       </thead>
       <tbody>
         <tr v-if="loading">
-          <td colspan="9">
+          <td colspan="10">
             <div class="loading-stack" aria-label="正在加载任务">
               <span class="skeleton-line" />
               <span class="skeleton-line" />
@@ -180,7 +195,14 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
           <td><span class="status-pill" :class="statusClass(task.status)">{{ statusLabel(task.status) }}</span></td>
           <td>{{ progressLabel(task) }}</td>
           <td>{{ task.retry_count }}</td>
-          <td>{{ task.next_run_at || '-' }}</td>
+          <td>
+            <time v-if="task.created_at" :datetime="task.created_at">{{ formatDate(task.created_at) }}</time>
+            <template v-else>-</template>
+          </td>
+          <td>
+            <time v-if="task.next_run_at" :datetime="task.next_run_at">{{ formatDate(task.next_run_at) }}</time>
+            <template v-else>-</template>
+          </td>
           <td class="message-cell">{{ task.error_message || task.message || '-' }}</td>
           <td class="actions">
             <n-button size="small" @click="emit('select', task)">详情</n-button>
@@ -192,7 +214,7 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
           </td>
         </tr>
         <tr v-if="!loading && tasks.length === 0">
-          <td colspan="9">
+          <td colspan="10">
             <div class="empty-state">
               <strong>暂无任务</strong>
               <span>同步、检测、清理等后台任务会显示在这里。</span>
@@ -210,7 +232,7 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
 }
 
 table {
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .message-cell {

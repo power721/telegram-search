@@ -44,14 +44,16 @@ func (r *FileRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, messageID 
 		if file.Category == "" {
 			file.Category = fileCategory(file)
 		}
-		duplicate, err := r.duplicateFileExistsTx(ctx, tx, file)
-		if err != nil {
-			return nil, err
+		if file.TelegramFileID == 0 {
+			duplicate, err := r.duplicateFileExistsTx(ctx, tx, file)
+			if err != nil {
+				return nil, err
+			}
+			if duplicate {
+				continue
+			}
 		}
-		if duplicate {
-			continue
-		}
-		err = tx.QueryRowContext(ctx, `
+		err := tx.QueryRowContext(ctx, `
 INSERT INTO telegram_files
   (message_id, telegram_file_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at)
 VALUES
@@ -75,24 +77,13 @@ RETURNING id, created_at, updated_at`,
 
 func (r *FileRepository) duplicateFileExistsTx(ctx context.Context, tx *sql.Tx, file model.File) (bool, error) {
 	var exists int
-	var err error
-	if file.TelegramFileID > 0 {
-		err = tx.QueryRowContext(ctx, `
-SELECT 1
-FROM telegram_files
-WHERE message_id <> ? AND telegram_file_id = ?
-LIMIT 1`,
-			file.MessageID, file.TelegramFileID,
-		).Scan(&exists)
-	} else {
-		err = tx.QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 SELECT 1
 FROM telegram_files
 WHERE message_id <> ? AND file_name = ? AND size_bytes = ?
 LIMIT 1`,
-			file.MessageID, file.FileName, file.SizeBytes,
-		).Scan(&exists)
-	}
+		file.MessageID, file.FileName, file.SizeBytes,
+	).Scan(&exists)
 	if err == nil {
 		return true, nil
 	}
@@ -129,6 +120,50 @@ ORDER BY id`, messageID)
 		out = append(out, file)
 	}
 	return out, rows.Err()
+}
+
+func (r *FileRepository) FindByMessageRef(ctx context.Context, channelID int64, telegramMessageID int64) ([]model.File, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at
+FROM telegram_files f
+JOIN telegram_messages m ON m.id = f.message_id
+WHERE m.channel_id = ? AND m.telegram_message_id = ? AND m.deleted = 0
+ORDER BY f.id`, channelID, telegramMessageID)
+	if err != nil {
+		return nil, fmt.Errorf("find files by message ref: %w", err)
+	}
+	defer rows.Close()
+
+	var out []model.File
+	for rows.Next() {
+		file, err := scanFile(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, file)
+	}
+	return out, rows.Err()
+}
+
+func (r *FileRepository) FindMediaByTelegramFileID(ctx context.Context, telegramFileID int64) (model.FileResult, error) {
+	var item model.FileResult
+	err := r.db.QueryRowContext(ctx, `
+SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+       mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
+FROM telegram_files f
+JOIN telegram_messages m ON m.id = f.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+JOIN telegram_channels c ON c.id = m.channel_id
+WHERE f.telegram_file_id = ? AND m.deleted = 0
+ORDER BY m.date DESC, f.id DESC
+LIMIT 1`, telegramFileID).Scan(
+		&item.ID, &item.MessageID, &item.TelegramFileID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt,
+		&item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID,
+	)
+	if err != nil {
+		return model.FileResult{}, err
+	}
+	return item, nil
 }
 
 func (r *FileRepository) Search(ctx context.Context, params FileSearchParams) ([]model.FileResult, error) {

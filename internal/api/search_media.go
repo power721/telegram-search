@@ -26,7 +26,7 @@ func (h handlers) shouldSignMediaURLs(c *gin.Context) bool {
 
 func (h handlers) attachMediaToSearchResults(ctx context.Context, items []model.SearchResult, signed bool) ([]model.SearchResult, error) {
 	for i := range items {
-		media, err := h.searchResultMedia(ctx, items[i].ChannelUsername, items[i].ChannelID, items[i].TelegramMessageID, items[i].MessageType, items[i].Files, signed)
+		media, err := h.searchResultMedia(ctx, items[i].ID, items[i].MessageType, items[i].Files, signed)
 		if err != nil {
 			return nil, err
 		}
@@ -37,7 +37,18 @@ func (h handlers) attachMediaToSearchResults(ctx context.Context, items []model.
 
 func (h handlers) attachMediaToFileResults(ctx context.Context, items []model.FileResult, signed bool) ([]model.FileResult, error) {
 	for i := range items {
-		media, err := h.fileResultMedia(ctx, items[i].ChannelUsername, items[i].ChannelID, items[i].TelegramMessageID, items[i].File, signed)
+		media, err := h.fileResultMedia(ctx, items[i].File, signed)
+		if err != nil {
+			return nil, err
+		}
+		items[i].Media = media
+	}
+	return items, nil
+}
+
+func (h handlers) attachMediaToLinkResults(ctx context.Context, items []model.LinkResult, signed bool) ([]model.LinkResult, error) {
+	for i := range items {
+		media, err := h.searchResultMedia(ctx, items[i].MessageID, items[i].MessageType, nil, signed)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +59,7 @@ func (h handlers) attachMediaToFileResults(ctx context.Context, items []model.Fi
 
 func (h handlers) attachMediaToRemoteSearchResults(ctx context.Context, result model.RemoteSearchResults, signed bool) (model.RemoteSearchResults, error) {
 	for i := range result.Items {
-		media, err := h.searchResultMedia(ctx, result.Items[i].ChannelUsername, result.Items[i].ChannelID, result.Items[i].TelegramMessageID, result.Items[i].MessageType, result.Items[i].Files, signed)
+		media, err := h.searchResultMedia(ctx, 0, result.Items[i].MessageType, result.Items[i].Files, signed)
 		if err != nil {
 			return model.RemoteSearchResults{}, err
 		}
@@ -70,67 +81,89 @@ func (h handlers) attachMediaToResourceItems(ctx context.Context, items []resour
 	return items, nil
 }
 
-func (h handlers) searchResultMedia(ctx context.Context, username string, channelID int64, telegramMessageID int64, messageType string, files []model.File, signed bool) (*model.MediaURLs, error) {
-	if telegramMessageID <= 0 {
-		return nil, nil
+func (h handlers) searchResultMedia(ctx context.Context, messageID int64, messageType string, files []model.File, signed bool) (*model.MediaURLs, error) {
+	if len(files) == 0 && messageID > 0 && h.deps.Files != nil {
+		found, err := h.deps.Files.FindByMessageID(ctx, messageID)
+		if err != nil {
+			return nil, err
+		}
+		files = found
 	}
-	hasVideo := messageType == "video"
-	hasImage := messageType == "photo" || messageType == "video"
+	var imageFileID int64
+	var videoFileID int64
 	for _, file := range files {
-		if isVideoMedia(file.MimeType, file.Extension, file.FileName) {
-			hasVideo = true
-			hasImage = true
+		if file.TelegramFileID <= 0 {
+			continue
 		}
-		if isImageMedia(file.MimeType, file.Extension, file.FileName) {
-			hasImage = true
+		if videoFileID == 0 && isVideoMedia(file.MimeType, file.Extension, file.FileName) {
+			videoFileID = file.TelegramFileID
+		}
+		if imageFileID == 0 && isImageMedia(file.MimeType, file.Extension, file.FileName) {
+			imageFileID = file.TelegramFileID
 		}
 	}
-	return h.mediaURLs(ctx, username, channelID, telegramMessageID, hasImage, hasVideo, signed)
+	if videoFileID > 0 && imageFileID == 0 {
+		imageFileID = videoFileID
+	}
+	if messageType == "photo" && imageFileID == 0 {
+		imageFileID = firstTelegramFileID(files)
+	}
+	return h.mediaURLs(ctx, imageFileID, videoFileID, signed)
 }
 
-func (h handlers) fileResultMedia(ctx context.Context, username string, channelID int64, telegramMessageID int64, file model.File, signed bool) (*model.MediaURLs, error) {
-	if telegramMessageID <= 0 {
+func (h handlers) fileResultMedia(ctx context.Context, file model.File, signed bool) (*model.MediaURLs, error) {
+	if file.TelegramFileID <= 0 {
 		return nil, nil
 	}
 	hasVideo := isVideoMedia(file.MimeType, file.Extension, file.FileName)
 	hasImage := hasVideo || isImageMedia(file.MimeType, file.Extension, file.FileName)
-	return h.mediaURLs(ctx, username, channelID, telegramMessageID, hasImage, hasVideo, signed)
+	var imageFileID int64
+	var videoFileID int64
+	if hasImage {
+		imageFileID = file.TelegramFileID
+	}
+	if hasVideo {
+		videoFileID = file.TelegramFileID
+	}
+	return h.mediaURLs(ctx, imageFileID, videoFileID, signed)
 }
 
 func (h handlers) resourceItemMedia(ctx context.Context, item resource.Item, signed bool) (*model.MediaURLs, error) {
-	if item.TelegramMessageID <= 0 {
-		return nil, nil
-	}
-	hasVideo := false
-	hasImage := item.MessageType == "photo" || item.MessageType == "video"
+	files := []model.File{}
 	if item.Kind == "file" {
-		hasVideo = isVideoMedia(item.MimeType, item.Extension, item.FileName)
-		hasImage = hasImage || hasVideo || isImageMedia(item.MimeType, item.Extension, item.FileName)
+		files = append(files, model.File{
+			TelegramFileID: item.TelegramFileID,
+			FileName:       item.FileName,
+			Extension:      item.Extension,
+			MimeType:       item.MimeType,
+			SizeBytes:      item.SizeBytes,
+			Category:       item.Category,
+		})
 	}
-	if item.MessageType == "video" {
-		hasVideo = true
+	if len(files) == 0 && item.ChannelID > 0 && item.TelegramMessageID > 0 && h.deps.Files != nil {
+		found, err := h.deps.Files.FindByMessageRef(ctx, item.ChannelID, item.TelegramMessageID)
+		if err != nil {
+			return nil, err
+		}
+		files = found
 	}
-	return h.mediaURLs(ctx, item.ChannelUsername, item.ChannelID, item.TelegramMessageID, hasImage, hasVideo, signed)
+	return h.searchResultMedia(ctx, 0, item.MessageType, files, signed)
 }
 
-func (h handlers) mediaURLs(ctx context.Context, username string, channelID int64, telegramMessageID int64, hasImage bool, hasVideo bool, signed bool) (*model.MediaURLs, error) {
-	if !hasImage && !hasVideo {
-		return nil, nil
-	}
-	channel := mediaChannelParam(username, channelID)
-	if channel == "" {
+func (h handlers) mediaURLs(ctx context.Context, imageFileID int64, videoFileID int64, signed bool) (*model.MediaURLs, error) {
+	if imageFileID <= 0 && videoFileID <= 0 {
 		return nil, nil
 	}
 	var media model.MediaURLs
-	if hasImage {
-		imageURL, err := h.mediaURL(ctx, "i", channel, telegramMessageID, signed)
+	if imageFileID > 0 {
+		imageURL, err := h.mediaURL(ctx, "i", imageFileID, signed)
 		if err != nil {
 			return nil, err
 		}
 		media.ImageURL = imageURL
 	}
-	if hasVideo {
-		videoURL, err := h.mediaURL(ctx, "v", channel, telegramMessageID, signed)
+	if videoFileID > 0 {
+		videoURL, err := h.mediaURL(ctx, "v", videoFileID, signed)
 		if err != nil {
 			return nil, err
 		}
@@ -142,19 +175,8 @@ func (h handlers) mediaURLs(ctx context.Context, username string, channelID int6
 	return &media, nil
 }
 
-func mediaChannelParam(username string, channelID int64) string {
-	username = strings.TrimPrefix(strings.TrimSpace(username), "@")
-	if username != "" {
-		return username
-	}
-	if channelID > 0 {
-		return strconv.FormatInt(channelID, 10)
-	}
-	return ""
-}
-
-func (h handlers) mediaURL(ctx context.Context, kind string, channel string, telegramMessageID int64, signed bool) (string, error) {
-	path := "/" + kind + "/" + url.PathEscape(channel) + "/" + strconv.FormatInt(telegramMessageID, 10)
+func (h handlers) mediaURL(ctx context.Context, kind string, telegramFileID int64, signed bool) (string, error) {
+	path := "/" + kind + "/" + url.PathEscape(strconv.FormatInt(telegramFileID, 10))
 	if !signed || h.deps.APIKeyService == nil {
 		return path, nil
 	}
@@ -171,6 +193,15 @@ func (h handlers) mediaURL(ctx context.Context, kind string, channel string, tel
 	values.Set("exp", exp)
 	values.Set("sig", sig)
 	return path + "?" + values.Encode(), nil
+}
+
+func firstTelegramFileID(files []model.File) int64 {
+	for _, file := range files {
+		if file.TelegramFileID > 0 {
+			return file.TelegramFileID
+		}
+	}
+	return 0
 }
 
 func isVideoMedia(mimeType string, extension string, fileName string) bool {

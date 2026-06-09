@@ -40,6 +40,7 @@ type Dependencies struct {
 	Links            *repository.LinkRepository
 	WatchRules       *repository.WatchRuleRepository
 	RemoteSearch     *repository.RemoteSearchTaskRepository
+	Files            *repository.FileRepository
 	RemoteSearchExec *search.RemoteService
 	Maintenance      *repository.MaintenanceRepository
 	Status           *repository.StatusRepository
@@ -161,8 +162,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 
 	mediaAccess := router.Group("")
 	mediaAccess.Use(h.requireMediaAccess())
-	mediaAccess.GET("/v/:channel/:msgid", h.serveTelegramVideo)
-	mediaAccess.GET("/i/:channel/:msgid", h.serveTelegramImage)
+	mediaAccess.GET("/v/:fileid", h.serveTelegramVideo)
+	mediaAccess.GET("/i/:fileid", h.serveTelegramImage)
 
 	router.NoRoute(h.frontend)
 	return router

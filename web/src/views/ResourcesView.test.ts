@@ -22,6 +22,7 @@ vi.mock('@/api/client', () => ({
         {
           id: 'link:1',
           kind: 'link',
+          type: 'aliyun',
           category: 'cloud_drive',
           title: 'Course Pack',
           url: 'https://example.com/course'
@@ -47,6 +48,7 @@ describe('ResourcesView', () => {
       expect(wrapper.text()).toContain(label)
     }
     expect(wrapper.text()).toContain('Course Pack')
+    expect(wrapper.text()).toContain('阿里云盘')
     expect(wrapper.text()).toContain('全部频道')
     expect(wrapper.text()).toContain('Movies (@movies)')
     expect(wrapper.text()).toContain('Docs')

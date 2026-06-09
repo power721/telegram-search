@@ -421,6 +421,47 @@ func TestLinkRepositorySearchMergedGroupsAndDeduplicatesNewest(t *testing.T) {
 	}
 }
 
+func TestLinkRepositorySearchMergedRanksQualityBeforeFreshness(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	stored, _ := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "庆余年 第二季 完整合集", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "庆余年 网盘搬运", RawJSON: "{}", Date: newDate},
+	})
+	_, _ = links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "quark", URL: "https://pan.quark.cn/s/high", Note: "庆余年 第二季 最新合集", MediaTitle: "庆余年 第二季",
+		MediaYear: "2026", MediaQuality: "4K", MediaCategory: "series",
+	}})
+	_, _ = links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/weak", Note: "网盘搬运"}})
+
+	merged, err := links.SearchMerged(ctx, MergedLinkSearchParams{Keyword: "庆余年", Type: "quark", Limit: 10})
+	if err != nil {
+		t.Fatalf("SearchMerged returned error: %v", err)
+	}
+	items := merged.MergedByType["quark"]
+	if len(items) != 2 {
+		t.Fatalf("quark links = %+v, want two links", items)
+	}
+	if items[0].URL != "https://pan.quark.cn/s/high" {
+		t.Fatalf("first quark link = %+v, want high quality exact match before newer weak match", items[0])
+	}
+}
+
 func TestAccountRepositoryPersistsExpandedMetadata(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

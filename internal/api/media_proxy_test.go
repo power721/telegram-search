@@ -62,7 +62,7 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save account: %v", err)
 	}
-	_, err = deps.Channels.Save(ctx, model.Channel{
+	channelID, err := deps.Channels.Save(ctx, model.Channel{
 		AccountID:         accountID,
 		TelegramChannelID: 100,
 		AccessHash:        200,
@@ -73,6 +73,16 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save channel: %v", err)
 	}
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "video", MediaSummary: "video/mp4", Text: "clip", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	if _, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 4096}}); err != nil {
+		t.Fatalf("save file: %v", err)
+	}
 	fake := &mediaProxyClient{
 		file: telegram.VideoFile{ID: 1, AccessHash: 2, FileReference: []byte{3}, Size: 4096, MIMEType: "video/mp4"},
 		data: bytes.Repeat([]byte{0x7a}, 1024),
@@ -82,7 +92,7 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	key := createTestAPIKey(t, router)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v/NewQuark/12345", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v/777", nil)
 	req.Header.Set("Range", "bytes=1024-2047")
 	req.Header.Set("X-API-Key", key)
 	router.ServeHTTP(w, req)
@@ -113,7 +123,7 @@ func TestServeTelegramVideoRange(t *testing.T) {
 func TestServeTelegramVideoBadRange(t *testing.T) {
 	deps := testDeps(t)
 	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
-	_, _ = deps.Channels.Save(context.Background(), model.Channel{
+	channelID, _ := deps.Channels.Save(context.Background(), model.Channel{
 		AccountID:         accountID,
 		TelegramChannelID: 100,
 		AccessHash:        200,
@@ -121,12 +131,17 @@ func TestServeTelegramVideoBadRange(t *testing.T) {
 		Username:          "NewQuark",
 		Type:              model.ChannelTypeChannel,
 	})
+	stored, _ := deps.Messages.SaveBatch(context.Background(), []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "video", MediaSummary: "video/mp4", Text: "clip", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, _ = deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 4096}})
 	deps.Telegram = &mediaProxyClient{file: telegram.VideoFile{Size: 4096, MIMEType: "video/mp4"}}
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/v/NewQuark/12345", nil)
+	req := httptest.NewRequest(http.MethodGet, "/v/777", nil)
 	req.Header.Set("Range", "bytes=4096-5000")
 	req.Header.Set("X-API-Key", key)
 	router.ServeHTTP(w, req)
@@ -150,10 +165,10 @@ func TestTelegramMediaRequiresHeaderAPIKeyOrSignature(t *testing.T) {
 		path   string
 		header string
 	}{
-		{name: "missing", path: "/v/NewQuark/12345"},
-		{name: "invalid header key", path: "/v/NewQuark/12345", header: "invalid"},
-		{name: "query api key ignored", path: "/v/NewQuark/12345?api_key=" + key},
-		{name: "expired signature", path: signedMediaPath(t, key, "/v/NewQuark/12345", time.Now().Add(-time.Minute))},
+		{name: "missing", path: "/v/777"},
+		{name: "invalid header key", path: "/v/777", header: "invalid"},
+		{name: "query api key ignored", path: "/v/777?api_key=" + key},
+		{name: "expired signature", path: signedMediaPath(t, key, "/v/777", time.Now().Add(-time.Minute))},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
@@ -177,8 +192,9 @@ func TestMediaErrorStatusTreatsMissingThumbnailAsNotFound(t *testing.T) {
 
 func TestServeTelegramImage(t *testing.T) {
 	deps := testDeps(t)
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
-	_, _ = deps.Channels.Save(context.Background(), model.Channel{
+	channelID, _ := deps.Channels.Save(context.Background(), model.Channel{
 		AccountID:         accountID,
 		TelegramChannelID: 100,
 		AccessHash:        200,
@@ -186,13 +202,17 @@ func TestServeTelegramImage(t *testing.T) {
 		Username:          "NewQuark",
 		Type:              model.ChannelTypeChannel,
 	})
-	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	stored, _ := deps.Messages.SaveBatch(context.Background(), []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, _ = deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
 	deps.Telegram = &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}}
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/NewQuark/12345", time.Now().Add(time.Hour)), nil)
+	req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/888", time.Now().Add(time.Hour)), nil)
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusOK {

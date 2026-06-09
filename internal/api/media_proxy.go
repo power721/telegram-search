@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -124,17 +123,12 @@ func (h handlers) mediaRequestContext(c *gin.Context) (telegram.AccountSession, 
 		errorText(c, http.StatusServiceUnavailable, "telegram client is unavailable")
 		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
 	}
-	msgID, err := strconv.Atoi(c.Param("msgid"))
-	if err != nil || msgID <= 0 {
-		errorText(c, http.StatusBadRequest, "msgid must be a positive integer")
+	fileID, err := strconv.ParseInt(strings.TrimSpace(c.Param("fileid")), 10, 64)
+	if err != nil || fileID <= 0 {
+		errorText(c, http.StatusBadRequest, "fileid must be a positive integer")
 		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
 	}
-	channelParam := strings.TrimPrefix(strings.TrimSpace(c.Param("channel")), "@")
-	if channelParam == "" {
-		errorText(c, http.StatusBadRequest, "channel is required")
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
-	}
-	session, channel, err := h.resolveMediaSession(c.Request.Context(), channelParam)
+	session, channel, msgID, err := h.resolveMediaFileSession(c.Request.Context(), fileID)
 	if err != nil {
 		errorText(c, mediaErrorStatus(err), err.Error())
 		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
@@ -142,46 +136,37 @@ func (h handlers) mediaRequestContext(c *gin.Context) (telegram.AccountSession, 
 	return session, channel, msgID, true
 }
 
-func (h handlers) resolveMediaSession(ctx context.Context, channelParam string) (telegram.AccountSession, telegram.MediaChannelRef, error) {
+func (h handlers) resolveMediaFileSession(ctx context.Context, fileID int64) (telegram.AccountSession, telegram.MediaChannelRef, int, error) {
+	if h.deps.Files == nil {
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("files are unavailable")
+	}
 	if h.deps.Accounts == nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, fmt.Errorf("accounts are unavailable")
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("accounts are unavailable")
 	}
-	var matchedChannel model.Channel
-	if h.deps.Channels != nil {
-		channels, err := h.deps.Channels.FindAll(ctx)
-		if err != nil {
-			return telegram.AccountSession{}, telegram.MediaChannelRef{}, err
-		}
-		numericChannelID, _ := strconv.ParseInt(channelParam, 10, 64)
-		for _, channel := range channels {
-			if strings.EqualFold(strings.TrimPrefix(channel.Username, "@"), channelParam) || (numericChannelID > 0 && channel.ID == numericChannelID) {
-				matchedChannel = channel
-				break
-			}
-		}
+	if h.deps.Channels == nil {
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("channels are unavailable")
 	}
-	if matchedChannel.ID > 0 {
-		account, err := h.deps.Accounts.FindByID(ctx, matchedChannel.AccountID)
-		if err != nil {
-			return telegram.AccountSession{}, telegram.MediaChannelRef{}, err
-		}
-		return h.accountSession(account), telegram.MediaChannelRef{
-			Username:          channelParam,
-			TelegramChannelID: matchedChannel.TelegramChannelID,
-			AccessHash:        matchedChannel.AccessHash,
-			Type:              matchedChannel.Type,
-		}, nil
-	}
-	accounts, err := h.deps.Accounts.FindAll(ctx)
+	file, err := h.deps.Files.FindMediaByTelegramFileID(ctx, fileID)
 	if err != nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, err
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
 	}
-	for _, account := range accounts {
-		if account.Status == model.AccountStatusOnline || account.Status == model.AccountStatusSyncing || account.Status == model.AccountStatusReconnecting {
-			return h.accountSession(account), telegram.MediaChannelRef{Username: channelParam}, nil
-		}
+	channel, err := h.deps.Channels.FindByID(ctx, file.ChannelID)
+	if err != nil {
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
 	}
-	return telegram.AccountSession{}, telegram.MediaChannelRef{}, sql.ErrNoRows
+	account, err := h.deps.Accounts.FindByID(ctx, file.AccountID)
+	if err != nil {
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
+	}
+	if file.TelegramMessageID <= 0 {
+		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("message id is required")
+	}
+	return h.accountSession(account), telegram.MediaChannelRef{
+		Username:          strings.TrimPrefix(channel.Username, "@"),
+		TelegramChannelID: channel.TelegramChannelID,
+		AccessHash:        channel.AccessHash,
+		Type:              channel.Type,
+	}, int(file.TelegramMessageID), nil
 }
 
 func (h handlers) accountSession(account model.Account) telegram.AccountSession {

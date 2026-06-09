@@ -54,8 +54,8 @@ func NewExtractor() *Extractor {
 			providerParser("115", `(?i)(https?://(?:115|115cdn|anxia)\.com/s/[\w-]+(?:\?password=([\w-]+))?)`, 1, 2),
 			providerParser("xunlei", `(?i)(https?://pan\.xunlei\.com/s/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
 			providerParser("baidu", `(?i)(https?://pan\.baidu\.com/s/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
-			providerParser("baidu", `(?i)(https?://pan\.baidu\.com/(?:share|wap)/init\?surl=[\w-]+(?:&pwd=([\w-]+))?)`, 1, 2),
-			providerParser("pikpak", `(?i)(https?://mypikpak\.com/s/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
+			providerParser("baidu", `(?i)(https?://pan\.baidu\.com/(?:share|wap)/init\?[^\s"'<>，。；、)）]+)`, 1, 0),
+			providerParser("pikpak", `(?i)(https?://mypikpak\.com/s/[\w-]+(?:\?[^\s"'<>，。；、)）]+)?)`, 1, 0),
 			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/web/share\?code=[\w-]+)`, 1, 0),
 			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/t/[\w-]+)%EF%BC%88%E8%AE%BF%E9%97%AE%E7%A0%81%EF%BC%9A(\w+)%EF%BC%89`, 1, 2),
 			providerParser("tianyi", `(?i)(https?://cloud\.189\.cn/t/[\w-]+(?:%[0-9A-Fa-f]{2})*)(?:（访问码：(\w+)）)?`, 1, 2),
@@ -66,7 +66,7 @@ func NewExtractor() *Extractor {
 			providerParser("quark", `(?i)(https?://pan\.quark\.cn/s/[\w-]+)`, 1, 0),
 			providerParser("uc", `(?i)(https?://(?:drive|fast)\.uc\.cn/s/[\w-]+(?:\?[\w%-]+=[\w%-]+(?:&[\w%-]+=[\w%-]+)*)?)`, 1, 0),
 			providerParser("aliyun", `(?i)(https?://(?:www\.)?(?:alipan|aliyundrive)\.com/s/[\w-]+(?:/folder/[\w-]+)?(?:\?password=([\w-]+))?)`, 1, 2),
-			providerParser("123", `(?i)(https?://(?:www\.)?123(?:684|865|685|912|pan|592)\.(?:com|cn)/s/[\w-]+(?:\.html)?)(?:(?:\?(?:%E6%8F%90%E5%8F%96%E7%A0%81|提取码)|提取码)[:：](\w+))?`, 1, 2),
+			providerParser("123", `(?i)(https?://(?:www\.)?123(?:684|865|685|912|pan|592)\.(?:com|cn)/s/[\w-]+(?:\.html)?)(?:(?:\?(?:pwd=|(?:%E6%8F%90%E5%8F%96%E7%A0%81|提取码)[:：])|提取码[:：])([\w-]+))?`, 1, 2),
 			providerParser("123", `(?i)(https?://[A-Za-z0-9-]+\.share\.123pan\.cn/123pan/[\w-]+(?:\?pwd=([\w-]+))?)`, 1, 2),
 			providerParser("guangya", `(?i)(https?://(?:www\.)?guangyapan\.com/s/[A-Za-z0-9_-]+)`, 1, 0),
 			providerParser("magnet", `(?i)(magnet:\?[^\s"'<>，。；、]+)`, 1, 0),
@@ -137,7 +137,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 	var providerSpans []matchSpan
 	var out []model.Link
 	for _, candidate := range candidates {
-		url := trimTrailingPunctuation(strings.TrimSpace(candidate.URL))
+		url := cleanLinkURL(candidate.Type, strings.TrimSpace(candidate.URL))
 		if url == "" {
 			continue
 		}
@@ -319,6 +319,89 @@ func trimTrailingPunctuation(raw string) string {
 	return strings.TrimRight(raw, ".,;:!?)]}）】》\"'，#")
 }
 
+func cleanLinkURL(typ string, raw string) string {
+	raw = trimTrailingPunctuation(strings.TrimSpace(raw))
+	raw = trimAtTrailingMarkers(raw, typ)
+	switch typ {
+	case "baidu":
+		if strings.Contains(raw, "pan.baidu.com/share/init?") || strings.Contains(raw, "pan.baidu.com/wap/init?") {
+			raw = cleanQueryCodeValue(raw, "pwd")
+		}
+	case "pikpak":
+		raw = keepQueryCodeOnly(raw, "pwd")
+	case "123":
+		raw = cleanQueryCodeValue(raw, "pwd")
+	case "115":
+		raw = cleanQueryCodeValue(raw, "password")
+	case "xunlei":
+		raw = cleanQueryCodeValue(raw, "pwd")
+	case "aliyun":
+		raw = cleanQueryCodeValue(raw, "password")
+	case "uc":
+		raw = cleanQueryCodeValue(raw, "password")
+	}
+	return trimTrailingPunctuation(raw)
+}
+
+func trimAtTrailingMarkers(raw string, typ string) string {
+	if raw == "" {
+		return raw
+	}
+	markers := []string{"标签", "🏷", "📁", "📎", "🔗", "🔑", "访问码", "提取码", "密码"}
+	if typ == "tianyi" {
+		markers = []string{"标签", "🏷", "📁", "📎", "🔗", "🔑"}
+	}
+	min := len(raw)
+	for _, marker := range markers {
+		if idx := strings.Index(raw, marker); idx > 0 && idx < min {
+			if marker == "提取码" && strings.Contains(raw[:idx], "?") {
+				continue
+			}
+			min = idx
+		}
+	}
+	if min < len(raw) {
+		raw = raw[:min]
+	}
+	return strings.TrimSpace(raw)
+}
+
+func cleanQueryCodeValue(raw string, key string) string {
+	for _, prefix := range []string{"?" + key + "=", "&" + key + "="} {
+		idx := strings.Index(strings.ToLower(raw), strings.ToLower(prefix))
+		if idx < 0 {
+			continue
+		}
+		valueStart := idx + len(prefix)
+		valueEnd := valueStart
+		for valueEnd < len(raw) {
+			r, size := utf8.DecodeRuneInString(raw[valueEnd:])
+			if !isCodeRune(r) {
+				break
+			}
+			valueEnd += size
+		}
+		return raw[:valueEnd]
+	}
+	return raw
+}
+
+func keepQueryCodeOnly(raw string, key string) string {
+	code := queryPassword("", raw)
+	queryIdx := strings.Index(raw, "?")
+	if queryIdx < 0 {
+		return raw
+	}
+	if code == "" {
+		return raw[:queryIdx]
+	}
+	return raw[:queryIdx] + "?" + key + "=" + code
+}
+
+func isCodeRune(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_'
+}
+
 func isIgnoredURL(raw string) bool {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -344,10 +427,26 @@ func queryPassword(typ string, raw string) string {
 	values := parsed.Query()
 	for _, key := range keys {
 		if value := values.Get(key); value != "" {
-			return value
+			return cleanCodeValue(value)
 		}
 	}
 	return ""
+}
+
+func cleanCodeValue(value string) string {
+	value = strings.TrimSpace(value)
+	end := 0
+	for end < len(value) {
+		r, size := utf8.DecodeRuneInString(value[end:])
+		if !isCodeRune(r) {
+			break
+		}
+		end += size
+	}
+	if end == 0 {
+		return ""
+	}
+	return value[:end]
 }
 
 func (e *Extractor) nearbyPassword(text string, after int) string {
@@ -356,11 +455,29 @@ func (e *Extractor) nearbyPassword(text string, after int) string {
 		end = len(text)
 	}
 	segment := text[after:end]
+	if nextURL := nextURLIndex(segment); nextURL >= 0 {
+		segment = segment[:nextURL]
+	}
 	m := e.passwordPattern.FindStringSubmatch(segment)
 	if len(m) != 2 {
 		return ""
 	}
 	return m[1]
+}
+
+func nextURLIndex(segment string) int {
+	lower := strings.ToLower(segment)
+	indexes := []int{}
+	for _, marker := range []string{"http://", "https://", "magnet:?", "ed2k://"} {
+		if idx := strings.Index(lower, marker); idx >= 0 {
+			indexes = append(indexes, idx)
+		}
+	}
+	if len(indexes) == 0 {
+		return -1
+	}
+	sort.Ints(indexes)
+	return indexes[0]
 }
 
 func inferNote(text string, linkStart int) string {

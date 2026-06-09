@@ -72,6 +72,58 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryRanksQualityBeforeFreshness(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu 24.04 完整合集", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu random mirror", RawJSON: "{}", Date: newDate},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/high", Note: "Ubuntu 24.04 最新合集", MediaTitle: "Ubuntu 24.04",
+		MediaYear: "2026", MediaQuality: "4K", MediaCategory: "software",
+	}}); err != nil {
+		t.Fatalf("save high quality link: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[1].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/weak", Note: "random mirror",
+	}}); err != nil {
+		t.Fatalf("save weak link: %v", err)
+	}
+
+	service := NewService(links, nil)
+	result, err := service.List(ctx, Query{Keyword: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %+v, want two ranked resources", result.Items)
+	}
+	if result.Items[0].URL != "https://pan.quark.cn/s/high" {
+		t.Fatalf("first resource = %+v, want high quality exact match before newer weak match", result.Items[0])
+	}
+}
+
 func TestResourceLibraryExcludesImageFilesByDefault(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

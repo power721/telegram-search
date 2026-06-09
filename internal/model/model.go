@@ -354,16 +354,17 @@ func (r ListResult[T]) MarshalJSON() ([]byte, error) {
 
 type LinkResult struct {
 	Link
-	MessageText       string    `json:"message_text"`
-	MessageDate       time.Time `json:"message_date"`
-	MessageType       string    `json:"message_type,omitempty"`
-	MediaSummary      string    `json:"media_summary,omitempty"`
-	AccountID         int64     `json:"account_id"`
-	ChannelID         int64     `json:"channel_id"`
-	TelegramChannelID int64     `json:"telegram_channel_id"`
-	ChannelTitle      string    `json:"channel_title"`
-	ChannelUsername   string    `json:"channel_username"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
+	MessageText       string     `json:"message_text"`
+	MessageDate       time.Time  `json:"message_date"`
+	MessageType       string     `json:"message_type,omitempty"`
+	MediaSummary      string     `json:"media_summary,omitempty"`
+	AccountID         int64      `json:"account_id"`
+	ChannelID         int64      `json:"channel_id"`
+	TelegramChannelID int64      `json:"telegram_channel_id"`
+	ChannelTitle      string     `json:"channel_title"`
+	ChannelUsername   string     `json:"channel_username"`
+	TelegramMessageID int64      `json:"telegram_message_id"`
+	Media             *MediaURLs `json:"media,omitempty"`
 }
 
 type FileResult struct {

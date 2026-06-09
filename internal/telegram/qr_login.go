@@ -11,6 +11,8 @@ import (
 	gotdtelegram "github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth/qrlogin"
 	"github.com/gotd/td/tg"
+
+	"tg-search/internal/build"
 )
 
 type gotdQRLoginSession struct {
@@ -45,7 +47,7 @@ func (g *GotdClient) StartQRLogin(ctx context.Context, sessionPath string) (QRLo
 		Device: gotdtelegram.DeviceConfig{
 			DeviceModel:    "TG Search",
 			SystemVersion:  runtime.GOOS,
-			AppVersion:     "1.0.0",
+			AppVersion:     build.Version,
 			SystemLangCode: "zh-CN",
 			LangCode:       "zh",
 		},

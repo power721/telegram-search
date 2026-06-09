@@ -25,7 +25,10 @@ assert_file_contains() {
 
 assert_file_contains "$WORKFLOW" "dist/linux/amd64/tg-search"
 assert_file_contains "$WORKFLOW" "dist/linux/arm64/tg-search"
+assert_file_contains "$WORKFLOW" "tg-search/internal/build.Version="
 assert_file_contains "$WORKFLOW" "file: Dockerfile.ci"
+assert_file_contains "$LOCAL_DOCKERFILE" "ARG VERSION=dev"
+assert_file_contains "$LOCAL_DOCKERFILE" "tg-search/internal/build.Version="
 assert_file_contains "$LOCAL_DOCKERFILE" "COPY docker/config.yaml /app/config.yaml"
 assert_file_contains "$DOCKERFILE" "ARG TARGETARCH"
 assert_file_contains "$DOCKERFILE" 'COPY --chmod=755 dist/linux/${TARGETARCH}/tg-search /usr/local/bin/tg-search'

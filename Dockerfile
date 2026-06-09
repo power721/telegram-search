@@ -7,13 +7,14 @@ COPY web ./web
 RUN npm run web:build
 
 FROM golang:1.25-alpine AS go-build
+ARG VERSION=dev
 WORKDIR /src
 RUN apk add --no-cache ca-certificates
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /src/web/dist ./internal/web/dist
-RUN CGO_ENABLED=0 go build -o /out/tg-search ./cmd/tg-search
+RUN CGO_ENABLED=0 go build -ldflags "-X 'tg-search/internal/build.Version=${VERSION}'" -o /out/tg-search ./cmd/tg-search
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata

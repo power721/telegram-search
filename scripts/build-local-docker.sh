@@ -137,8 +137,10 @@ fi
 
 prepare_config
 
+VERSION="${VERSION:-$(git -C "$ROOT_DIR" describe --tags --always)}"
+
 echo "=== build $IMAGE ==="
-docker build -f "$ROOT_DIR/Dockerfile" --tag="$IMAGE" "$ROOT_DIR"
+docker build -f "$ROOT_DIR/Dockerfile" --build-arg "VERSION=$VERSION" --tag="$IMAGE" "$ROOT_DIR"
 
 echo "=== restart $CONTAINER_NAME ==="
 docker rm -f "$CONTAINER_NAME" 2>/dev/null || true

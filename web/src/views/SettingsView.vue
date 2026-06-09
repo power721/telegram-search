@@ -385,10 +385,6 @@ function versionStatusText() {
               <dt>CPU</dt>
               <dd>{{ systemInfo?.cpu_count ?? '-' }}</dd>
             </div>
-            <div>
-              <dt>Go 版本</dt>
-              <dd>{{ systemInfo?.go_version || '-' }}</dd>
-            </div>
           </dl>
         </section>
       </div>

@@ -234,7 +234,8 @@ describe('SettingsView', () => {
     expect(wrapper.text()).toContain('amd64')
     expect(wrapper.text()).toContain('tg-search-host')
     expect(wrapper.text()).toContain('8')
-    expect(wrapper.text()).toContain('go1.25.0')
+    expect(wrapper.text()).not.toContain('Go 版本')
+    expect(wrapper.text()).not.toContain('go1.25.0')
   })
 
   it('places three settings panels in each desktop column', async () => {

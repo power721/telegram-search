@@ -42,6 +42,7 @@ const categories = [
       v-model:value="channelId"
       :options="channelOptions"
       class="channel-select"
+      filterable
       label-field="label"
       value-field="value"
     />

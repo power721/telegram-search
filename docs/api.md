@@ -31,9 +31,10 @@ Administrator browser/API routes require an authenticated admin session cookie c
 
 API keys are limited external credentials. They can access only:
 
-- `GET /api/resources`
-- `GET /api/resources/grouped`
-- `GET /api/resources/:id`
+- `GET /api/search`
+- `POST /api/search`
+- `GET /v/:channel/:msgid`
+- `GET /i/:channel/:msgid`
 
 Send API keys with one of:
 
@@ -42,7 +43,7 @@ Authorization: Bearer <api-key>
 X-API-Key: <api-key>
 ```
 
-The `api_key` query parameter is also accepted for resource endpoints and future media proxy endpoints that cannot set headers.
+The `api_key` query parameter is accepted by `/api/search`. Media proxy endpoints accept API keys in request headers, and signed media URLs use `exp` and `sig` query parameters.
 
 Health, readiness, first-run setup, and admin login/session endpoints remain available without an API key where required for bootstrap. API key management requires an authenticated admin session.
 
@@ -593,6 +594,8 @@ Realtime listener failures mark the account `RECONNECTING` or `FLOOD_WAIT`. If r
 ### `GET /api/resources`
 
 Returns the Telegram Resource Library from local indexed links and files. Duplicate links are collapsed by URL, keeping the newest source message.
+
+Requires an authenticated admin session cookie. API keys cannot access resource library endpoints directly.
 
 Filters:
 

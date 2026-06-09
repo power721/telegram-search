@@ -154,7 +154,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.POST("/maintenance/backup", h.maintenanceBackup)
 
 	resourceAccess := api.Group("")
-	resourceAccess.Use(h.requireResourceAccess())
+	resourceAccess.Use(h.requireAdminSession())
 	resourceAccess.GET("/resources/grouped", h.resourcesGrouped)
 	resourceAccess.GET("/resources/:id", h.resource)
 	resourceAccess.GET("/resources", h.resources)

@@ -299,7 +299,7 @@ func TestResourcesAPI(t *testing.T) {
 	}
 }
 
-func TestResourcesAPIMediaURLsUseCookieOrAPIKeyAuth(t *testing.T) {
+func TestResourcesAPIMediaURLsRequireAdminSession(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
 	deps.APIKeyService = apikey.NewService(deps.APIKeys, deps.Settings)
@@ -330,7 +330,7 @@ func TestResourcesAPIMediaURLsUseCookieOrAPIKeyAuth(t *testing.T) {
 	key := createTestAPIKey(t, router)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=poster", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=trailer", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -340,7 +340,7 @@ func TestResourcesAPIMediaURLsUseCookieOrAPIKeyAuth(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &adminBody); err != nil {
 		t.Fatalf("invalid admin JSON: %v", err)
 	}
-	if len(adminBody.Items) != 1 || adminBody.Items[0].Media == nil || adminBody.Items[0].Media.ImageURL != "/i/media_channel/201" {
+	if len(adminBody.Items) != 1 || adminBody.Items[0].Media == nil || adminBody.Items[0].Media.ImageURL != "/i/media_channel/202" || adminBody.Items[0].Media.VideoURL != "/v/media_channel/202" {
 		t.Fatalf("admin resource media = %+v", adminBody.Items)
 	}
 
@@ -348,18 +348,9 @@ func TestResourcesAPIMediaURLsUseCookieOrAPIKeyAuth(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/resources?q=trailer", nil)
 	req.Header.Set("X-API-Key", key)
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("api key status = %d body=%s, want 200", w.Code, w.Body.String())
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("api key status = %d body=%s, want 401", w.Code, w.Body.String())
 	}
-	var apiBody resource.ListResult
-	if err := json.Unmarshal(w.Body.Bytes(), &apiBody); err != nil {
-		t.Fatalf("invalid api key JSON: %v", err)
-	}
-	if len(apiBody.Items) != 1 || apiBody.Items[0].Media == nil || !strings.HasPrefix(apiBody.Items[0].Media.ImageURL, "/i/media_channel/202?") || !strings.HasPrefix(apiBody.Items[0].Media.VideoURL, "/v/media_channel/202?") {
-		t.Fatalf("api key resource media = %+v", apiBody.Items)
-	}
-	assertSignedMediaURL(t, deps.APIKeyService, apiBody.Items[0].Media.ImageURL)
-	assertSignedMediaURL(t, deps.APIKeyService, apiBody.Items[0].Media.VideoURL)
 }
 
 func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
@@ -694,7 +685,7 @@ func TestSetupAPIKeyAutoGeneratesAndSkipIsDisabled(t *testing.T) {
 	}
 }
 
-func TestAPIKeyOnlyAllowsResourceEndpoints(t *testing.T) {
+func TestResourcesRequireAdminSession(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
@@ -708,13 +699,13 @@ func TestAPIKeyOnlyAllowsResourceEndpoints(t *testing.T) {
 	}
 
 	for _, path := range []string{"/api/resources", "/api/resources/grouped"} {
-		t.Run("api key "+path, func(t *testing.T) {
+		t.Run("api key denied "+path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, path, nil)
 			req.Header.Set("X-API-Key", key)
 			router.ServeHTTP(w, req)
-			if w.Code != http.StatusOK {
-				t.Fatalf("%s with api key code = %d body=%s, want 200", path, w.Code, w.Body.String())
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("%s with api key code = %d body=%s, want 401", path, w.Code, w.Body.String())
 			}
 		})
 
@@ -987,7 +978,7 @@ func TestSearchPathServesFrontend(t *testing.T) {
 	}
 }
 
-func TestAPIKeyAllowsResourceDetail(t *testing.T) {
+func TestResourceDetailRequiresAdminSession(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
 	files := repository.NewFileRepository(deps.BackupDB)
@@ -1005,13 +996,14 @@ func TestAPIKeyAllowsResourceDetail(t *testing.T) {
 	}
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/resources?type=files&q=ubuntu", nil)
-	req.Header.Set("X-API-Key", key)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("resources code = %d body=%s, want 200", w.Code, w.Body.String())
+		t.Fatalf("admin resources code = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 	var list resource.ListResult
 	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
@@ -1025,8 +1017,16 @@ func TestAPIKeyAllowsResourceDetail(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/resources/"+url.PathEscape(list.Items[0].ID), nil)
 	req.Header.Set("Authorization", "Bearer "+key)
 	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("resource detail with api key code = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/resources/"+url.PathEscape(list.Items[0].ID), nil)
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
-		t.Fatalf("resource detail code = %d body=%s, want 200", w.Code, w.Body.String())
+		t.Fatalf("resource detail with admin session code = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 }
 
@@ -1096,7 +1096,7 @@ func TestAPIKeySettingsViewAndRegenerate(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/resources", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/search", nil)
 	req.Header.Set("X-API-Key", first)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {
@@ -1104,7 +1104,7 @@ func TestAPIKeySettingsViewAndRegenerate(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/resources", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/search", nil)
 	req.Header.Set("X-API-Key", regenerated.Key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

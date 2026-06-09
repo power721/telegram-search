@@ -188,6 +188,53 @@ func TestServiceStartsListenerOnlyWhenAccountHasListenEnabledChannel(t *testing.
 	}
 }
 
+func TestServiceMarksReconnectingAccountOnlineWhenListenerStarts(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := repository.NewAccountRepository(conn)
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusReconnecting})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	account, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find account: %v", err)
+	}
+
+	listener := &blockingStartedListener{started: make(chan int64, 1)}
+	service := NewService(ServiceOptions{
+		Accounts:  accounts,
+		Processor: &recordingProcessor{},
+		Listener:  listener,
+	})
+	service.Start(ctx)
+	if err := service.StartAccount(ctx, account); err != nil {
+		t.Fatalf("StartAccount returned error: %v", err)
+	}
+	select {
+	case <-listener.started:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for listener start")
+	}
+	updated, err := accounts.FindByID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("find updated account: %v", err)
+	}
+	if updated.Status != model.AccountStatusOnline {
+		t.Fatalf("status = %q, want ONLINE", updated.Status)
+	}
+	if err := service.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
 func TestServiceMarksAccountOnlineAfterReconnectSucceeds(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

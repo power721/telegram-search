@@ -1082,7 +1082,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	}
 }
 
-func TestSetupStatusRequiresStoredTelegramAPI(t *testing.T) {
+func TestSetupStatusUsesDefaultTelegramAPIWhenNotStored(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
 
@@ -1096,8 +1096,8 @@ func TestSetupStatusRequiresStoredTelegramAPI(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
 		t.Fatalf("decode setup status: %v", err)
 	}
-	if status.TelegramConfigured {
-		t.Fatalf("telegram configured = true, want false without stored Telegram API settings")
+	if !status.TelegramConfigured {
+		t.Fatalf("telegram configured = false, want true with default Telegram API settings")
 	}
 }
 

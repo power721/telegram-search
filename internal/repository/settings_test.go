@@ -80,6 +80,31 @@ func TestTelegramAPISettingsRoundTripAndRedaction(t *testing.T) {
 	}
 }
 
+func TestTelegramAPISettingsDefaultsWhenNotStored(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+
+	settings, err := repo.LoadTelegramAPI(ctx)
+	if err != nil {
+		t.Fatalf("load telegram api: %v", err)
+	}
+	if settings.AppID != 26375241 || settings.AppHash != "70f574f48a016d683c64f2f7a217d04f" {
+		t.Fatalf("settings = %+v, want default Telegram API credentials", settings)
+	}
+	redacted := RedactTelegramAPI(settings)
+	if !redacted.Configured || redacted.AppID != 26375241 || !redacted.AppHashSet {
+		t.Fatalf("redacted = %+v, want default credentials marked configured", redacted)
+	}
+}
+
 func TestTelegramCredentialsProviderLoadsStoredSettings(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
@@ -104,7 +129,7 @@ func TestTelegramCredentialsProviderLoadsStoredSettings(t *testing.T) {
 	}
 }
 
-func TestTelegramCredentialsProviderRequiresStoredSettings(t *testing.T) {
+func TestTelegramCredentialsProviderUsesDefaultsWhenNotStored(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
 	if err != nil {
@@ -115,8 +140,11 @@ func TestTelegramCredentialsProviderRequiresStoredSettings(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	_, err = NewTelegramCredentialsProvider(NewSettingsRepository(conn)).TelegramCredentials(ctx)
-	if err == nil || !strings.Contains(err.Error(), "telegram api settings are not configured") {
-		t.Fatalf("TelegramCredentials error = %v, want not configured error", err)
+	credentials, err := NewTelegramCredentialsProvider(NewSettingsRepository(conn)).TelegramCredentials(ctx)
+	if err != nil {
+		t.Fatalf("telegram credentials: %v", err)
+	}
+	if credentials.APIID != 26375241 || credentials.APIHash != "70f574f48a016d683c64f2f7a217d04f" {
+		t.Fatalf("credentials = %+v, want default Telegram API credentials", credentials)
 	}
 }

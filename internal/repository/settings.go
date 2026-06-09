@@ -74,7 +74,7 @@ func (r *SettingsRepository) LoadTelegramAPI(ctx context.Context) (model.Telegra
 		return model.TelegramAPISettings{}, fmt.Errorf("load telegram api settings: %w", err)
 	}
 	if !ok {
-		return model.TelegramAPISettings{}, nil
+		return defaultTelegramAPISettings(), nil
 	}
 	var settings model.TelegramAPISettings
 	var stored telegramAPISettingsJSON
@@ -114,4 +114,11 @@ func (p *TelegramCredentialsProvider) TelegramCredentials(ctx context.Context) (
 		return telegram.Credentials{}, telegram.ErrCredentialsNotConfigured
 	}
 	return telegram.Credentials{APIID: settings.AppID, APIHash: settings.AppHash}, nil
+}
+
+func defaultTelegramAPISettings() model.TelegramAPISettings {
+	return model.TelegramAPISettings{
+		AppID:   telegram.DefaultAPIID,
+		AppHash: telegram.DefaultAPIHash,
+	}
 }

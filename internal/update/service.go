@@ -235,6 +235,11 @@ func (s *Service) runListener(ctx context.Context, token uint64, account model.A
 	hadFailure := false
 	for {
 		s.logger.Info("telegram update listener running", zap.Int64("account_id", account.ID))
+		if account.Status == model.AccountStatusReconnecting && s.accounts != nil {
+			if updateErr := s.accounts.UpdateStatus(ctx, account.ID, model.AccountStatusOnline); updateErr != nil {
+				s.logger.Error("mark account online after listener start", zap.Int64("account_id", account.ID), zap.Error(updateErr))
+			}
+		}
 		err := s.listener.Run(ctx, account, func(event Event) error {
 			return s.Enqueue(ctx, event)
 		})

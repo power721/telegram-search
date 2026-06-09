@@ -155,141 +155,145 @@ function formatBytes(value = 0) {
       </div>
     </div>
     <div class="settings-grid">
-      <section class="panel admin-panel">
-        <h2>管理员账号</h2>
-        <n-form class="credential-form" @submit.prevent="updateCredentials">
-          <n-form-item label="用户名">
-            <n-input
-              v-model:value="credentialsUsername"
-              data-testid="admin-username-input"
-              autocomplete="username"
-              placeholder="请输入用户名"
-            />
-          </n-form-item>
-          <n-form-item label="当前密码">
-            <n-input
-              v-model:value="currentPassword"
-              data-testid="current-password-input"
-              type="password"
-              autocomplete="current-password"
-              placeholder="请输入密码"
-            />
-          </n-form-item>
-          <n-form-item label="新密码">
-            <n-input
-              v-model:value="newPassword"
-              data-testid="new-password-input"
-              type="password"
-              autocomplete="new-password"
-              placeholder="留空则不修改"
-            />
-          </n-form-item>
-          <n-form-item label="确认新密码">
-            <n-input
-              v-model:value="confirmPassword"
-              data-testid="confirm-password-input"
-              type="password"
-              autocomplete="new-password"
-              placeholder="留空则不修改"
-            />
-          </n-form-item>
-          <div class="form-actions">
-            <n-button
-              data-testid="save-admin-credentials"
-              type="primary"
-              :loading="credentialsLoading"
-              @click="updateCredentials"
-            >
-              保存
+      <div class="settings-column settings-column-left">
+        <section class="panel admin-panel">
+          <h2>管理员账号</h2>
+          <n-form class="credential-form" @submit.prevent="updateCredentials">
+            <n-form-item label="用户名">
+              <n-input
+                v-model:value="credentialsUsername"
+                data-testid="admin-username-input"
+                autocomplete="username"
+                placeholder="请输入用户名"
+              />
+            </n-form-item>
+            <n-form-item label="当前密码">
+              <n-input
+                v-model:value="currentPassword"
+                data-testid="current-password-input"
+                type="password"
+                autocomplete="current-password"
+                placeholder="请输入密码"
+              />
+            </n-form-item>
+            <n-form-item label="新密码">
+              <n-input
+                v-model:value="newPassword"
+                data-testid="new-password-input"
+                type="password"
+                autocomplete="new-password"
+                placeholder="留空则不修改"
+              />
+            </n-form-item>
+            <n-form-item label="确认新密码">
+              <n-input
+                v-model:value="confirmPassword"
+                data-testid="confirm-password-input"
+                type="password"
+                autocomplete="new-password"
+                placeholder="留空则不修改"
+              />
+            </n-form-item>
+            <div class="form-actions">
+              <n-button
+                data-testid="save-admin-credentials"
+                type="primary"
+                :loading="credentialsLoading"
+                @click="updateCredentials"
+              >
+                保存
+              </n-button>
+            </div>
+          </n-form>
+        </section>
+        <section class="panel storage-panel">
+          <h2>存储</h2>
+          <dl>
+            <div>
+              <dt>最大数据库容量</dt>
+              <dd>{{ formatBytes(storageUsage?.max_db_bytes) }}</dd>
+            </div>
+            <div>
+              <dt>最大媒体缓存</dt>
+              <dd>{{ formatBytes(storageUsage?.max_media_bytes) }}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+      <div class="settings-column settings-column-right">
+        <section class="panel api-key-panel">
+          <div class="panel-header">
+            <h2>API 密钥</h2>
+            <n-button data-testid="regenerate-api-key" size="small" type="primary" :loading="apiKey.loading" @click="regenerate">
+              重新生成
             </n-button>
           </div>
-        </n-form>
-      </section>
-      <section class="panel api-key-panel">
-        <div class="panel-header">
-          <h2>API 密钥</h2>
-          <n-button data-testid="regenerate-api-key" size="small" type="primary" :loading="apiKey.loading" @click="regenerate">
-            重新生成
-          </n-button>
-        </div>
-        <dl v-if="apiKey.current">
-          <div>
-            <dt>创建时间</dt>
-            <dd>{{ formatTime(apiKey.current.created_at) }}</dd>
-          </div>
-          <div>
-            <dt>最后使用</dt>
-            <dd>{{ formatTime(apiKey.current.last_used_at) }}</dd>
-          </div>
-        </dl>
-        <div v-if="apiKey.current" class="api-key-field">
-          <input
-            data-testid="api-key-input"
-            class="api-key-input"
-            :type="showAPIKey ? 'text' : 'password'"
-            :value="apiKey.current.key"
-            readonly
-            autocomplete="off"
-          />
-          <n-button
-            data-testid="toggle-api-key-visibility"
-            size="small"
-            secondary
-            @click="toggleAPIKeyVisibility"
-          >
-            {{ showAPIKey ? '隐藏' : '显示' }}
-          </n-button>
-        </div>
-        <div v-else class="loading-stack" aria-label="正在加载 API 密钥">
-          <span class="skeleton-line" />
-          <span class="skeleton-line short" />
-        </div>
-      </section>
-      <section class="panel">
-        <h2>存储</h2>
-        <dl>
-          <div>
-            <dt>最大数据库容量</dt>
-            <dd>{{ formatBytes(storageUsage?.max_db_bytes) }}</dd>
-          </div>
-          <div>
-            <dt>最大媒体缓存</dt>
-            <dd>{{ formatBytes(storageUsage?.max_media_bytes) }}</dd>
-          </div>
-        </dl>
-      </section>
-      <section class="panel telegram-panel">
-        <h2>Telegram API</h2>
-        <n-form class="telegram-form" @submit.prevent="updateTelegramAPI">
-          <n-form-item label="App ID">
-            <n-input
-              v-model:value="telegramAppID"
-              data-testid="telegram-app-id-input"
-              inputmode="numeric"
-              placeholder="请输入 App ID"
-            />
-          </n-form-item>
-          <n-form-item label="App Hash">
-            <n-input
-              v-model:value="telegramAppHash"
-              data-testid="telegram-app-hash-input"
-              type="password"
+          <dl v-if="apiKey.current">
+            <div>
+              <dt>创建时间</dt>
+              <dd>{{ formatTime(apiKey.current.created_at) }}</dd>
+            </div>
+            <div>
+              <dt>最后使用</dt>
+              <dd>{{ formatTime(apiKey.current.last_used_at) }}</dd>
+            </div>
+          </dl>
+          <div v-if="apiKey.current" class="api-key-field">
+            <input
+              data-testid="api-key-input"
+              class="api-key-input"
+              :type="showAPIKey ? 'text' : 'password'"
+              :value="apiKey.current.key"
+              readonly
               autocomplete="off"
-              :placeholder="telegramSettings?.app_hash_set ? '已设置，输入新 Hash 保存' : '请输入 App Hash'"
             />
-          </n-form-item>
-          <div class="form-actions">
             <n-button
-              data-testid="save-telegram-api"
-              type="primary"
-              :loading="telegramLoading"
-              @click="updateTelegramAPI"
+              data-testid="toggle-api-key-visibility"
+              size="small"
+              secondary
+              @click="toggleAPIKeyVisibility"
             >
-              保存
+              {{ showAPIKey ? '隐藏' : '显示' }}
             </n-button>
           </div>
-        </n-form>
-      </section>
+          <div v-else class="loading-stack" aria-label="正在加载 API 密钥">
+            <span class="skeleton-line" />
+            <span class="skeleton-line short" />
+          </div>
+        </section>
+        <section class="panel telegram-panel">
+          <h2>Telegram API</h2>
+          <n-form class="telegram-form" @submit.prevent="updateTelegramAPI">
+            <n-form-item label="App ID">
+              <n-input
+                v-model:value="telegramAppID"
+                data-testid="telegram-app-id-input"
+                inputmode="numeric"
+                placeholder="请输入 App ID"
+              />
+            </n-form-item>
+            <n-form-item label="App Hash">
+              <n-input
+                v-model:value="telegramAppHash"
+                data-testid="telegram-app-hash-input"
+                type="password"
+                autocomplete="off"
+                :placeholder="telegramSettings?.app_hash_set ? '已设置，输入新 Hash 保存' : '请输入 App Hash'"
+              />
+            </n-form-item>
+            <div class="form-actions">
+              <n-button
+                data-testid="save-telegram-api"
+                type="primary"
+                :loading="telegramLoading"
+                @click="updateTelegramAPI"
+              >
+                保存
+              </n-button>
+            </div>
+          </n-form>
+        </section>
+      </div>
     </div>
   </section>
 </template>
@@ -298,8 +302,17 @@ function formatBytes(value = 0) {
 .settings-grid {
   align-items: start;
   display: grid;
-  gap: 16px;
+  column-gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-column {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-column-right {
+  gap: 0;
 }
 
 .credential-form {
@@ -373,7 +386,28 @@ dd {
 
 @media (max-width: 840px) {
   .settings-grid {
+    row-gap: 16px;
     grid-template-columns: 1fr;
+  }
+
+  .settings-column {
+    display: contents;
+  }
+
+  .admin-panel {
+    order: 1;
+  }
+
+  .api-key-panel {
+    order: 2;
+  }
+
+  .storage-panel {
+    order: 3;
+  }
+
+  .telegram-panel {
+    order: 4;
   }
 }
 

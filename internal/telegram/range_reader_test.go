@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-func TestStreamChunkSizeUsesOneMiBForLargeRangesAndShrinksForSmallRanges(t *testing.T) {
-	if got := streamChunkSize(0, 4*1024*1024); got != 1024*1024 {
-		t.Fatalf("large chunk size = %d, want 1048576", got)
+func TestStreamChunkSizeUsesTelegramSafeLimitForLargeRangesAndShrinksForSmallRanges(t *testing.T) {
+	if got := streamChunkSize(0, 4*1024*1024); got != 512*1024 {
+		t.Fatalf("large chunk size = %d, want 524288", got)
 	}
 	if got := streamChunkSize(0, 16*1024); got != 16*1024 {
 		t.Fatalf("small chunk size = %d, want 16384", got)
@@ -96,6 +96,43 @@ func TestRangePrefetchReaderReportsChunkTimeout(t *testing.T) {
 	_, err := io.ReadAll(reader)
 	if !errors.Is(err, ErrChunkTimeout) {
 		t.Fatalf("ReadAll error = %v, want ErrChunkTimeout", err)
+	}
+}
+
+func TestRangePrefetchReaderRejectsShortNonFinalChunk(t *testing.T) {
+	src := &shortChunkSource{
+		testChunkSource: newTestChunkSource(3, 1024),
+		shortLimit:      512,
+	}
+	reader := newRangePrefetchReader(context.Background(), 0, 2047, StreamConfig{
+		Concurrency:  1,
+		Buffers:      1,
+		ChunkTimeout: time.Second,
+	}, src)
+	defer reader.Close()
+
+	_, err := io.ReadAll(reader)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("ReadAll error = %v, want ErrUnexpectedEOF", err)
+	}
+}
+
+func TestRangePrefetchReaderRejectsShortFinalChunk(t *testing.T) {
+	src := &offsetShortChunkSource{
+		testChunkSource: newTestChunkSource(3, 1024),
+		shortOffset:     1024,
+		shortLimit:      256,
+	}
+	reader := newRangePrefetchReader(context.Background(), 0, 1535, StreamConfig{
+		Concurrency:  1,
+		Buffers:      1,
+		ChunkTimeout: time.Second,
+	}, src)
+	defer reader.Close()
+
+	_, err := io.ReadAll(reader)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("ReadAll error = %v, want ErrUnexpectedEOF", err)
 	}
 }
 
@@ -214,4 +251,29 @@ func (s *sleepingChunkSource) Chunk(ctx context.Context, offset int64, limit int
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+type shortChunkSource struct {
+	*testChunkSource
+	shortLimit int64
+}
+
+func (s *shortChunkSource) Chunk(ctx context.Context, offset int64, limit int64) ([]byte, error) {
+	if limit > s.shortLimit {
+		limit = s.shortLimit
+	}
+	return s.testChunkSource.Chunk(ctx, offset, limit)
+}
+
+type offsetShortChunkSource struct {
+	*testChunkSource
+	shortOffset int64
+	shortLimit  int64
+}
+
+func (s *offsetShortChunkSource) Chunk(ctx context.Context, offset int64, limit int64) ([]byte, error) {
+	if offset == s.shortOffset && limit > s.shortLimit {
+		limit = s.shortLimit
+	}
+	return s.testChunkSource.Chunk(ctx, offset, limit)
 }

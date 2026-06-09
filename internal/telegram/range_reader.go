@@ -45,7 +45,7 @@ type rangePrefetchReader struct {
 }
 
 func streamChunkSize(start, end int64) int64 {
-	chunkSize := int64(1024 * 1024)
+	chunkSize := int64(512 * 1024)
 	span := end - start
 	for chunkSize > 1024 && chunkSize > span {
 		chunkSize /= 2
@@ -166,6 +166,10 @@ func (r *rangePrefetchReader) fillBatch() error {
 				errs <- io.ErrUnexpectedEOF
 				return
 			}
+			if int64(len(chunk)) < r.requiredChunkBytes(partNo) {
+				errs <- io.ErrUnexpectedEOF
+				return
+			}
 			chunk = r.clipChunk(partNo, chunk)
 			results[i] = &streamBuffer{data: chunk}
 		}()
@@ -187,6 +191,21 @@ func (r *rangePrefetchReader) fillBatch() error {
 	r.currentPart += batchSize
 	r.nextOffset += int64(batchSize) * r.chunkSize
 	return nil
+}
+
+func (r *rangePrefetchReader) requiredChunkBytes(partNo int) int64 {
+	first := partNo == 0
+	last := partNo == r.totalParts-1
+	if first && last {
+		return r.rightCut
+	}
+	if first {
+		return r.chunkSize
+	}
+	if last {
+		return r.rightCut
+	}
+	return r.chunkSize
 }
 
 func (r *rangePrefetchReader) clipChunk(partNo int, chunk []byte) []byte {

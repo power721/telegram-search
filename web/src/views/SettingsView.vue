@@ -145,19 +145,6 @@ function formatTime(value?: string) {
           </div>
         </n-form>
       </section>
-      <section class="panel">
-        <h2>存储</h2>
-        <dl>
-          <div>
-            <dt>最大数据库容量</dt>
-            <dd>10 GB</dd>
-          </div>
-          <div>
-            <dt>最大媒体缓存</dt>
-            <dd>20 GB</dd>
-          </div>
-        </dl>
-      </section>
       <section class="panel api-key-panel">
         <div class="panel-header">
           <h2>API 密钥</h2>
@@ -197,6 +184,19 @@ function formatTime(value?: string) {
           <span class="skeleton-line" />
           <span class="skeleton-line short" />
         </div>
+      </section>
+      <section class="panel">
+        <h2>存储</h2>
+        <dl>
+          <div>
+            <dt>最大数据库容量</dt>
+            <dd>10 GB</dd>
+          </div>
+          <div>
+            <dt>最大媒体缓存</dt>
+            <dd>20 GB</dd>
+          </div>
+        </dl>
       </section>
     </div>
   </section>

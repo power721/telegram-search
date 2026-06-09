@@ -30,6 +30,7 @@ func TestParseRange(t *testing.T) {
 		{name: "empty", size: 1000, wantStart: 0, wantEnd: 999},
 		{name: "closed", header: "bytes=100-199", size: 1000, wantStart: 100, wantEnd: 199, wantPartial: true},
 		{name: "open ended", header: "bytes=900-", size: 1000, wantStart: 900, wantEnd: 999, wantPartial: true},
+		{name: "large open ended window", header: "bytes=1048576-", size: 32 * 1024 * 1024, wantStart: 1048576, wantEnd: 1048576 + maxOpenEndedVideoRangeLength - 1, wantPartial: true},
 		{name: "suffix", header: "bytes=-200", size: 1000, wantStart: 800, wantEnd: 999, wantPartial: true},
 		{name: "large suffix", header: "bytes=-2000", size: 1000, wantStart: 0, wantEnd: 999, wantPartial: true},
 		{name: "end past size", header: "bytes=900-1000", size: 1000, wantErr: true},
@@ -52,6 +53,64 @@ func TestParseRange(t *testing.T) {
 				t.Fatalf("parseRange = %d, %d, %v; want %d, %d, %v", start, end, partial, tt.wantStart, tt.wantEnd, tt.wantPartial)
 			}
 		})
+	}
+}
+
+func TestServeTelegramVideoOpenEndedRangeUsesWindow(t *testing.T) {
+	deps := testDeps(t)
+	ctx := context.Background()
+	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "video", MediaSummary: "video/mp4", Text: "clip", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	_, err = deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 32 * 1024 * 1024}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	fake := &mediaProxyClient{
+		file: telegram.VideoFile{ID: 1, AccessHash: 2, FileReference: []byte{3}, Size: 32 * 1024 * 1024, MIMEType: "video/mp4"},
+		data: []byte{0x7a},
+	}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v/777", nil)
+	req.Header.Set("Range", "bytes=1048576-")
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d body=%s, want 206", w.Code, w.Body.String())
+	}
+	wantEnd := int64(1048576 + maxOpenEndedVideoRangeLength - 1)
+	if got := w.Header().Get("Content-Range"); got != "bytes 1048576-"+strconv.FormatInt(wantEnd, 10)+"/33554432" {
+		t.Fatalf("Content-Range = %q", got)
+	}
+	if got := w.Header().Get("Content-Length"); got != strconv.FormatInt(maxOpenEndedVideoRangeLength, 10) {
+		t.Fatalf("Content-Length = %q", got)
+	}
+	if fake.offset != 1048576 || fake.length != maxOpenEndedVideoRangeLength {
+		t.Fatalf("stream range = offset %d length %d, want 1048576/%d", fake.offset, fake.length, maxOpenEndedVideoRangeLength)
 	}
 }
 

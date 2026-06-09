@@ -23,6 +23,8 @@ type mediaRequest struct {
 	file      model.FileResult
 }
 
+const maxOpenEndedVideoRangeLength int64 = 8 * 1024 * 1024
+
 func (h handlers) requireMediaAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if h.hasAdminSession(c) {
@@ -257,7 +259,10 @@ func parseRange(h string, size int64) (start, end int64, partial bool, err error
 		return 0, 0, false, err
 	}
 	if parts[1] == "" {
-		end = size - 1
+		end = start + maxOpenEndedVideoRangeLength - 1
+		if end >= size {
+			end = size - 1
+		}
 	} else {
 		end, err = strconv.ParseInt(parts[1], 10, 64)
 		if err != nil {

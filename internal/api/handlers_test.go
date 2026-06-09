@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"tg-search/internal/adminauth"
+	"tg-search/internal/apikey"
 	"tg-search/internal/channel"
 	"tg-search/internal/config"
 	"tg-search/internal/db"
@@ -141,6 +142,7 @@ func TestLogsAPIListsAndDownloadsLogFiles(t *testing.T) {
 func TestGlobalSearchAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
+	deps.APIKeyService = apikey.NewService(deps.APIKeys, deps.Settings)
 	files := repository.NewFileRepository(deps.BackupDB)
 	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
 	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Ubuntu Channel", Username: "ubuntu_resources", Type: model.ChannelTypeChannel})
@@ -209,6 +211,57 @@ func TestGlobalSearchAPIEncodesEmptyGroupItemsAsArray(t *testing.T) {
 	}
 }
 
+func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Media Channel", Username: "media_channel", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 101,
+			MessageType: "photo", MediaSummary: "photo", Text: "media poster", RawJSON: "{}", Date: now,
+		},
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 102,
+			MessageType: "video", MediaSummary: "video/mp4", Text: "media trailer", RawJSON: "{}", Date: now.Add(-time.Minute),
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=media", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body model.GlobalSearchResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	messages := map[int64]model.SearchResult{}
+	for _, item := range body.Messages.Items {
+		messages[item.TelegramMessageID] = item
+	}
+	if messages[101].Media == nil || messages[101].Media.ImageURL != "/i/media_channel/101" || messages[101].Media.VideoURL != "" {
+		t.Fatalf("photo media = %+v", messages[101].Media)
+	}
+	if messages[102].Media == nil || messages[102].Media.ImageURL != "/i/media_channel/102" || messages[102].Media.VideoURL != "/v/media_channel/102" {
+		t.Fatalf("video message media = %+v", messages[102].Media)
+	}
+	if len(body.Files.Items) != 1 || body.Files.Items[0].Media == nil || body.Files.Items[0].Media.VideoURL != "/v/media_channel/102" {
+		t.Fatalf("file media = %+v", body.Files.Items)
+	}
+}
+
 func TestResourcesAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -244,6 +297,69 @@ func TestResourcesAPI(t *testing.T) {
 	if body.Total != 2 || body.Grouped["http"] != 1 || body.Grouped["files"] != 1 {
 		t.Fatalf("resources body = %+v, want link and file", body)
 	}
+}
+
+func TestResourcesAPIMediaURLsUseCookieOrAPIKeyAuth(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	deps.APIKeyService = apikey.NewService(deps.APIKeys, deps.Settings)
+	files := repository.NewFileRepository(deps.BackupDB)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Media Channel", Username: "media_channel", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 201,
+			MessageType: "photo", MediaSummary: "webpage_photo", Text: "poster link", RawJSON: "{}", Date: now,
+		},
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 202,
+			MessageType: "video", MediaSummary: "video/mp4", Text: "trailer file", RawJSON: "{}", Date: now.Add(-time.Minute),
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/poster", Note: "poster link"}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "trailer.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 5000}}); err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=poster", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("admin status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var adminBody resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &adminBody); err != nil {
+		t.Fatalf("invalid admin JSON: %v", err)
+	}
+	if len(adminBody.Items) != 1 || adminBody.Items[0].Media == nil || adminBody.Items[0].Media.ImageURL != "/i/media_channel/201" {
+		t.Fatalf("admin resource media = %+v", adminBody.Items)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/resources?q=trailer", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("api key status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var apiBody resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &apiBody); err != nil {
+		t.Fatalf("invalid api key JSON: %v", err)
+	}
+	if len(apiBody.Items) != 1 || apiBody.Items[0].Media == nil || !strings.HasPrefix(apiBody.Items[0].Media.ImageURL, "/i/media_channel/202?") || !strings.HasPrefix(apiBody.Items[0].Media.VideoURL, "/v/media_channel/202?") {
+		t.Fatalf("api key resource media = %+v", apiBody.Items)
+	}
+	assertSignedMediaURL(t, deps.APIKeyService, apiBody.Items[0].Media.ImageURL)
+	assertSignedMediaURL(t, deps.APIKeyService, apiBody.Items[0].Media.VideoURL)
 }
 
 func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
@@ -824,6 +940,27 @@ func createTestAPIKey(t *testing.T, router *gin.Engine) string {
 		t.Fatalf("decode api key: %v", err)
 	}
 	return body.Key
+}
+
+func assertSignedMediaURL(t *testing.T, service *apikey.Service, rawURL string) {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse media URL %q: %v", rawURL, err)
+	}
+	values := parsed.Query()
+	exp := values.Get("exp")
+	sig := values.Get("sig")
+	if exp == "" || sig == "" {
+		t.Fatalf("media URL %q missing exp or sig", rawURL)
+	}
+	ok, err := service.VerifyMediaSignature(context.Background(), http.MethodGet, parsed.EscapedPath(), exp, sig, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("verify media URL %q: %v", rawURL, err)
+	}
+	if !ok {
+		t.Fatalf("media URL %q signature did not verify", rawURL)
+	}
 }
 
 func createAdminSession(t *testing.T, router *gin.Engine) *http.Cookie {

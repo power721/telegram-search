@@ -138,6 +138,7 @@ func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Eve
 		editDate = &t
 	}
 	indexedText, messageURLs := telegram.IndexedMessageText(message)
+	messageType, mediaSummary := telegram.MessageMediaMetadata(message)
 	rawJSON, _ := json.Marshal(map[string]any{
 		"id":           message.ID,
 		"date":         message.Date,
@@ -150,6 +151,8 @@ func eventFromMessage(accountID int64, typ EventType, item tg.MessageClass) (Eve
 		TelegramChannelID: channelID,
 		MessageID:         int64(message.ID),
 		SenderID:          peerID(message.FromID),
+		MessageType:       messageType,
+		MediaSummary:      mediaSummary,
 		Text:              indexedText,
 		RawJSON:           string(rawJSON),
 		Date:              time.Unix(int64(message.Date), 0).UTC(),

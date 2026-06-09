@@ -50,12 +50,21 @@ function formatDate(value?: string) {
     </div>
     <template v-for="item in items" :key="item.id">
       <article class="table-row">
-        <div>
-          <strong>{{ itemLabel(item) }}</strong>
-          <p v-if="item.url">
-            <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
-          </p>
-          <p v-else>{{ item.file_name || '-' }}</p>
+        <div class="resource-cell">
+          <img
+            v-if="item.media?.image_url"
+            class="resource-thumb"
+            :src="item.media.image_url"
+            alt=""
+            loading="lazy"
+          >
+          <div class="resource-copy">
+            <strong>{{ itemLabel(item) }}</strong>
+            <p v-if="item.url">
+              <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
+            </p>
+            <p v-else>{{ item.file_name || '-' }}</p>
+          </div>
         </div>
         <span>{{ categoryLabel(item.category) }}</span>
         <span>
@@ -91,6 +100,7 @@ function formatDate(value?: string) {
 }
 
 .table-row {
+  align-items: center;
   border-top: 1px solid var(--app-border-subtle);
   color: inherit;
   text-decoration: none;
@@ -105,6 +115,28 @@ function formatDate(value?: string) {
 .table-row p {
   color: var(--app-text-muted);
   margin: 4px 0 0;
+}
+
+.resource-cell {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.resource-copy {
+  min-width: 0;
+}
+
+.resource-thumb {
+  aspect-ratio: 16 / 10;
+  background: var(--app-bg-muted);
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+  flex: 0 0 88px;
+  height: 55px;
+  object-fit: cover;
+  width: 88px;
 }
 
 .external-link,

@@ -94,6 +94,8 @@ type ImageFile struct {
 type Message struct {
 	TelegramMessageID int64
 	SenderID          int64
+	MessageType       string
+	MediaSummary      string
 	Text              string
 	RawJSON           string
 	Date              time.Time

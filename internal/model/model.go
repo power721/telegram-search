@@ -233,10 +233,15 @@ type RemoteSearchItem struct {
 	ChannelUsername   string     `json:"channel_username"`
 	TelegramMessageID int64      `json:"telegram_message_id"`
 	SenderID          int64      `json:"sender_id"`
+	MessageType       string     `json:"message_type,omitempty"`
+	MediaSummary      string     `json:"media_summary,omitempty"`
 	Text              string     `json:"text"`
 	RawJSON           string     `json:"raw_json"`
 	Date              time.Time  `json:"date"`
 	EditDate          *time.Time `json:"edit_date,omitempty"`
+	Media             *MediaURLs `json:"media,omitempty"`
+
+	Files []File `json:"-"`
 }
 
 type RemoteSearchResults struct {
@@ -303,13 +308,19 @@ type File struct {
 
 type SearchResult struct {
 	Message
-	AccountPhone      string `json:"account_phone"`
-	AccountUsername   string `json:"account_username"`
-	AccountFirstName  string `json:"account_first_name"`
-	ChannelTitle      string `json:"channel_title"`
-	ChannelUsername   string `json:"channel_username"`
-	TelegramChannelID int64  `json:"telegram_channel_id"`
-	Links             []Link `json:"links"`
+	AccountPhone      string     `json:"account_phone"`
+	AccountUsername   string     `json:"account_username"`
+	AccountFirstName  string     `json:"account_first_name"`
+	ChannelTitle      string     `json:"channel_title"`
+	ChannelUsername   string     `json:"channel_username"`
+	TelegramChannelID int64      `json:"telegram_channel_id"`
+	Links             []Link     `json:"links"`
+	Media             *MediaURLs `json:"media,omitempty"`
+}
+
+type MediaURLs struct {
+	ImageURL string `json:"image_url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
 }
 
 type ListResult[T any] struct {
@@ -335,6 +346,8 @@ type LinkResult struct {
 	Link
 	MessageText       string    `json:"message_text"`
 	MessageDate       time.Time `json:"message_date"`
+	MessageType       string    `json:"message_type,omitempty"`
+	MediaSummary      string    `json:"media_summary,omitempty"`
 	AccountID         int64     `json:"account_id"`
 	ChannelID         int64     `json:"channel_id"`
 	TelegramChannelID int64     `json:"telegram_channel_id"`
@@ -345,14 +358,15 @@ type LinkResult struct {
 
 type FileResult struct {
 	File
-	MessageText       string    `json:"message_text"`
-	MessageDate       time.Time `json:"message_date"`
-	AccountID         int64     `json:"account_id"`
-	ChannelID         int64     `json:"channel_id"`
-	TelegramChannelID int64     `json:"telegram_channel_id"`
-	ChannelTitle      string    `json:"channel_title"`
-	ChannelUsername   string    `json:"channel_username"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
+	MessageText       string     `json:"message_text"`
+	MessageDate       time.Time  `json:"message_date"`
+	AccountID         int64      `json:"account_id"`
+	ChannelID         int64      `json:"channel_id"`
+	TelegramChannelID int64      `json:"telegram_channel_id"`
+	ChannelTitle      string     `json:"channel_title"`
+	ChannelUsername   string     `json:"channel_username"`
+	TelegramMessageID int64      `json:"telegram_message_id"`
+	Media             *MediaURLs `json:"media,omitempty"`
 }
 
 type ChannelSearchResult struct {

@@ -260,11 +260,19 @@ export interface Link {
   category?: string
 }
 
+export interface MediaURLs {
+  image_url?: string
+  video_url?: string
+}
+
 export interface MessageSearchResult {
   id: number
   channel_id: number
   telegram_channel_id?: number
   telegram_message_id: number
+  message_type?: string
+  media_summary?: string
+  media?: MediaURLs
   text: string
   raw_json?: string
   date?: string
@@ -321,6 +329,9 @@ export interface RemoteSearchItem {
   channel_title: string
   channel_username?: string
   telegram_message_id: number
+  message_type?: string
+  media_summary?: string
+  media?: MediaURLs
   text: string
   raw_json?: string
   date?: string
@@ -350,6 +361,9 @@ export interface ResourceItem {
   channel_title?: string
   channel_username?: string
   telegram_message_id?: number
+  message_type?: string
+  media_summary?: string
+  media?: MediaURLs
 }
 
 export interface ResourcesResponse {

@@ -1504,6 +1504,11 @@ func (h handlers) getRemoteSearchTask(c *gin.Context) {
 		errorJSON(c, http.StatusNotFound, err)
 		return
 	}
+	result, err = h.attachMediaToRemoteSearchResults(c.Request.Context(), result, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -1864,6 +1869,11 @@ func (h handlers) search(c *gin.Context) {
 		errorJSON(c, status, err)
 		return
 	}
+	items, err = h.attachMediaToSearchResults(c.Request.Context(), items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
@@ -1877,6 +1887,16 @@ func (h handlers) searchGlobal(c *gin.Context) {
 		h.searchError(c, err)
 		return
 	}
+	result.Messages.Items, err = h.attachMediaToSearchResults(c.Request.Context(), result.Messages.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	result.Files.Items, err = h.attachMediaToFileResults(c.Request.Context(), result.Files.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -1888,6 +1908,11 @@ func (h handlers) searchMessages(c *gin.Context) {
 	result, err := h.deps.Search.Messages(c.Request.Context(), query)
 	if err != nil {
 		h.searchError(c, err)
+		return
+	}
+	result.Items, err = h.attachMediaToSearchResults(c.Request.Context(), result.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -1914,6 +1939,11 @@ func (h handlers) searchFiles(c *gin.Context) {
 	result, err := h.deps.Search.Files(c.Request.Context(), query)
 	if err != nil {
 		h.searchError(c, err)
+		return
+	}
+	result.Items, err = h.attachMediaToFileResults(c.Request.Context(), result.Items, false)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -2126,6 +2156,11 @@ func (h handlers) resources(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	result.Items, err = h.attachMediaToResourceItems(c.Request.Context(), result.Items, h.shouldSignMediaURLs(c))
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, result)
 }
 
@@ -2155,7 +2190,12 @@ func (h handlers) resource(c *gin.Context) {
 	}
 	for _, item := range result.Items {
 		if item.ID == id {
-			c.JSON(http.StatusOK, item)
+			items, err := h.attachMediaToResourceItems(c.Request.Context(), []resource.Item{item}, h.shouldSignMediaURLs(c))
+			if err != nil {
+				errorJSON(c, http.StatusInternalServerError, err)
+				return
+			}
+			c.JSON(http.StatusOK, items[0])
 			return
 		}
 	}

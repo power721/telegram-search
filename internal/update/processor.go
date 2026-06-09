@@ -149,6 +149,8 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 			ChannelID:         channel.ID,
 			TelegramMessageID: event.MessageID,
 			SenderID:          event.SenderID,
+			MessageType:       event.MessageType,
+			MediaSummary:      event.MediaSummary,
 			Text:              event.Text,
 			RawJSON:           event.RawJSON,
 			Date:              date,

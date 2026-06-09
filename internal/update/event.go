@@ -20,6 +20,8 @@ type Event struct {
 	TelegramChannelID int64
 	MessageID         int64
 	SenderID          int64
+	MessageType       string
+	MediaSummary      string
 	Text              string
 	RawJSON           string
 	Date              time.Time

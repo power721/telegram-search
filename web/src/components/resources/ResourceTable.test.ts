@@ -68,4 +68,27 @@ describe('ResourceTable', () => {
     expect(wrapper.find('a.channel-link').attributes('href')).toBe('tg://resolve?domain=resources&post=77')
     expect(wrapper.find('a.external-link').attributes('href')).toBe('https://example.com/course')
   })
+
+  it('renders media thumbnails for resources with image URLs', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'link:https://example.com/course',
+            kind: 'link',
+            category: 'cloud_drive',
+            title: 'Course Pack',
+            url: 'https://example.com/course',
+            media: {
+              image_url: '/i/resources/77'
+            }
+          }
+        ]
+      }
+    })
+
+    const image = wrapper.find('img.resource-thumb')
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('src')).toBe('/i/resources/77')
+  })
 })

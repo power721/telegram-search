@@ -58,6 +58,11 @@ async function load() {
   })
 }
 
+async function refreshResources() {
+  selectedResourceIds.value = []
+  await load()
+}
+
 async function resetAndLoad() {
   offset.value = 0
   await load()
@@ -152,7 +157,7 @@ onMounted(() => {
         >
           删除选中
         </n-button>
-        <n-button :loading="resources.loading" @click="load">刷新</n-button>
+        <n-button aria-label="刷新资源" :loading="resources.loading" @click="refreshResources">刷新</n-button>
       </div>
     </div>
 

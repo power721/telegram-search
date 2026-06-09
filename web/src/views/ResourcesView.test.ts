@@ -121,6 +121,24 @@ describe('ResourcesView', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
   })
 
+  it('refreshes the current resources page and clears selected resources', async () => {
+    const wrapper = mountResourcesView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.get('input[aria-label="跳转页码"]').setValue('2')
+    await wrapper.get('form.pagination-jump').trigger('submit')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await wrapper.get('input[aria-label="选择资源 Course Pack"]').setValue(true)
+
+    expect((wrapper.get('input[aria-label="选择资源 Course Pack"]').element as HTMLInputElement).checked).toBe(true)
+
+    await wrapper.get('button[aria-label="刷新资源"]').trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
+    expect((wrapper.get('input[aria-label="选择资源 Course Pack"]').element as HTMLInputElement).checked).toBe(false)
+  })
+
   it('filters resources by channel from the channel dropdown', async () => {
     const wrapper = mountResourcesView()
     await new Promise((resolve) => setTimeout(resolve, 0))

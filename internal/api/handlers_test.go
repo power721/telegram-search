@@ -59,7 +59,7 @@ func TestCoreReadAPIs(t *testing.T) {
 		key  string
 	}{
 		{"/api/status", "accounts"},
-		{"/api/search?q=庆余年", "items"},
+		{"/api/admin/search?q=庆余年", "items"},
 		{"/api/messages/latest?limit=10", "items"},
 		{"/api/links?type=url", "items"},
 		{"/api/accounts", "items"},
@@ -162,7 +162,7 @@ func TestGlobalSearchAPI(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=ubuntu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search/global?q=ubuntu", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -191,7 +191,7 @@ func TestGlobalSearchAPIEncodesEmptyGroupItemsAsArray(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=%E6%8E%A8%E7%90%86&limit=50", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search/global?q=%E6%8E%A8%E7%90%86&limit=50", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -237,7 +237,7 @@ func TestSearchAPIReturnsMediaProxyURLs(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search/global?q=media", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search/global?q=media", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -794,7 +794,7 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodGet, "/search?kw=ubuntu", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu", nil)
 			if tc.configure != nil {
 				tc.configure(req)
 			}
@@ -806,7 +806,7 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/search?kw=ubuntu", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu", nil)
 	req.Header.Set("X-API-Key", key)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -859,6 +859,25 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 }
 
+func TestSearchPathServesFrontend(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/search?kw=ubuntu", nil)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("search page status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if contentType := w.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
+		t.Fatalf("search page content type = %q, want text/html", contentType)
+	}
+	if strings.Contains(w.Body.String(), `"code":401`) || strings.Contains(w.Body.String(), "X-API-Key") {
+		t.Fatalf("/search returned API response instead of frontend: %s", w.Body.String())
+	}
+}
+
 func TestAPIKeyAllowsResourceDetail(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)
@@ -908,7 +927,7 @@ func TestAPIKeyCannotAccessAdminOnlyEndpoints(t *testing.T) {
 	key := createTestAPIKey(t, router)
 	cookie := createAdminSession(t, router)
 
-	for _, path := range []string{"/api/status", "/api/tasks", "/api/search/global?q=ubuntu", "/api/search?q=ubuntu"} {
+	for _, path := range []string{"/api/status", "/api/tasks", "/api/admin/search/global?q=ubuntu", "/api/admin/search?q=ubuntu"} {
 		t.Run("api key denied "+path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -1690,7 +1709,7 @@ func TestSearchRequiresQuery(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 
@@ -1777,7 +1796,7 @@ func TestAPIErrorMessagesAreLocalized(t *testing.T) {
 		{
 			name:       "invalid date",
 			method:     http.MethodGet,
-			path:       "/api/search/messages?q=ubuntu&date_from=bad-date",
+			path:       "/api/admin/search/messages?q=ubuntu&date_from=bad-date",
 			auth:       true,
 			wantStatus: http.StatusBadRequest,
 			wantMsg:    "date_from 必须是 YYYY-MM-DD 或 RFC3339 格式",
@@ -1785,7 +1804,7 @@ func TestAPIErrorMessagesAreLocalized(t *testing.T) {
 		{
 			name:       "remote search forbidden",
 			method:     http.MethodPost,
-			path:       "/api/search/remote",
+			path:       "/api/admin/search/remote",
 			body:       `{"channel_id":` + strconv.FormatInt(blockedID, 10) + `,"query":"ubuntu"}`,
 			auth:       true,
 			wantStatus: http.StatusConflict,
@@ -2517,7 +2536,7 @@ func TestReadAPIsFilterByAccount(t *testing.T) {
 	router := NewRouter(deps)
 
 	for _, path := range []string{
-		"/api/search?q=shared&account_id=" + strconv.FormatInt(account1, 10),
+		"/api/admin/search?q=shared&account_id=" + strconv.FormatInt(account1, 10),
 		"/api/messages/latest?account_id=" + strconv.FormatInt(account1, 10),
 		"/api/links?account_id=" + strconv.FormatInt(account1, 10),
 		"/api/channels?account_id=" + strconv.FormatInt(account1, 10),
@@ -2612,7 +2631,7 @@ func TestSearchAPIFiltersByLinkType(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search?q=shared&link_type=aliyun", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search?q=shared&link_type=aliyun", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2714,7 +2733,7 @@ func TestSearchAPIFiltersByDateRange(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/search?q=shared&date_from=2026-01-01&date_to=2026-01-31", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/search?q=shared&date_from=2026-01-01&date_to=2026-01-31", nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -2729,19 +2748,19 @@ func TestReadAPIsRejectInvalidQueryParameters(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
 	for _, path := range []string{
-		"/api/search?q=x&limit=abc",
-		"/api/search?q=x&limit=-1",
-		"/api/search?q=x&offset=-1",
-		"/api/search?q=x&account_id=abc",
-		"/api/search?q=x&account_id=0",
-		"/api/search?q=x&channel_id=abc",
+		"/api/admin/search?q=x&limit=abc",
+		"/api/admin/search?q=x&limit=-1",
+		"/api/admin/search?q=x&offset=-1",
+		"/api/admin/search?q=x&account_id=abc",
+		"/api/admin/search?q=x&account_id=0",
+		"/api/admin/search?q=x&channel_id=abc",
 		"/api/messages/latest?limit=-1",
 		"/api/messages/latest?account_id=abc",
 		"/api/links?offset=-1",
 		"/api/links?channel_id=abc",
 		"/api/channels?account_id=abc",
-		"/api/search?q=x&before_date=2026-02-05T12:00:00Z",
-		"/api/search?q=x&before_id=10",
+		"/api/admin/search?q=x&before_date=2026-02-05T12:00:00Z",
+		"/api/admin/search?q=x&before_id=10",
 		"/api/messages/latest?before_date=2026-02-05T12:00:00Z",
 	} {
 		w := httptest.NewRecorder()
@@ -2767,7 +2786,7 @@ func TestSearchAPICursorReturnsOlderRows(t *testing.T) {
 	})
 	router := NewRouter(deps)
 
-	path := "/api/search?q=shared&before_date=" + url.QueryEscape(newer.Format(time.RFC3339)) + "&before_id=" + strconv.FormatInt(stored[0].ID, 10)
+	path := "/api/admin/search?q=shared&before_date=" + url.QueryEscape(newer.Format(time.RFC3339)) + "&before_id=" + strconv.FormatInt(stored[0].ID, 10)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	withAdminSession(t, deps, req)
@@ -3511,7 +3530,7 @@ func TestRemoteSearchEntry(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(tc.body))
+			req := httptest.NewRequest(http.MethodPost, "/api/admin/search/remote", bytes.NewBufferString(tc.body))
 			withAdminSession(t, deps, req)
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(w, req)
@@ -3535,7 +3554,7 @@ func TestRemoteSearchEntry(t *testing.T) {
 	}
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(allowedID, 10)+`,"query":"ubuntu iso"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(allowedID, 10)+`,"query":"ubuntu iso"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -3578,7 +3597,7 @@ func TestRemoteSearchResultAPI(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"query":"ubuntu"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/search/remote", bytes.NewBufferString(`{"channel_id":`+strconv.FormatInt(channelID, 10)+`,"query":"ubuntu"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -3591,7 +3610,7 @@ func TestRemoteSearchResultAPI(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/api/search/remote/"+strconv.FormatInt(task.ID, 10), nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/admin/search/remote/"+strconv.FormatInt(task.ID, 10), nil)
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {

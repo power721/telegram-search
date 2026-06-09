@@ -29,7 +29,7 @@ vi.mock('@/api/client', () => ({
     if (path.endsWith('/analyze')) {
       return Promise.resolve({ channel: { id: 1 }, indexed_counts: { messages: 0, links: 0, files: 0 } })
     }
-    if (path === '/api/search/remote') {
+    if (path === '/api/admin/search/remote') {
       return Promise.resolve({ id: 1, status: 'queued', source: 'remote' })
     }
     return Promise.resolve({ items: [] })
@@ -114,6 +114,6 @@ describe('channels store', () => {
       message_types: ['link'],
       link_types: ['cloud_drive']
     })
-    expect(apiPost).toHaveBeenCalledWith('/api/search/remote', { channel_id: 1, query: 'ubuntu iso' })
+    expect(apiPost).toHaveBeenCalledWith('/api/admin/search/remote', { channel_id: 1, query: 'ubuntu iso' })
   })
 })

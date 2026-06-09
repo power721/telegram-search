@@ -162,6 +162,7 @@ func (e *Extractor) Extract(text string) []model.Link {
 		}
 		note := inferNote(text, candidate.MatchStart)
 		metadata := messageMetadata
+		metadata.overlay(mediaMetadataNearLink(text, candidate.MatchStart))
 		metadata.merge(mediaMetadataFromURL(candidate.Type, url))
 		if metadata.Title == "" {
 			metadata.Title = note
@@ -221,6 +222,36 @@ func (m *mediaMetadata) merge(other mediaMetadata) {
 		m.Category = other.Category
 	}
 	if m.Tags == "" {
+		m.Tags = other.Tags
+	}
+}
+
+func (m *mediaMetadata) overlay(other mediaMetadata) {
+	if other.Title != "" {
+		m.Title = other.Title
+	}
+	if other.Year != "" {
+		m.Year = other.Year
+	}
+	if other.Season != "" {
+		m.Season = other.Season
+	}
+	if other.Episode != "" {
+		m.Episode = other.Episode
+	}
+	if other.Quality != "" {
+		m.Quality = other.Quality
+	}
+	if other.Size != "" {
+		m.Size = other.Size
+	}
+	if other.TMDBID != "" {
+		m.TMDBID = other.TMDBID
+	}
+	if other.Category != "" {
+		m.Category = other.Category
+	}
+	if other.Tags != "" {
 		m.Tags = other.Tags
 	}
 }
@@ -471,6 +502,9 @@ func isLowConfidenceNote(note string) bool {
 	if isMetadataLine(note) || isLinkLabel(note) {
 		return true
 	}
+	if isCatalogItemLine(note) {
+		return true
+	}
 	normalized := strings.ToLower(strings.TrimSpace(note))
 	if strings.Contains(normalized, "://") || strings.Contains(normalized, "magnet:?") {
 		return true
@@ -501,7 +535,7 @@ func extractMediaMetadata(text string) mediaMetadata {
 			}
 		}
 		if metadata.Size == "" {
-			metadata.Size = extractFirstMatch(clean, `(?i)(?:大小|文件大小|体积|总大小)[：:\s]*([0-9]+(?:\.[0-9]+)?\s*(?:KB|MB|GB|TB|T))`)
+			metadata.Size = extractFirstMatch(clean, `(?i)(?:大小|文件大小|体积|总大小)[：:\s]*([0-9]+(?:\.[0-9]+)?\s*(?:KB|MB|GB|TB|T))\b`)
 		}
 		if metadata.Quality == "" {
 			metadata.Quality = extractLabeledValue(clean, []string{"质量", "视频质量"})
@@ -513,6 +547,9 @@ func extractMediaMetadata(text string) mediaMetadata {
 			metadata.Tags = extractTags(clean)
 		}
 		if hasResourceURL {
+			continue
+		}
+		if isCatalogItemLine(clean) {
 			continue
 		}
 		if metadata.Category == "" {
@@ -548,6 +585,51 @@ func extractMediaMetadata(text string) mediaMetadata {
 	return metadata
 }
 
+func mediaMetadataNearLink(text string, linkStart int) mediaMetadata {
+	if linkStart < 0 || linkStart > len(text) {
+		return mediaMetadata{}
+	}
+	lineStart := strings.LastIndex(text[:linkStart], "\n") + 1
+	prevEnd := lineStart
+	for inspected := 0; prevEnd > 0 && inspected < 4; inspected++ {
+		prevStart := strings.LastIndex(text[:prevEnd-1], "\n") + 1
+		line := strings.TrimSpace(text[prevStart : prevEnd-1])
+		prevEnd = prevStart
+		if line == "" {
+			continue
+		}
+		clean := cleanMediaLine(line)
+		if clean == "" || isResourceURLLine(clean) || isLinkLabel(clean) || isCatalogItemLine(clean) {
+			continue
+		}
+		if isMetadataLine(clean) {
+			break
+		}
+		if metadata := mediaMetadataFromTitleLine(clean); metadata.Title != "" {
+			return metadata
+		}
+	}
+	return mediaMetadata{}
+}
+
+func mediaMetadataFromTitleLine(line string) mediaMetadata {
+	var metadata mediaMetadata
+	title, category := titleFromExplicitLine(line)
+	if title == "" {
+		title, category = titleFromPlainLine(line)
+	}
+	if title == "" {
+		return metadata
+	}
+	metadata.Title = title
+	metadata.Year = extractYear(line)
+	metadata.TMDBID = extractFirstMatch(line, `(?i)\{tmdb-(\d+)\}`)
+	metadata.Category = firstNonEmptyString(category, categoryFromLine(line))
+	metadata.Quality = qualityFromLine(line)
+	metadata.merge(sequenceMetadata(line))
+	return metadata
+}
+
 func cleanMediaLine(line string) string {
 	line = strings.TrimSpace(line)
 	for line != "" {
@@ -564,6 +646,10 @@ func cleanMediaLine(line string) string {
 func isResourceURLLine(line string) bool {
 	lower := strings.ToLower(line)
 	return strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || strings.Contains(lower, "magnet:?") || strings.Contains(lower, "ed2k://")
+}
+
+func isCatalogItemLine(line string) bool {
+	return regexp.MustCompile(`^\d+\s*[.、．]\s*.+`).MatchString(strings.TrimSpace(line))
 }
 
 func titleFromExplicitLine(line string) (string, string) {
@@ -674,14 +760,14 @@ func sequenceMetadata(line string) mediaMetadata {
 		}
 	}
 	if metadata.Episode == "" {
-		if episode := extractFirstMatch(line, `第\s*(\d+)\s*集`); episode != "" {
-			metadata.Episode = "E" + zeroPad(episode, 2)
-		} else if episode := extractFirstMatch(line, `更新\s*(\d+)`); episode != "" {
-			metadata.Episode = "更新" + episode
-		} else if episode := extractFirstMatch(line, `(\d+)\s*集`); episode != "" {
-			metadata.Episode = episode + "集"
-		} else if episode := extractFirstMatch(line, `(\d{4})\s*期`); episode != "" {
+		if episode := extractFirstMatch(line, `(\d{4})\s*期`); episode != "" {
 			metadata.Episode = episode + "期"
+		} else if episode := extractFirstMatch(line, `(?:更新至|更至|更新|更)\s*(\d+)\s*集`); episode != "" {
+			metadata.Episode = "更新" + episode + "集"
+		} else if episode := extractFirstMatch(line, `第\s*(\d+)\s*集`); episode != "" {
+			metadata.Episode = "E" + zeroPad(episode, 2)
+		} else if episode := extractFirstMatch(line, `(?:全|共)?\s*(\d+)\s*集`); episode != "" {
+			metadata.Episode = episode + "集"
 		}
 	}
 	return metadata
@@ -707,6 +793,11 @@ func extractLabeledValue(line string, labels []string) string {
 func extractTags(line string) string {
 	value := extractLabeledValue(line, []string{"标签", "文件类型"})
 	if value == "" {
+		if match := regexp.MustCompile(`^(?:标签|文件类型)\s+(.+)$`).FindStringSubmatch(line); len(match) == 2 {
+			value = strings.TrimSpace(match[1])
+		}
+	}
+	if value == "" {
 		return ""
 	}
 	if idx := strings.Index(value, "http://"); idx >= 0 {
@@ -721,7 +812,7 @@ func extractTags(line string) string {
 }
 
 func qualityFromLine(line string) string {
-	tokens := regexp.MustCompile(`(?i)\b(?:WEB[- ]?DL|WEB[- ]?4K|WEB|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR10?|DV|SDR|DDP5?\.?1?|DTS-HD(?:\s+MA)?|HEVC|H\.?26[45]|AAC)\b`).FindAllString(line, -1)
+	tokens := regexp.MustCompile(`(?i)\b(?:Netflix|NF|WEB[- ]?DL|WEB[- ]?4K|WEB|4K|8K|2160p|1080p|720p|BDISO|BluRay|REMUX|UHD|HDR(?:10\+?)?|DV|SDR|DDP5?\.?1?|DTS-HD(?:\s+MA)?|HEVC|H\.?26[45]|AAC|50fps)\b`).FindAllString(line, -1)
 	if len(tokens) == 0 {
 		return ""
 	}
@@ -848,4 +939,13 @@ func extractYear(value string) string {
 		return year
 	}
 	return extractFirstMatch(value, `(?:19|20)\d{2}`)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

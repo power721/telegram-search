@@ -467,6 +467,146 @@ func TestExtractMediaMetadataFromInlineDriveLinksAndTags(t *testing.T) {
 	}
 }
 
+func TestExtractMediaMetadataFromShortDramaDirectory(t *testing.T) {
+	text := `名称：2026年6月9日 短剧更新目录3
+
+描述：目录：
+1.白绫三尺惜红颜（63集）吴竹照＆觅七
+2.嫡女归京，我被狼群宠上天（73集）Ai短剧
+
+阿里：https://www.alipan.com/s/TTXfbCYaCgk
+夸克：https://pan.quark.cn/s/689d3b4512f2
+百度：https://pan.baidu.com/s/1eKVTQkEETVy1hIYS8YA5-A?pwd=tjyd
+
+📁 大小：N
+🏷 标签：#短剧 #最新短剧 #合集 #擦边短剧 #短剧榜 #热力榜`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	for _, link := range links {
+		if link.MediaTitle != "2026年6月9日 短剧更新目录3" || link.MediaCategory != "短剧" {
+			t.Fatalf("link = %+v, want directory metadata", link)
+		}
+		if link.MediaSize != "" {
+			t.Fatalf("media size = %q, want invalid size ignored", link.MediaSize)
+		}
+		if link.MediaTags != "短剧 最新短剧 合集 擦边短剧 短剧榜 热力榜" {
+			t.Fatalf("tags = %q", link.MediaTags)
+		}
+	}
+	if links[2].Type != "baidu" || links[2].Password != "tjyd" {
+		t.Fatalf("baidu link = %+v, want password", links[2])
+	}
+}
+
+func TestExtractMediaMetadataFromUpdatedEpisodeTitle(t *testing.T) {
+	text := `名称：迷墙 (2026) 更至06集 [4K][剧情][郭京飞/任素汐]
+
+描述：倒霉透顶的小夫妻。
+
+链接：https://pan.xunlei.com/s/VOuXNeFlYfJVnesX3zRR8IRiA1?pwd=3ypd#
+
+📁 大小：NG
+🏷 标签：#迷墙 #剧集 #4K #剧情 #郭京飞 #任素汐 #xunlei`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "迷墙" || link.MediaYear != "2026" || link.MediaEpisode != "更新06集" || link.MediaQuality != "4K" {
+		t.Fatalf("metadata = %+v, want updated episode metadata", link)
+	}
+	if link.MediaSize != "" {
+		t.Fatalf("media size = %q, want invalid size ignored", link.MediaSize)
+	}
+}
+
+func TestExtractMediaMetadataFromOneMessageMultipleTianyiTitles(t *testing.T) {
+	text := `日剧分享六
+麻烦一族.Involvement in Family Affairs.(2022) {tmdb-158896}
+链接：https://cloud.189.cn/t/q2yUJjR7Bjqm（访问码：5zk9）
+罗布奥特曼.Ultraman R／B.(2018) {tmdb-81959}
+链接：https://cloud.189.cn/t/2Q3Aban67fii（访问码：xmt5）
+恋爱何必认真？.What Do You Really Do About Love？.(2022) {tmdb-194854}
+链接：https://cloud.189.cn/t/aEnIBjaUbUVj（访问码：1wbv）
+
+标签  #剧集 #合集 #刮销 #4k
+
+大小：1t`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 3 {
+		t.Fatalf("len = %d, want 3: %+v", len(links), links)
+	}
+	want := []struct {
+		title string
+		year  string
+		tmdb  string
+		pass  string
+	}{
+		{"麻烦一族.Involvement in Family Affairs.", "2022", "158896", "5zk9"},
+		{"罗布奥特曼.Ultraman R／B.", "2018", "81959", "xmt5"},
+		{"恋爱何必认真？.What Do You Really Do About Love？.", "2022", "194854", "1wbv"},
+	}
+	for i, item := range want {
+		if links[i].MediaTitle != item.title || links[i].MediaYear != item.year || links[i].MediaTMDBID != item.tmdb || links[i].Password != item.pass {
+			t.Fatalf("link %d = %+v, want %+v", i, links[i], item)
+		}
+		if links[i].MediaSize != "1t" || links[i].MediaTags != "剧集 合集 刮销 4k" {
+			t.Fatalf("shared metadata for link %d = %+v", i, links[i])
+		}
+	}
+}
+
+func TestExtractMediaMetadataFromBracketQualityAndSeasonRanges(t *testing.T) {
+	text := `名称：厂区日志（2026）【4K.HDR.50fps】【更12集】【剧情/喜剧】【王宁/尹贝希】
+.
+描述：在大城市工作的王美琳和唐甜。
+.
+链接：https://pan.quark.cn/s/096c12ad4222
+.
+📁 大小：NG
+🏷 标签：#国剧 #剧情 #喜剧 #厂区日志 #4K #HDR #50fps`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "厂区日志" || link.MediaYear != "2026" || link.MediaEpisode != "更新12集" {
+		t.Fatalf("metadata = %+v, want title/year/update episode", link)
+	}
+	if link.MediaQuality != "4K HDR 50fps" {
+		t.Fatalf("quality = %q", link.MediaQuality)
+	}
+}
+
+func TestExtractMediaMetadataFromStructuredTVWithBracketQuality(t *testing.T) {
+	text := `📺 电视剧：莫离 (2026) S01E01
+🍿 TMDB ID: 292696
+⭐️ 评分: 0.0
+🎭 题材: 剧情
+📂 地区: 大陆
+🎞️ 质量: [4K] [HDR10]
+💾 大小: 2.33 GB
+🔗 链接: https://115.com/s/swszh9233xj?password=q8e8`
+
+	links := NewExtractor().Extract(text)
+	if len(links) != 1 {
+		t.Fatalf("len = %d, want 1: %+v", len(links), links)
+	}
+	link := links[0]
+	if link.MediaTitle != "莫离" || link.MediaYear != "2026" || link.MediaSeason != "S01" || link.MediaEpisode != "E01" {
+		t.Fatalf("title/sequence metadata = %+v", link)
+	}
+	if link.MediaQuality != "[4K] [HDR10]" || link.MediaSize != "2.33 GB" || link.MediaTMDBID != "292696" {
+		t.Fatalf("structured metadata = %+v", link)
+	}
+}
+
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {

@@ -27,6 +27,7 @@ const searchParams: ParamRow[] = [
   { name: 'q', type: 'string', required: '否', description: 'kw 的兼容别名。' },
   { name: 'res', type: 'string', required: '否', description: '返回结构：merge、results、all。默认 merge。' },
   { name: 'cloud_types', type: 'string[]', required: '否', description: '资源类型或网盘类型，GET 用逗号分隔。支持 cloud_drive、magnet、ed2k、video、quark、baidu、aliyun、uc、xunlei、tianyi、115、mobile、pikpak、123 等。' },
+  { name: 'include_image', type: 'boolean', required: '否', description: '返回网盘资源封面图。GET 支持 true/false、1/0、yes/no。默认不返回。' },
   { name: 'include_media_metadata', type: 'boolean', required: '否', description: '返回媒体元数据。GET 支持 true/false、1/0、yes/no。' },
   { name: 'media_metadata', type: 'boolean', required: '否', description: 'include_media_metadata 的兼容别名。' },
   { name: 'limit', type: 'number', required: '否', description: '分页数量，默认 50，最大 3000。' },
@@ -57,6 +58,7 @@ const getSearchExample = `curl -G 'http://localhost:9900/api/search' \\
   --data-urlencode 'kw=ubuntu' \\
   --data-urlencode 'res=merge' \\
   --data-urlencode 'cloud_types=quark,aliyun' \\
+  --data-urlencode 'include_image=true' \\
   --data-urlencode 'limit=50'`
 
 const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
@@ -66,6 +68,7 @@ const postSearchExample = `curl -X POST 'http://localhost:9900/api/search' \\
     "kw": "ubuntu",
     "res": "all",
     "cloud_types": ["quark", "aliyun"],
+    "include_image": true,
     "include_media_metadata": true,
     "limit": 50,
     "offset": 0

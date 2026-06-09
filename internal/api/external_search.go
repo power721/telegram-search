@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,6 +20,7 @@ type externalSearchRequest struct {
 	Query                string   `json:"q"`
 	ResultType           string   `json:"res"`
 	CloudTypes           []string `json:"cloud_types"`
+	IncludeImage         bool     `json:"include_image"`
 	IncludeMediaMetadata bool     `json:"include_media_metadata"`
 	MediaMetadata        bool     `json:"media_metadata"`
 	Limit                int      `json:"limit"`
@@ -99,12 +101,12 @@ func (h handlers) externalSearch(c *gin.Context) {
 	}
 	limit := normalizeExternalLimit(req.Limit)
 	offset := normalizeExternalOffset(req.Offset)
-	items, total, err := h.externalResourceItems(c, keyword, req.CloudTypes, limit, offset)
+	items, total, err := h.externalResourceItems(c, keyword, req.CloudTypes, limit, offset, req.IncludeImage)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, externalAPIResponse{Code: http.StatusInternalServerError, Message: "search failed: " + err.Error()})
 		return
 	}
-	response := buildExternalSearchResponse(items, total, resultType, req.includeMediaMetadata())
+	response := buildExternalSearchResponse(items, total, resultType, req.includeMediaMetadata(), req.IncludeImage)
 	c.PureJSON(http.StatusOK, externalAPIResponse{Code: 0, Message: "success", Data: response})
 }
 
@@ -126,10 +128,15 @@ func readExternalSearchRequest(c *gin.Context) (externalSearchRequest, bool) {
 		if !ok {
 			return externalSearchRequest{}, false
 		}
+		includeImage, ok := optionalQueryBool(c, "include_image")
+		if !ok {
+			return externalSearchRequest{}, false
+		}
 		return externalSearchRequest{
 			Keyword:              firstQuery(c, "kw", "q", "keyword"),
 			ResultType:           c.Query("res"),
 			CloudTypes:           splitCSV(c.Query("cloud_types")),
+			IncludeImage:         includeImage,
 			IncludeMediaMetadata: includeMediaMetadata,
 			Limit:                limit,
 			Offset:               offset,
@@ -212,7 +219,7 @@ func normalizeExternalOffset(offset int) int {
 	return offset
 }
 
-func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTypes []string, limit int, offset int) ([]resource.Item, int, error) {
+func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTypes []string, limit int, offset int, includeImage bool) ([]resource.Item, int, error) {
 	filters := externalResourceFilters(cloudTypes)
 	fetchLimit := limit + offset
 	seen := map[string]struct{}{}
@@ -234,7 +241,7 @@ func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTyp
 		for i := range result.Items {
 			result.Items[i].ChannelUsername = ""
 		}
-		result.Items, err = h.attachMediaToResourceItems(c.Request.Context(), result.Items, true)
+		result.Items, err = h.attachMediaToExternalResourceItems(c.Request.Context(), result.Items, true, includeImage)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -362,11 +369,32 @@ func isCloudDriveProvider(value string) bool {
 	}
 }
 
-func buildExternalSearchResponse(items []resource.Item, total int, resultType string, includeMediaMetadata bool) externalSearchResponse {
+func (h handlers) attachMediaToExternalResourceItems(ctx context.Context, items []resource.Item, signed bool, includeImage bool) ([]resource.Item, error) {
+	for i := range items {
+		if items[i].Kind != "file" && !includeImage {
+			continue
+		}
+		media, err := h.resourceItemMedia(ctx, items[i], signed)
+		if err != nil {
+			return nil, err
+		}
+		if media == nil {
+			continue
+		}
+		imageURL := ""
+		if includeImage {
+			imageURL = media.ImageURL
+		}
+		items[i].SetMediaURLs(imageURL, media.VideoURL)
+	}
+	return items, nil
+}
+
+func buildExternalSearchResponse(items []resource.Item, total int, resultType string, includeMediaMetadata bool, includeImage bool) externalSearchResponse {
 	results := make([]externalSearchResult, 0, len(items))
 	merged := map[string][]externalMergedLink{}
 	for _, item := range items {
-		result := externalResultFromResource(item, includeMediaMetadata)
+		result := externalResultFromResource(item, includeMediaMetadata, includeImage)
 		if len(result.Links) == 0 {
 			continue
 		}
@@ -392,7 +420,7 @@ func buildExternalSearchResponse(items []resource.Item, total int, resultType st
 	return response
 }
 
-func externalResultFromResource(item resource.Item, includeMediaMetadata bool) externalSearchResult {
+func externalResultFromResource(item resource.Item, includeMediaMetadata bool, includeImage bool) externalSearchResult {
 	title := externalResourceTitle(item, includeMediaMetadata)
 	link := externalLink{
 		Type:      externalResourceType(item),
@@ -414,7 +442,7 @@ func externalResultFromResource(item resource.Item, includeMediaMetadata bool) e
 	if includeMediaMetadata {
 		result.Media = media
 	}
-	if imageURL := externalResourceImageURL(item); imageURL != "" {
+	if imageURL := externalResourceImageURL(item, includeImage); imageURL != "" {
 		result.Images = []string{imageURL}
 	}
 	if link.URL != "" {
@@ -471,7 +499,10 @@ func externalResourceURL(item resource.Item) string {
 	return item.URL
 }
 
-func externalResourceImageURL(item resource.Item) string {
+func externalResourceImageURL(item resource.Item, includeImage bool) string {
+	if !includeImage {
+		return ""
+	}
 	if item.Media == nil {
 		return ""
 	}

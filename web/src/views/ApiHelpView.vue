@@ -101,6 +101,29 @@ const searchResponseExample = `{
   }
 }`
 
+const searchResultsResponseExample = `{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "total": 43,
+    "results": [
+      {
+        "unique_id": "link:https://pan.quark.cn/s/42455f092f5d",
+        "datetime": "2026-06-09T20:05:21Z",
+        "title": "迷墙 更新07集 国语中字 2026 4K【国剧】",
+        "links": [
+          {
+            "type": "quark",
+            "url": "https://pan.quark.cn/s/42455f092f5d",
+            "datetime": "2026-06-09T20:05:21Z",
+            "work_title": "迷墙 更新07集 国语中字 2026 4K【国剧】"
+          }
+        ]
+      }
+    ]
+  }
+}`
+
 const healthExample = `curl 'http://localhost:9900/api/health' \\
   -H 'X-API-Key: YOUR_API_KEY'`
 
@@ -268,12 +291,22 @@ async function copyCode(key: string, value: string) {
 
       <div class="code-card single-code">
         <div class="code-title">
-          <strong>返回示例</strong>
+          <strong>返回示例（merge）</strong>
           <button type="button" @click="copyCode('search-response', searchResponseExample)">
             {{ copiedKey === 'search-response' ? '已复制' : '复制' }}
           </button>
         </div>
         <pre><code>{{ searchResponseExample }}</code></pre>
+      </div>
+
+      <div class="code-card single-code">
+        <div class="code-title">
+          <strong>返回示例（results）</strong>
+          <button type="button" @click="copyCode('search-results-response', searchResultsResponseExample)">
+            {{ copiedKey === 'search-results-response' ? '已复制' : '复制' }}
+          </button>
+        </div>
+        <pre><code>{{ searchResultsResponseExample }}</code></pre>
       </div>
     </section>
 

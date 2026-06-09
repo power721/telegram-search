@@ -17,6 +17,21 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/auth/me') {
       return Promise.resolve({ id: 1, username: 'admin', role: 'admin' })
     }
+    if (path === '/api/storage/usage') {
+      return Promise.resolve({
+        db_bytes: 100,
+        index_bytes: 200,
+        media_cache_bytes: 300,
+        total_bytes: 600,
+        max_db_bytes: 15_000_000_000,
+        max_media_bytes: 25_000_000_000,
+        db_over_quota: false,
+        media_over_quota: false
+      })
+    }
+    if (path === '/api/settings/telegram-api') {
+      return Promise.resolve({ configured: true, app_id: 123456, app_hash_set: true })
+    }
     return Promise.resolve({
       id: 1,
       name: 'default',
@@ -32,7 +47,12 @@ vi.mock('@/api/client', () => ({
     key: '87654321876543218765432187654321',
     created_at: '2026-06-08T01:00:00Z'
   }),
-  apiPut: vi.fn().mockResolvedValue({ id: 1, username: 'root', role: 'admin' }),
+  apiPut: vi.fn((path: string) => {
+    if (path === '/api/settings/telegram-api') {
+      return Promise.resolve({ configured: true, app_id: 654321, app_hash_set: true })
+    }
+    return Promise.resolve({ id: 1, username: 'root', role: 'admin' })
+  }),
   setAPIKey: vi.fn()
 }))
 
@@ -139,5 +159,40 @@ describe('SettingsView', () => {
 
     expect(wrapper.get<HTMLInputElement>('[data-testid="admin-username-input"]').element.placeholder).toBe('请输入用户名')
     expect(wrapper.get<HTMLInputElement>('[data-testid="current-password-input"]').element.placeholder).toBe('请输入密码')
+  })
+
+  it('renders storage limits from the storage usage API', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/storage/usage')
+    expect(wrapper.text()).toContain('15.0 GB')
+    expect(wrapper.text()).toContain('25.0 GB')
+  })
+
+  it('updates Telegram API credentials from the settings page', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/settings/telegram-api')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="telegram-app-id-input"]').element.value).toBe('123456')
+
+    await wrapper.get('[data-testid="telegram-app-id-input"]').setValue('654321')
+    await wrapper.get('[data-testid="telegram-app-hash-input"]').setValue('new-hash-secret')
+    await wrapper.get('[data-testid="save-telegram-api"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPut).toHaveBeenCalledWith('/api/settings/telegram-api', {
+      app_id: 654321,
+      app_hash: 'new-hash-secret'
+    })
   })
 })

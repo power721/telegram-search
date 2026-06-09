@@ -46,8 +46,6 @@ abs_path() {
 
 prepare_config() {
   local target="$DATA_DIR/config.yaml"
-  local api_id="${API_ID:-${TG_API_ID:-}}"
-  local api_hash="${API_HASH:-${TG_API_HASH:-}}"
 
   if [[ -f "$target" ]]; then
     echo "=== use existing $target ==="
@@ -70,28 +68,7 @@ prepare_config() {
     return
   fi
 
-  if [[ -z "$api_id" || -z "$api_hash" ]]; then
-    echo "=== use image default /app/config.yaml ==="
-    return
-  fi
-
-  echo "=== generate $target ==="
-  cat > "$target" <<EOF
-telegram:
-  api_id: $api_id
-  api_hash: $api_hash
-server:
-  host: 0.0.0.0
-  port: 9900
-sync:
-  workers: 5
-  history_batch_size: 100
-storage:
-  path: /data/tg-search
-  max_db_size: 10GB
-  max_media_cache: 20GB
-EOF
-  chmod 600 "$target"
+  echo "=== use image default /app/config.yaml ==="
 }
 
 while getopts ":d:p:c:v:h" arg; do

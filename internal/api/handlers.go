@@ -323,11 +323,7 @@ func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
 		return
 	}
 	if settings.AppID == 0 && settings.AppHash == "" {
-		runtimeSettings := model.TelegramAPISettings{
-			AppID:   h.deps.RuntimeConfig.Telegram.APIID,
-			AppHash: h.deps.RuntimeConfig.Telegram.APIHash,
-		}
-		c.JSON(http.StatusOK, repository.RedactTelegramAPI(runtimeSettings))
+		c.JSON(http.StatusOK, repository.RedactTelegramAPI(model.TelegramAPISettings{}))
 		return
 	}
 	if err := h.deps.Settings.SaveTelegramAPI(c.Request.Context(), settings); err != nil {
@@ -574,8 +570,7 @@ func (h handlers) loadSetupStatus(ctx context.Context) (model.SetupStatus, error
 	status.AdminConfigured = adminCount > 0
 	status.APIKeyConfigured = keyCount > 0
 	status.APIKeyStepComplete = status.APIKeyConfigured || (apiKeyDone && apiKeyDoneRaw == `true`)
-	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured ||
-		(h.deps.RuntimeConfig.Telegram.APIID > 0 && h.deps.RuntimeConfig.Telegram.APIHash != "")
+	status.TelegramConfigured = repository.RedactTelegramAPI(telegramAPI).Configured
 	if h.deps.Accounts != nil {
 		accounts, err := h.deps.Accounts.FindAll(ctx)
 		if err != nil {

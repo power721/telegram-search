@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
 import { onMounted, ref, watch } from 'vue'
+import { apiGet, apiPut } from '@/api/client'
+import type { StorageUsage, TelegramAPISettingsResponse } from '@/api/types'
 import { useAPIKeyStore } from '@/stores/apiKey'
 import { useAuthStore } from '@/stores/auth'
 
@@ -13,11 +15,18 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
 const credentialsLoading = ref(false)
+const storageUsage = ref<StorageUsage | null>(null)
+const telegramSettings = ref<TelegramAPISettingsResponse | null>(null)
+const telegramAppID = ref('')
+const telegramAppHash = ref('')
+const telegramLoading = ref(false)
 
 onMounted(() => {
   apiKey.load().catch((error) => {
     message.error(error instanceof Error ? error.message : '无法加载 API 密钥')
   })
+  loadStorageUsage()
+  loadTelegramSettings()
   if (!auth.loaded) {
     auth.loadMe().catch(() => {
       message.error('无法加载当前管理员')
@@ -66,6 +75,50 @@ async function updateCredentials() {
   }
 }
 
+async function loadStorageUsage() {
+  try {
+    storageUsage.value = await apiGet<StorageUsage>('/api/storage/usage')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载存储限额')
+  }
+}
+
+async function loadTelegramSettings() {
+  try {
+    telegramSettings.value = await apiGet<TelegramAPISettingsResponse>('/api/settings/telegram-api')
+    telegramAppID.value = telegramSettings.value.app_id ? String(telegramSettings.value.app_id) : ''
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载 Telegram API')
+  }
+}
+
+async function updateTelegramAPI() {
+  const appID = Number(telegramAppID.value)
+  const appHash = telegramAppHash.value.trim()
+  if (!Number.isInteger(appID) || appID <= 0) {
+    message.error('App ID 必须大于 0')
+    return
+  }
+  if (!appHash) {
+    message.error('请输入 App Hash')
+    return
+  }
+  telegramLoading.value = true
+  try {
+    telegramSettings.value = await apiPut<TelegramAPISettingsResponse>('/api/settings/telegram-api', {
+      app_id: appID,
+      app_hash: appHash
+    })
+    telegramAppID.value = String(telegramSettings.value.app_id)
+    telegramAppHash.value = ''
+    message.success('Telegram API 已更新')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法保存 Telegram API')
+  } finally {
+    telegramLoading.value = false
+  }
+}
+
 async function regenerate() {
   try {
     await apiKey.regenerate()
@@ -82,6 +135,13 @@ function toggleAPIKeyVisibility() {
 
 function formatTime(value?: string) {
   return value ? new Date(value).toLocaleString() : '-'
+}
+
+function formatBytes(value = 0) {
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} GB`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB`
+  return `${value} B`
 }
 </script>
 
@@ -190,13 +250,45 @@ function formatTime(value?: string) {
         <dl>
           <div>
             <dt>最大数据库容量</dt>
-            <dd>10 GB</dd>
+            <dd>{{ formatBytes(storageUsage?.max_db_bytes) }}</dd>
           </div>
           <div>
             <dt>最大媒体缓存</dt>
-            <dd>20 GB</dd>
+            <dd>{{ formatBytes(storageUsage?.max_media_bytes) }}</dd>
           </div>
         </dl>
+      </section>
+      <section class="panel telegram-panel">
+        <h2>Telegram API</h2>
+        <n-form class="telegram-form" @submit.prevent="updateTelegramAPI">
+          <n-form-item label="App ID">
+            <n-input
+              v-model:value="telegramAppID"
+              data-testid="telegram-app-id-input"
+              inputmode="numeric"
+              placeholder="请输入 App ID"
+            />
+          </n-form-item>
+          <n-form-item label="App Hash">
+            <n-input
+              v-model:value="telegramAppHash"
+              data-testid="telegram-app-hash-input"
+              type="password"
+              autocomplete="off"
+              :placeholder="telegramSettings?.app_hash_set ? '已设置，输入新 Hash 保存' : '请输入 App Hash'"
+            />
+          </n-form-item>
+          <div class="form-actions">
+            <n-button
+              data-testid="save-telegram-api"
+              type="primary"
+              :loading="telegramLoading"
+              @click="updateTelegramAPI"
+            >
+              保存
+            </n-button>
+          </div>
+        </n-form>
       </section>
     </div>
   </section>
@@ -211,6 +303,10 @@ function formatTime(value?: string) {
 }
 
 .credential-form {
+  display: grid;
+}
+
+.telegram-form {
   display: grid;
 }
 

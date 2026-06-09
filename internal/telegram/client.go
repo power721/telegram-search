@@ -12,6 +12,7 @@ import (
 
 var ErrUnavailable = errors.New("telegram client is unavailable")
 var ErrPasswordRequired = errors.New("telegram password required")
+var ErrCredentialsNotConfigured = errors.New("telegram api settings are not configured")
 
 const (
 	QRLoginStatusPending = "pending"
@@ -112,6 +113,26 @@ type Client interface {
 	VideoFile(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (VideoFile, error)
 	StreamVideoRange(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int, file VideoFile, offset int64, length int64, w io.Writer) error
 	DownloadMessageImage(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (ImageFile, error)
+}
+
+type Credentials struct {
+	APIID   int
+	APIHash string
+}
+
+type CredentialsProvider interface {
+	TelegramCredentials(context.Context) (Credentials, error)
+}
+
+type StaticCredentialsProvider struct {
+	Credentials Credentials
+}
+
+func (p StaticCredentialsProvider) TelegramCredentials(context.Context) (Credentials, error) {
+	if p.Credentials.APIID <= 0 || p.Credentials.APIHash == "" {
+		return Credentials{}, ErrCredentialsNotConfigured
+	}
+	return p.Credentials, nil
 }
 
 type CodeStore struct {

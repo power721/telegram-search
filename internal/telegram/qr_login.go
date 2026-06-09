@@ -40,7 +40,12 @@ func (g *GotdClient) StartQRLogin(ctx context.Context, sessionPath string) (QRLo
 		session.markAccepted()
 		return nil
 	})
-	client := gotdtelegram.NewClient(g.apiID, g.apiHash, gotdtelegram.Options{
+	credentials, err := g.credentials.TelegramCredentials(ctx)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         g.logger,
 		UpdateHandler:  dispatcher,

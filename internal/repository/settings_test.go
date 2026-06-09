@@ -79,3 +79,44 @@ func TestTelegramAPISettingsRoundTripAndRedaction(t *testing.T) {
 		t.Fatalf("redacted response leaked app hash: %+v", redacted)
 	}
 }
+
+func TestTelegramCredentialsProviderLoadsStoredSettings(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+	if err := repo.SaveTelegramAPI(ctx, model.TelegramAPISettings{AppID: 654321, AppHash: "db-hash"}); err != nil {
+		t.Fatalf("save telegram api: %v", err)
+	}
+
+	credentials, err := NewTelegramCredentialsProvider(repo).TelegramCredentials(ctx)
+	if err != nil {
+		t.Fatalf("telegram credentials: %v", err)
+	}
+	if credentials.APIID != 654321 || credentials.APIHash != "db-hash" {
+		t.Fatalf("credentials = %+v, want DB settings", credentials)
+	}
+}
+
+func TestTelegramCredentialsProviderRequiresStoredSettings(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	_, err = NewTelegramCredentialsProvider(NewSettingsRepository(conn)).TelegramCredentials(ctx)
+	if err == nil || !strings.Contains(err.Error(), "telegram api settings are not configured") {
+		t.Fatalf("TelegramCredentials error = %v, want not configured error", err)
+	}
+}

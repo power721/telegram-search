@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"tg-search/internal/model"
+	"tg-search/internal/telegram"
 )
 
 type SettingsRepository struct {
@@ -91,4 +92,26 @@ func RedactTelegramAPI(settings model.TelegramAPISettings) model.TelegramAPISett
 		AppID:      settings.AppID,
 		AppHashSet: settings.AppHash != "",
 	}
+}
+
+type TelegramCredentialsProvider struct {
+	settings *SettingsRepository
+}
+
+func NewTelegramCredentialsProvider(settings *SettingsRepository) *TelegramCredentialsProvider {
+	return &TelegramCredentialsProvider{settings: settings}
+}
+
+func (p *TelegramCredentialsProvider) TelegramCredentials(ctx context.Context) (telegram.Credentials, error) {
+	if p == nil || p.settings == nil {
+		return telegram.Credentials{}, telegram.ErrCredentialsNotConfigured
+	}
+	settings, err := p.settings.LoadTelegramAPI(ctx)
+	if err != nil {
+		return telegram.Credentials{}, err
+	}
+	if settings.AppID <= 0 || settings.AppHash == "" {
+		return telegram.Credentials{}, telegram.ErrCredentialsNotConfigured
+	}
+	return telegram.Credentials{APIID: settings.AppID, APIHash: settings.AppHash}, nil
 }

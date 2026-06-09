@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -11,26 +12,15 @@ import (
 
 const DefaultPath = "/data/tg-search/config.yaml"
 
-const (
-	DefaultTelegramAPIID   = 26375241
-	DefaultTelegramAPIHash = "70f574f48a016d683c64f2f7a217d04f"
-)
-
 var (
 	defaultConfigPath = DefaultPath
 	localConfigPath   = "config.yaml"
 )
 
 type Config struct {
-	Telegram TelegramConfig `yaml:"telegram"`
-	Server   ServerConfig   `yaml:"server"`
-	Sync     SyncConfig     `yaml:"sync"`
-	Storage  StorageConfig  `yaml:"storage"`
-}
-
-type TelegramConfig struct {
-	APIID   int    `yaml:"api_id"`
-	APIHash string `yaml:"api_hash"`
+	Server  ServerConfig  `yaml:"server"`
+	Sync    SyncConfig    `yaml:"sync"`
+	Storage StorageConfig `yaml:"storage"`
 }
 
 type ServerConfig struct {
@@ -60,7 +50,9 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("read config %s: %w", resolved, err)
 	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config %s: %w", resolved, err)
 	}
 	applyDefaults(&cfg)
@@ -140,10 +132,6 @@ func probeWritable(dir string) error {
 
 func defaultConfig() Config {
 	return Config{
-		Telegram: TelegramConfig{
-			APIID:   DefaultTelegramAPIID,
-			APIHash: DefaultTelegramAPIHash,
-		},
 		Server: ServerConfig{
 			Host: "127.0.0.1",
 			Port: 9900,
@@ -188,12 +176,6 @@ func resolvePath(path string) (string, error) {
 
 func applyDefaults(cfg *Config) {
 	defaults := defaultConfig()
-	if cfg.Telegram.APIID == 0 {
-		cfg.Telegram.APIID = defaults.Telegram.APIID
-	}
-	if cfg.Telegram.APIHash == "" {
-		cfg.Telegram.APIHash = defaults.Telegram.APIHash
-	}
 	if cfg.Server.Host == "" {
 		cfg.Server.Host = defaults.Server.Host
 	}
@@ -218,12 +200,6 @@ func applyDefaults(cfg *Config) {
 }
 
 func validate(cfg Config) error {
-	if cfg.Telegram.APIID == 0 {
-		return errors.New("telegram.api_id is required")
-	}
-	if cfg.Telegram.APIHash == "" {
-		return errors.New("telegram.api_hash is required")
-	}
 	if cfg.Server.Host == "" {
 		return errors.New("server.host is required")
 	}
@@ -271,8 +247,5 @@ func localRuntimeConfig() Config {
 }
 
 func generatedConfig() Config {
-	cfg := defaultConfig()
-	cfg.Telegram.APIID = DefaultTelegramAPIID
-	cfg.Telegram.APIHash = DefaultTelegramAPIHash
-	return cfg
+	return defaultConfig()
 }

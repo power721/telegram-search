@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -27,5 +28,14 @@ func TestNopClientReturnsClearError(t *testing.T) {
 	_, err := client.SendCode(context.Background(), "+10000000000", "/tmp/account.session")
 	if err == nil {
 		t.Fatal("SendCode returned nil error")
+	}
+}
+
+func TestGotdClientRequiresCredentialsBeforeNetworkClient(t *testing.T) {
+	client := NewGotdClient(StaticCredentialsProvider{}, nil)
+
+	_, err := client.SendCode(context.Background(), "+10000000000", "/tmp/account.session")
+	if err == nil || !strings.Contains(err.Error(), "telegram api settings are not configured") {
+		t.Fatalf("SendCode error = %v, want missing credentials error", err)
 	}
 }

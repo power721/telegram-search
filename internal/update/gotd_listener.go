@@ -19,17 +19,19 @@ import (
 )
 
 type GotdListener struct {
-	apiID    int
-	apiHash  string
-	sessions *localsession.Manager
-	logger   *zap.Logger
+	credentials telegram.CredentialsProvider
+	sessions    *localsession.Manager
+	logger      *zap.Logger
 }
 
-func NewGotdListener(apiID int, apiHash string, sessions *localsession.Manager, logger *zap.Logger) *GotdListener {
+func NewGotdListener(credentials telegram.CredentialsProvider, sessions *localsession.Manager, logger *zap.Logger) *GotdListener {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &GotdListener{apiID: apiID, apiHash: apiHash, sessions: sessions, logger: logger}
+	if credentials == nil {
+		credentials = telegram.StaticCredentialsProvider{}
+	}
+	return &GotdListener{credentials: credentials, sessions: sessions, logger: logger}
 }
 
 func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func(Event) error) error {
@@ -49,7 +51,11 @@ func (l *GotdListener) Run(ctx context.Context, account model.Account, emit func
 		Handler: handler,
 		Logger:  l.logger.Named("updates"),
 	})
-	client := gotdtelegram.NewClient(l.apiID, l.apiHash, gotdtelegram.Options{
+	credentials, err := l.credentials.TelegramCredentials(ctx)
+	if err != nil {
+		return err
+	}
+	client := gotdtelegram.NewClient(credentials.APIID, credentials.APIHash, gotdtelegram.Options{
 		SessionStorage: &gotdsession.FileStorage{Path: sessionPath},
 		Logger:         l.logger,
 		UpdateHandler:  manager,

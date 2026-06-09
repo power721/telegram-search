@@ -25,11 +25,12 @@ func FilesFromMessage(message *tg.Message) []model.File {
 			return nil
 		}
 		return []model.File{{
-			FileName:  fmt.Sprintf("telegram-photo-%d.jpg", photo.ID),
-			Extension: ".jpg",
-			MimeType:  "image/jpeg",
-			SizeBytes: photoSizeBytes(photo),
-			Category:  "image",
+			TelegramFileID: photo.ID,
+			FileName:       fmt.Sprintf("telegram-photo-%d.jpg", photo.ID),
+			Extension:      ".jpg",
+			MimeType:       "image/jpeg",
+			SizeBytes:      photoSizeBytes(photo),
+			Category:       "image",
 		}}
 	case *tg.MessageMediaDocument:
 		documentClass, ok := m.GetDocument()
@@ -45,11 +46,12 @@ func FilesFromMessage(message *tg.Message) []model.File {
 			fileName = defaultDocumentFileName(document)
 		}
 		return []model.File{{
-			FileName:  fileName,
-			Extension: strings.ToLower(filepath.Ext(fileName)),
-			MimeType:  document.MimeType,
-			SizeBytes: document.Size,
-			Category:  mediaFileCategory(document),
+			TelegramFileID: document.ID,
+			FileName:       fileName,
+			Extension:      strings.ToLower(filepath.Ext(fileName)),
+			MimeType:       document.MimeType,
+			SizeBytes:      document.Size,
+			Category:       mediaFileCategory(document),
 		}}
 	default:
 		return nil

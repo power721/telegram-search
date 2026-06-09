@@ -357,7 +357,7 @@ func attachFiles(ctx context.Context, db *sql.DB, items []model.SearchResult) ([
 		placeholders = append(placeholders, "?")
 	}
 	rows, err := db.QueryContext(ctx, `
-SELECT id, message_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at
+SELECT id, message_id, telegram_file_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at
 FROM telegram_files
 WHERE message_id IN (`+strings.Join(placeholders, ",")+`)
 ORDER BY message_id, id`, ids...)
@@ -369,7 +369,7 @@ ORDER BY message_id, id`, ids...)
 	byMessageID := map[int64][]model.File{}
 	for rows.Next() {
 		var file model.File
-		if err := rows.Scan(&file.ID, &file.MessageID, &file.FileName, &file.Extension, &file.MimeType, &file.SizeBytes, &file.Category, &file.CreatedAt, &file.UpdatedAt); err != nil {
+		if err := rows.Scan(&file.ID, &file.MessageID, &file.TelegramFileID, &file.FileName, &file.Extension, &file.MimeType, &file.SizeBytes, &file.Category, &file.CreatedAt, &file.UpdatedAt); err != nil {
 			return nil, err
 		}
 		byMessageID[file.MessageID] = append(byMessageID[file.MessageID], file)

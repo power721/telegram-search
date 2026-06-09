@@ -44,18 +44,26 @@ func (r *FileRepository) SaveBatchTx(ctx context.Context, tx *sql.Tx, messageID 
 		if file.Category == "" {
 			file.Category = fileCategory(file)
 		}
-		err := tx.QueryRowContext(ctx, `
+		duplicate, err := r.duplicateFileExistsTx(ctx, tx, file)
+		if err != nil {
+			return nil, err
+		}
+		if duplicate {
+			continue
+		}
+		err = tx.QueryRowContext(ctx, `
 INSERT INTO telegram_files
-  (message_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at)
+  (message_id, telegram_file_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(message_id, file_name, size_bytes) DO UPDATE SET
+  telegram_file_id = excluded.telegram_file_id,
   extension = excluded.extension,
   mime_type = excluded.mime_type,
   category = excluded.category,
   updated_at = excluded.updated_at
 RETURNING id, created_at, updated_at`,
-			file.MessageID, file.FileName, file.Extension, file.MimeType, file.SizeBytes, file.Category, now, now,
+			file.MessageID, file.TelegramFileID, file.FileName, file.Extension, file.MimeType, file.SizeBytes, file.Category, now, now,
 		).Scan(&file.ID, &file.CreatedAt, &file.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("save file %s: %w", file.FileName, err)
@@ -63,6 +71,35 @@ RETURNING id, created_at, updated_at`,
 		out = append(out, file)
 	}
 	return out, nil
+}
+
+func (r *FileRepository) duplicateFileExistsTx(ctx context.Context, tx *sql.Tx, file model.File) (bool, error) {
+	var exists int
+	var err error
+	if file.TelegramFileID > 0 {
+		err = tx.QueryRowContext(ctx, `
+SELECT 1
+FROM telegram_files
+WHERE message_id <> ? AND telegram_file_id = ?
+LIMIT 1`,
+			file.MessageID, file.TelegramFileID,
+		).Scan(&exists)
+	} else {
+		err = tx.QueryRowContext(ctx, `
+SELECT 1
+FROM telegram_files
+WHERE message_id <> ? AND file_name = ? AND size_bytes = ?
+LIMIT 1`,
+			file.MessageID, file.FileName, file.SizeBytes,
+		).Scan(&exists)
+	}
+	if err == nil {
+		return true, nil
+	}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return false, fmt.Errorf("check duplicate file %s: %w", file.FileName, err)
 }
 
 func (r *FileRepository) ReplaceForMessageTx(ctx context.Context, tx *sql.Tx, messageID int64, files []model.File) ([]model.File, error) {
@@ -74,7 +111,7 @@ func (r *FileRepository) ReplaceForMessageTx(ctx context.Context, tx *sql.Tx, me
 
 func (r *FileRepository) FindByMessageID(ctx context.Context, messageID int64) ([]model.File, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, message_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at
+SELECT id, message_id, telegram_file_id, file_name, extension, mime_type, size_bytes, category, created_at, updated_at
 FROM telegram_files
 WHERE message_id = ?
 ORDER BY id`, messageID)
@@ -100,7 +137,7 @@ func (r *FileRepository) Search(ctx context.Context, params FileSearchParams) ([
 	args = append(args, limit, params.Offset)
 
 	query := `
-SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
        mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
@@ -118,7 +155,7 @@ LIMIT ? OFFSET ?`
 	var out []model.FileResult
 	for rows.Next() {
 		var item model.FileResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.TelegramFileID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -135,7 +172,7 @@ func (r *FileRepository) SearchResources(ctx context.Context, params FileSearchP
 	args = append(args, limit, params.Offset)
 
 	query := `
-SELECT f.id, f.message_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
        mc.text, m.date, m.account_id, m.channel_id, c.telegram_channel_id, c.title, c.username, m.telegram_message_id
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
@@ -153,7 +190,7 @@ LIMIT ? OFFSET ?`
 	var out []model.FileResult
 	for rows.Next() {
 		var item model.FileResult
-		if err := rows.Scan(&item.ID, &item.MessageID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
+		if err := rows.Scan(&item.ID, &item.MessageID, &item.TelegramFileID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Category, &item.CreatedAt, &item.UpdatedAt, &item.MessageText, &item.MessageDate, &item.AccountID, &item.ChannelID, &item.TelegramChannelID, &item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -239,7 +276,7 @@ func scanFile(row interface {
 	Scan(...any) error
 }) (model.File, error) {
 	var file model.File
-	err := row.Scan(&file.ID, &file.MessageID, &file.FileName, &file.Extension, &file.MimeType, &file.SizeBytes, &file.Category, &file.CreatedAt, &file.UpdatedAt)
+	err := row.Scan(&file.ID, &file.MessageID, &file.TelegramFileID, &file.FileName, &file.Extension, &file.MimeType, &file.SizeBytes, &file.Category, &file.CreatedAt, &file.UpdatedAt)
 	if err != nil {
 		return model.File{}, err
 	}

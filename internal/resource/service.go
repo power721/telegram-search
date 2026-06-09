@@ -30,6 +30,7 @@ type Item struct {
 	Category          string           `json:"category"`
 	URL               string           `json:"url,omitempty"`
 	Password          string           `json:"password,omitempty"`
+	TelegramFileID    int64            `json:"telegram_file_id,omitempty"`
 	FileName          string           `json:"file_name,omitempty"`
 	Extension         string           `json:"extension,omitempty"`
 	MimeType          string           `json:"mime_type,omitempty"`
@@ -151,6 +152,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				Kind:              "file",
 				Type:              "files",
 				Category:          "files",
+				TelegramFileID:    file.TelegramFileID,
 				FileName:          file.FileName,
 				Extension:         file.Extension,
 				MimeType:          file.MimeType,

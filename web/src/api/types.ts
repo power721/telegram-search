@@ -305,6 +305,7 @@ export interface LinkSearchResult extends Link {
 export interface FileSearchResult {
   id: number
   message_id: number
+  telegram_file_id?: number
   file_name: string
   extension: string
   mime_type: string
@@ -358,6 +359,7 @@ export interface ResourceItem {
   category: string
   url?: string
   password?: string
+  telegram_file_id?: number
   file_name?: string
   extension?: string
   mime_type?: string

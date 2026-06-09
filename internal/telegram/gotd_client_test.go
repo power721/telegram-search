@@ -177,7 +177,7 @@ func TestConvertMessageExtractsDocumentFileMetadata(t *testing.T) {
 		t.Fatalf("files = %+v, want one file", converted.Files)
 	}
 	file := converted.Files[0]
-	if file.FileName != "guide.pdf" || file.Extension != ".pdf" || file.MimeType != "application/pdf" || file.SizeBytes != 12345 {
+	if file.TelegramFileID != 42 || file.FileName != "guide.pdf" || file.Extension != ".pdf" || file.MimeType != "application/pdf" || file.SizeBytes != 12345 {
 		t.Fatalf("file = %+v, want guide.pdf metadata", file)
 	}
 }
@@ -203,7 +203,7 @@ func TestConvertMessageClassifiesPhotoMedia(t *testing.T) {
 		t.Fatalf("files = %+v, want one photo file", converted.Files)
 	}
 	file := converted.Files[0]
-	if file.FileName != "telegram-photo-42.jpg" || file.Extension != ".jpg" || file.MimeType != "image/jpeg" || file.Category != "image" {
+	if file.TelegramFileID != 42 || file.FileName != "telegram-photo-42.jpg" || file.Extension != ".jpg" || file.MimeType != "image/jpeg" || file.Category != "image" {
 		t.Fatalf("photo file = %+v, want synthetic jpeg metadata", file)
 	}
 }
@@ -236,7 +236,7 @@ func TestConvertMessageExtractsVideoFileMetadata(t *testing.T) {
 		t.Fatalf("files = %+v, want one video file", converted.Files)
 	}
 	file := converted.Files[0]
-	if file.FileName != "telegram-video-42.mp4" || file.Extension != ".mp4" || file.MimeType != "video/mp4" || file.SizeBytes != 12345 || file.Category != "video" {
+	if file.TelegramFileID != 42 || file.FileName != "telegram-video-42.mp4" || file.Extension != ".mp4" || file.MimeType != "video/mp4" || file.SizeBytes != 12345 || file.Category != "video" {
 		t.Fatalf("video file = %+v, want mp4 metadata", file)
 	}
 }
@@ -269,7 +269,7 @@ func TestConvertMessageExtractsAudioFileMetadata(t *testing.T) {
 		t.Fatalf("files = %+v, want one audio file", converted.Files)
 	}
 	file := converted.Files[0]
-	if file.FileName != "telegram-audio-42.mp3" || file.Extension != ".mp3" || file.MimeType != "audio/mpeg" || file.SizeBytes != 12345 || file.Category != "audio" {
+	if file.TelegramFileID != 42 || file.FileName != "telegram-audio-42.mp3" || file.Extension != ".mp3" || file.MimeType != "audio/mpeg" || file.SizeBytes != 12345 || file.Category != "audio" {
 		t.Fatalf("audio file = %+v, want mp3 metadata", file)
 	}
 }

@@ -302,6 +302,14 @@ ALTER TABLE telegram_links ADD COLUMN media_tags TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_telegram_links_media_title ON telegram_links(media_title);
 `,
 	},
+	{
+		version: 5,
+		name:    "file_telegram_file_id",
+		sql: `
+ALTER TABLE telegram_files ADD COLUMN telegram_file_id INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_telegram_files_telegram_file_id ON telegram_files(telegram_file_id);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

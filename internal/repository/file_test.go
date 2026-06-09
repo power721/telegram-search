@@ -73,3 +73,121 @@ func TestFileRepositoryPersistsFileMetadata(t *testing.T) {
 		t.Fatalf("found file = %+v", found[0])
 	}
 }
+
+func TestFileRepositorySkipsDuplicateFilesAcrossMessages(t *testing.T) {
+	ctx := context.Background()
+	conn := openRepositoryTestDB(t)
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	files := NewFileRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	mirrorChannelID, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2, Title: "Mirror", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save mirror channel: %v", err)
+	}
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+			Text: "archive one", RawJSON: "{}", Date: time.Now().UTC(),
+		},
+		{
+			AccountID: accountID, ChannelID: mirrorChannelID, TelegramMessageID: 2,
+			Text: "archive mirror", RawJSON: "{}", Date: time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+
+	first, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{
+		TelegramFileID: 42,
+		FileName:       "release-pack.zip",
+		Extension:      ".zip",
+		MimeType:       "application/zip",
+		SizeBytes:      1024,
+		Category:       "archive",
+	}})
+	if err != nil {
+		t.Fatalf("save first file: %v", err)
+	}
+	if len(first) != 1 {
+		t.Fatalf("first saved files = %+v, want one stored file", first)
+	}
+	duplicate, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{
+		TelegramFileID: 42,
+		FileName:       "renamed-release-pack.zip",
+		Extension:      ".zip",
+		MimeType:       "application/zip",
+		SizeBytes:      1024,
+		Category:       "archive",
+	}})
+	if err != nil {
+		t.Fatalf("save duplicate file: %v", err)
+	}
+	if len(duplicate) != 0 {
+		t.Fatalf("duplicate saved files = %+v, want duplicate skipped", duplicate)
+	}
+
+	foundFirst, err := files.FindByMessageID(ctx, stored[0].ID)
+	if err != nil {
+		t.Fatalf("find first files: %v", err)
+	}
+	if len(foundFirst) != 1 {
+		t.Fatalf("first message files len = %d, want 1", len(foundFirst))
+	}
+	foundDuplicate, err := files.FindByMessageID(ctx, stored[1].ID)
+	if err != nil {
+		t.Fatalf("find duplicate files: %v", err)
+	}
+	if len(foundDuplicate) != 0 {
+		t.Fatalf("duplicate message files = %+v, want none", foundDuplicate)
+	}
+}
+
+func TestFileRepositorySkipsDuplicateFilesByNameAndSizeWithoutTelegramID(t *testing.T) {
+	ctx := context.Background()
+	conn := openRepositoryTestDB(t)
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	files := NewFileRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "legacy one", RawJSON: "{}", Date: time.Now().UTC()},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "legacy two", RawJSON: "{}", Date: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := files.SaveBatch(ctx, stored[0].ID, []model.File{{
+		FileName: "legacy.iso", Extension: ".iso", MimeType: "application/x-iso9660-image", SizeBytes: 4096,
+	}}); err != nil {
+		t.Fatalf("save first legacy file: %v", err)
+	}
+	duplicate, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{
+		FileName: "legacy.iso", Extension: ".iso", MimeType: "application/x-iso9660-image", SizeBytes: 4096,
+	}})
+	if err != nil {
+		t.Fatalf("save duplicate legacy file: %v", err)
+	}
+	if len(duplicate) != 0 {
+		t.Fatalf("duplicate legacy files = %+v, want skipped", duplicate)
+	}
+}

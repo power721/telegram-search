@@ -80,9 +80,11 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save message: %v", err)
 	}
-	if _, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 4096}}); err != nil {
+	files, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 4096}})
+	if err != nil {
 		t.Fatalf("save file: %v", err)
 	}
+	indexedFile := files[0]
 	fake := &mediaProxyClient{
 		file: telegram.VideoFile{ID: 1, AccessHash: 2, FileReference: []byte{3}, Size: 4096, MIMEType: "video/mp4"},
 		data: bytes.Repeat([]byte{0x7a}, 1024),
@@ -109,6 +111,18 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	if got := w.Header().Get("Accept-Ranges"); got != "bytes" {
 		t.Fatalf("Accept-Ranges = %q", got)
 	}
+	if got := w.Header().Get("ETag"); got != `W/"tg-file-777-4096-`+strconv.FormatInt(indexedFile.UpdatedAt.UnixNano(), 10)+`"` {
+		t.Fatalf("ETag = %q", got)
+	}
+	if got := w.Header().Get("Last-Modified"); got != indexedFile.UpdatedAt.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "inline; filename=clip.mp4" {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	if got := w.Header().Get("Cache-Control"); got != "public, max-age=86400" {
+		t.Fatalf("Cache-Control = %q", got)
+	}
 	if fake.offset != 1024 || fake.length != 1024 {
 		t.Fatalf("stream range = offset %d length %d, want 1024/1024", fake.offset, fake.length)
 	}
@@ -117,6 +131,71 @@ func TestServeTelegramVideoRange(t *testing.T) {
 	}
 	if fake.channel.Username != "NewQuark" || fake.channel.TelegramChannelID != 100 || fake.session.AccountID != accountID {
 		t.Fatalf("unexpected media context: channel=%+v session=%+v", fake.channel, fake.session)
+	}
+}
+
+func TestServeTelegramVideoHeadSkipsStreaming(t *testing.T) {
+	deps := testDeps(t)
+	ctx := context.Background()
+	accountID, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "video", MediaSummary: "video/mp4", Text: "clip", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	files, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 777, FileName: "clip.mp4", Extension: ".mp4", MimeType: "video/mp4", SizeBytes: 4096}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	indexedFile := files[0]
+	fake := &mediaProxyClient{
+		file: telegram.VideoFile{ID: 1, AccessHash: 2, FileReference: []byte{3}, Size: 4096, MIMEType: "video/mp4"},
+	}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodHead, "/v/777", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Length"); got != "4096" {
+		t.Fatalf("Content-Length = %q", got)
+	}
+	if got := w.Header().Get("ETag"); got != `W/"tg-file-777-4096-`+strconv.FormatInt(indexedFile.UpdatedAt.UnixNano(), 10)+`"` {
+		t.Fatalf("ETag = %q", got)
+	}
+	if got := w.Header().Get("Last-Modified"); got != indexedFile.UpdatedAt.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "inline; filename=clip.mp4" {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	if got := w.Body.Len(); got != 0 {
+		t.Fatalf("body length = %d, want 0", got)
+	}
+	if fake.streamCalls != 0 {
+		t.Fatalf("stream calls = %d, want 0", fake.streamCalls)
 	}
 }
 
@@ -206,7 +285,11 @@ func TestServeTelegramImage(t *testing.T) {
 		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
 		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
 	}})
-	_, _ = deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	files, err := deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	indexedFile := files[0]
 	deps.Telegram = &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}}
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
@@ -227,6 +310,68 @@ func TestServeTelegramImage(t *testing.T) {
 	if got := w.Header().Get("Cache-Control"); got != "public, max-age=86400" {
 		t.Fatalf("Cache-Control = %q", got)
 	}
+	if got := w.Header().Get("ETag"); got != `W/"tg-file-888-8-`+strconv.FormatInt(indexedFile.UpdatedAt.UnixNano(), 10)+`"` {
+		t.Fatalf("ETag = %q", got)
+	}
+	if got := w.Header().Get("Last-Modified"); got != indexedFile.UpdatedAt.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "inline; filename=poster.jpg" {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+}
+
+func TestServeTelegramImageHead(t *testing.T) {
+	deps := testDeps(t)
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(context.Background(), model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	stored, _ := deps.Messages.SaveBatch(context.Background(), []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	files, err := deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	indexedFile := files[0]
+	deps.Telegram = &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodHead, "/i/888", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); !strings.HasPrefix(got, "image/png") {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if got := w.Header().Get("Content-Length"); got != strconv.Itoa(len(png)) {
+		t.Fatalf("Content-Length = %q", got)
+	}
+	if got := w.Header().Get("ETag"); got != `W/"tg-file-888-8-`+strconv.FormatInt(indexedFile.UpdatedAt.UnixNano(), 10)+`"` {
+		t.Fatalf("ETag = %q", got)
+	}
+	if got := w.Header().Get("Last-Modified"); got != indexedFile.UpdatedAt.UTC().Format(http.TimeFormat) {
+		t.Fatalf("Last-Modified = %q", got)
+	}
+	if got := w.Header().Get("Content-Disposition"); got != "inline; filename=poster.jpg" {
+		t.Fatalf("Content-Disposition = %q", got)
+	}
+	if got := w.Body.Len(); got != 0 {
+		t.Fatalf("body length = %d, want 0", got)
+	}
 }
 
 func signedMediaPath(t *testing.T, key string, path string, expiresAt time.Time) string {
@@ -241,14 +386,15 @@ func signedMediaPath(t *testing.T, key string, path string, expiresAt time.Time)
 
 type mediaProxyClient struct {
 	telegram.NopClient
-	file    telegram.VideoFile
-	image   telegram.ImageFile
-	data    []byte
-	session telegram.AccountSession
-	channel telegram.MediaChannelRef
-	msgID   int
-	offset  int64
-	length  int64
+	file        telegram.VideoFile
+	image       telegram.ImageFile
+	data        []byte
+	session     telegram.AccountSession
+	channel     telegram.MediaChannelRef
+	msgID       int
+	offset      int64
+	length      int64
+	streamCalls int
 }
 
 func (f *mediaProxyClient) VideoFile(ctx context.Context, session telegram.AccountSession, channel telegram.MediaChannelRef, messageID int) (telegram.VideoFile, error) {
@@ -259,6 +405,7 @@ func (f *mediaProxyClient) VideoFile(ctx context.Context, session telegram.Accou
 }
 
 func (f *mediaProxyClient) StreamVideoRange(ctx context.Context, session telegram.AccountSession, channel telegram.MediaChannelRef, messageID int, file telegram.VideoFile, offset int64, length int64, w io.Writer) error {
+	f.streamCalls++
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID

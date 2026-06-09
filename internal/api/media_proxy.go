@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,13 @@ import (
 	"tg-search/internal/model"
 	"tg-search/internal/telegram"
 )
+
+type mediaRequest struct {
+	session   telegram.AccountSession
+	channel   telegram.MediaChannelRef
+	messageID int
+	file      model.FileResult
+}
 
 func (h handlers) requireMediaAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -63,11 +71,11 @@ func (h handlers) requireMediaAccess() gin.HandlerFunc {
 }
 
 func (h handlers) serveTelegramVideo(c *gin.Context) {
-	session, channel, msgID, ok := h.mediaRequestContext(c)
+	media, ok := h.mediaRequestContext(c)
 	if !ok {
 		return
 	}
-	file, err := h.deps.Telegram.VideoFile(c.Request.Context(), session, channel, msgID)
+	file, err := h.deps.Telegram.VideoFile(c.Request.Context(), media.session, media.channel, media.messageID)
 	if err != nil {
 		errorText(c, mediaErrorStatus(err), err.Error())
 		return
@@ -86,24 +94,28 @@ func (h handlers) serveTelegramVideo(c *gin.Context) {
 	c.Header("Content-Type", mime)
 	c.Header("Content-Length", strconv.FormatInt(length, 10))
 	c.Header("Accept-Ranges", "bytes")
+	setMediaMetadataHeaders(c, media.file, file.Size)
 	if partial {
 		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, file.Size))
 		c.Status(http.StatusPartialContent)
 	} else {
 		c.Status(http.StatusOK)
 	}
-	if err := h.deps.Telegram.StreamVideoRange(c.Request.Context(), session, channel, msgID, file, start, length, c.Writer); err != nil {
+	if c.Request.Method == http.MethodHead {
+		return
+	}
+	if err := h.deps.Telegram.StreamVideoRange(c.Request.Context(), media.session, media.channel, media.messageID, file, start, length, c.Writer); err != nil {
 		c.Error(err)
 		return
 	}
 }
 
 func (h handlers) serveTelegramImage(c *gin.Context) {
-	session, channel, msgID, ok := h.mediaRequestContext(c)
+	media, ok := h.mediaRequestContext(c)
 	if !ok {
 		return
 	}
-	image, err := h.deps.Telegram.DownloadMessageImage(c.Request.Context(), session, channel, msgID)
+	image, err := h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
 	if err != nil {
 		errorText(c, mediaErrorStatus(err), err.Error())
 		return
@@ -115,58 +127,79 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	c.Header("Content-Type", mime)
 	c.Header("Content-Length", strconv.Itoa(len(image.Data)))
 	c.Header("Cache-Control", "public, max-age=86400")
+	setMediaMetadataHeaders(c, media.file, int64(len(image.Data)))
+	if c.Request.Method == http.MethodHead {
+		c.Status(http.StatusOK)
+		return
+	}
 	c.Data(http.StatusOK, mime, image.Data)
 }
 
-func (h handlers) mediaRequestContext(c *gin.Context) (telegram.AccountSession, telegram.MediaChannelRef, int, bool) {
+func setMediaMetadataHeaders(c *gin.Context, file model.FileResult, size int64) {
+	c.Header("ETag", fmt.Sprintf(`W/"tg-file-%d-%d-%d"`, file.TelegramFileID, size, file.UpdatedAt.UnixNano()))
+	if !file.UpdatedAt.IsZero() {
+		c.Header("Last-Modified", file.UpdatedAt.UTC().Format(http.TimeFormat))
+	}
+	if file.FileName != "" {
+		c.Header("Content-Disposition", mime.FormatMediaType("inline", map[string]string{"filename": file.FileName}))
+	}
+	c.Header("Cache-Control", "public, max-age=86400")
+}
+
+func (h handlers) mediaRequestContext(c *gin.Context) (mediaRequest, bool) {
 	if h.deps.Telegram == nil {
 		errorText(c, http.StatusServiceUnavailable, "telegram client is unavailable")
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
+		return mediaRequest{}, false
 	}
 	fileID, err := strconv.ParseInt(strings.TrimSpace(c.Param("fileid")), 10, 64)
 	if err != nil || fileID <= 0 {
 		errorText(c, http.StatusBadRequest, "fileid must be a positive integer")
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
+		return mediaRequest{}, false
 	}
-	session, channel, msgID, err := h.resolveMediaFileSession(c.Request.Context(), fileID)
+	media, err := h.resolveMediaFileSession(c.Request.Context(), fileID)
 	if err != nil {
 		errorText(c, mediaErrorStatus(err), err.Error())
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, false
+		return mediaRequest{}, false
 	}
-	return session, channel, msgID, true
+	return media, true
 }
 
-func (h handlers) resolveMediaFileSession(ctx context.Context, fileID int64) (telegram.AccountSession, telegram.MediaChannelRef, int, error) {
+func (h handlers) resolveMediaFileSession(ctx context.Context, fileID int64) (mediaRequest, error) {
 	if h.deps.Files == nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("files are unavailable")
+		return mediaRequest{}, fmt.Errorf("files are unavailable")
 	}
 	if h.deps.Accounts == nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("accounts are unavailable")
+		return mediaRequest{}, fmt.Errorf("accounts are unavailable")
 	}
 	if h.deps.Channels == nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("channels are unavailable")
+		return mediaRequest{}, fmt.Errorf("channels are unavailable")
 	}
 	file, err := h.deps.Files.FindMediaByTelegramFileID(ctx, fileID)
 	if err != nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
+		return mediaRequest{}, err
 	}
 	channel, err := h.deps.Channels.FindByID(ctx, file.ChannelID)
 	if err != nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
+		return mediaRequest{}, err
 	}
 	account, err := h.deps.Accounts.FindByID(ctx, file.AccountID)
 	if err != nil {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, err
+		return mediaRequest{}, err
 	}
 	if file.TelegramMessageID <= 0 {
-		return telegram.AccountSession{}, telegram.MediaChannelRef{}, 0, fmt.Errorf("message id is required")
+		return mediaRequest{}, fmt.Errorf("message id is required")
 	}
-	return h.accountSession(account), telegram.MediaChannelRef{
-		Username:          strings.TrimPrefix(channel.Username, "@"),
-		TelegramChannelID: channel.TelegramChannelID,
-		AccessHash:        channel.AccessHash,
-		Type:              channel.Type,
-	}, int(file.TelegramMessageID), nil
+	return mediaRequest{
+		session: h.accountSession(account),
+		channel: telegram.MediaChannelRef{
+			Username:          strings.TrimPrefix(channel.Username, "@"),
+			TelegramChannelID: channel.TelegramChannelID,
+			AccessHash:        channel.AccessHash,
+			Type:              channel.Type,
+		},
+		messageID: int(file.TelegramMessageID),
+		file:      file,
+	}, nil
 }
 
 func (h handlers) accountSession(account model.Account) telegram.AccountSession {

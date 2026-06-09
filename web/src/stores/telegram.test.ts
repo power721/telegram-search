@@ -9,7 +9,7 @@ vi.mock('@/api/client', () => ({
       return Promise.resolve({
         login_id: 'login-1',
         status: 'online',
-        account: { id: 1, phone: '+10000000000', status: 'ONLINE', last_error: '' },
+        account: { id: 1, phone: '+8613800138000', status: 'ONLINE', last_error: '' },
         metadata_sync: { status: 'succeeded', channel_count: 0 }
       })
     }
@@ -18,7 +18,7 @@ vi.mock('@/api/client', () => ({
         items: [
           {
             id: 1,
-            phone: '+10000000000',
+            phone: '+8613800138000',
             telegram_user_id: 42,
             first_name: 'Ada',
             last_name: 'Lovelace',
@@ -44,7 +44,7 @@ vi.mock('@/api/client', () => ({
       })
     }
     if (path === '/api/accounts/1/logout') {
-      return Promise.resolve({ id: 1, phone: '+10000000000', status: 'LOGIN_REQUIRED', last_error: '' })
+      return Promise.resolve({ id: 1, phone: '+8613800138000', status: 'LOGIN_REQUIRED', last_error: '' })
     }
     if (path === '/api/telegram/login/sign-in') {
       return Promise.resolve({ status: 'LOGIN_REQUIRED', password_required: true })
@@ -52,7 +52,7 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/telegram/login/password') {
       return Promise.resolve({
         status: 'ONLINE',
-        account: { id: 1, phone: '+10000000000', status: 'ONLINE', last_error: '' },
+        account: { id: 1, phone: '+8613800138000', status: 'ONLINE', last_error: '' },
         metadata_sync: { status: 'succeeded', channel_count: 3 }
       })
     }
@@ -72,7 +72,7 @@ describe('telegram store', () => {
 
     await store.loadSettings()
     await store.saveTelegramAPI(123456, 'hash-secret')
-    await store.sendCode('+10000000000')
+    await store.sendCode('+8613800138000')
     await store.signIn('12345')
     await store.submitPassword('2fa-secret')
     await store.loadAccounts()
@@ -83,14 +83,14 @@ describe('telegram store', () => {
       app_hash: 'hash-secret'
     })
     expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/send-code', {
-      phone: '+10000000000'
+      phone: '+8613800138000'
     })
     expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/sign-in', {
-      phone: '+10000000000',
+      phone: '+8613800138000',
       code: '12345'
     })
     expect(apiPost).toHaveBeenCalledWith('/api/telegram/login/password', {
-      phone: '+10000000000',
+      phone: '+8613800138000',
       password: '2fa-secret'
     })
     expect(apiGet).toHaveBeenCalledWith('/api/accounts')
@@ -98,7 +98,7 @@ describe('telegram store', () => {
 
   it('keeps password required state after a 2FA challenge response', async () => {
     const store = useTelegramStore()
-    await store.sendCode('+10000000000')
+    await store.sendCode('+8613800138000')
     const response = await store.signIn('12345')
 
     expect(response.password_required).toBe(true)

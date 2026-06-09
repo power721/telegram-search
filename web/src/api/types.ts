@@ -94,6 +94,7 @@ export interface TelegramAccount {
 
 export interface TelegramLoginResponse {
   status: string
+  phone?: string
   password_required?: boolean
   account?: TelegramAccount
   metadata_sync?: {

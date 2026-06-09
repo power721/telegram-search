@@ -35,7 +35,7 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/telegram/login/sign-in') {
       return Promise.resolve({
         status: 'ONLINE',
-        account: { id: 1, phone: '+10000000000', status: 'ONLINE' },
+        account: { id: 1, phone: '+8613800138000', status: 'ONLINE' },
         metadata_sync: { status: 'succeeded', channel_count: 3 }
       })
     }
@@ -46,7 +46,7 @@ vi.mock('@/api/client', () => ({
       return Promise.resolve({
         login_id: 'login-1',
         status: 'online',
-        account: { id: 1, phone: '+10000000000', status: 'ONLINE' },
+        account: { id: 1, phone: '+8613800138000', status: 'ONLINE' },
         metadata_sync: { status: 'succeeded', channel_count: 0 }
       })
     }
@@ -92,7 +92,7 @@ describe('SetupTelegramLoginView', () => {
     const codeButton = wrapper.findAll('button').find((button) => button.text() === '验证码登录')
     await codeButton?.trigger('click')
 
-    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('请输入手机号码')
+    expect(wrapper.get<HTMLInputElement>('input[autocomplete="tel"]').element.placeholder).toBe('+86 13800138000')
     expect(wrapper.get<HTMLInputElement>('input[autocomplete="one-time-code"]').element.placeholder).toBe('请输入验证码')
   })
 

@@ -1548,11 +1548,12 @@ func TestAPIErrorMessagesAreLocalized(t *testing.T) {
 
 func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	deps := testDeps(t)
-	deps.Telegram = &fakeTelegram{}
+	fake := &fakeTelegram{}
+	deps.Telegram = fake
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+86 138-0013-8000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1560,12 +1561,19 @@ func TestSendCodeCreatesLoginRequiredAccount(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d body=%s", w.Code, w.Body.String())
 	}
-	account, err := deps.Accounts.FindByPhone(context.Background(), "+10000000000")
+	account, err := deps.Accounts.FindByPhone(context.Background(), "+8613800138000")
 	if err != nil {
 		t.Fatalf("find account: %v", err)
 	}
 	if account.Status != model.AccountStatusLoginRequired {
 		t.Fatalf("status = %q, want LOGIN_REQUIRED", account.Status)
+	}
+	if !sameStringSlices(fake.sendCodePhones, []string{"+8613800138000"}) {
+		t.Fatalf("SendCode phones = %v, want normalized phone", fake.sendCodePhones)
+	}
+	hash, ok := deps.CodeStore.Take("+8613800138000")
+	if !ok || hash != "hash" {
+		t.Fatalf("code store hash = %q ok=%v, want normalized key with hash", hash, ok)
 	}
 }
 
@@ -1576,7 +1584,7 @@ func TestTelegramLoginRoutes(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+8613800138000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1584,9 +1592,9 @@ func TestTelegramLoginRoutes(t *testing.T) {
 		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	deps.CodeStore.Save("+10000000000", "hash")
+	deps.CodeStore.Save("+8613800138000", "hash")
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+86 13800138000","code":"12345"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1594,11 +1602,11 @@ func TestTelegramLoginRoutes(t *testing.T) {
 		t.Fatalf("sign-in status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	if _, err := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000001", Status: model.AccountStatusLoginRequired}); err != nil {
+	if _, err := deps.Accounts.Save(ctx, model.Account{Phone: "+8613800138001", Status: model.AccountStatusLoginRequired}); err != nil {
 		t.Fatalf("save password account: %v", err)
 	}
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/password", bytes.NewBufferString(`{"phone":"+10000000001","password":"secret"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/password", bytes.NewBufferString(`{"phone":"+8613800138001","password":"secret"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1807,7 +1815,7 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+8613800138000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1815,9 +1823,9 @@ func TestTelegramSignInStartsMetadataSyncOnly(t *testing.T) {
 		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	deps.CodeStore.Save("+10000000000", "hash")
+	deps.CodeStore.Save("+8613800138000", "hash")
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+8613800138000","code":"12345"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1897,7 +1905,7 @@ func TestTelegramSignInQueuesMetadataSyncWhenRetryQueueAvailable(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+8613800138000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1905,9 +1913,9 @@ func TestTelegramSignInQueuesMetadataSyncWhenRetryQueueAvailable(t *testing.T) {
 		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	deps.CodeStore.Save("+10000000000", "hash")
+	deps.CodeStore.Save("+8613800138000", "hash")
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+8613800138000","code":"12345"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1967,7 +1975,7 @@ func TestTelegramSignInQueuedMetadataSyncChecksWebAccess(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+8613800138000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -1975,9 +1983,9 @@ func TestTelegramSignInQueuedMetadataSyncChecksWebAccess(t *testing.T) {
 		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	deps.CodeStore.Save("+10000000000", "hash")
+	deps.CodeStore.Save("+8613800138000", "hash")
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+8613800138000","code":"12345"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -2027,7 +2035,7 @@ func TestTelegramSignInKeepsAccountOnlineWhenMetadataSyncFails(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+10000000000"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/telegram/login/send-code", bytes.NewBufferString(`{"phone":"+8613800138000"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -2035,9 +2043,9 @@ func TestTelegramSignInKeepsAccountOnlineWhenMetadataSyncFails(t *testing.T) {
 		t.Fatalf("send-code status = %d body=%s, want 200", w.Code, w.Body.String())
 	}
 
-	deps.CodeStore.Save("+10000000000", "hash")
+	deps.CodeStore.Save("+8613800138000", "hash")
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+10000000000","code":"12345"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/telegram/login/sign-in", bytes.NewBufferString(`{"phone":"+8613800138000","code":"12345"}`))
 	withAdminSession(t, deps, req)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
@@ -3348,17 +3356,25 @@ type fakeTelegram struct {
 	logoutSessions       []telegram.AccountSession
 	logoutSessionExisted bool
 	fetchHistoryCalls    int
+	sendCodePhones       []string
+	signInPhones         []string
 	qrTokenURL           string
 	qrExpires            time.Time
 	qrSessionPath        string
 	qrSession            *fakeQRLoginSession
 }
 
-func (fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
+func (f *fakeTelegram) SendCode(ctx context.Context, phone string, sessionPath string) (telegram.SentCode, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sendCodePhones = append(f.sendCodePhones, phone)
 	return telegram.SentCode{PhoneCodeHash: "hash"}, nil
 }
 
-func (fakeTelegram) SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (telegram.Profile, error) {
+func (f *fakeTelegram) SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (telegram.Profile, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.signInPhones = append(f.signInPhones, phone)
 	return telegram.Profile{TelegramUserID: 42, FirstName: "Ada", LastName: "Lovelace", Username: "ada"}, nil
 }
 

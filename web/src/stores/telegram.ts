@@ -43,6 +43,7 @@ export const useTelegramStore = defineStore('telegram', {
         this.loginResult = await apiPost<TelegramLoginResponse>('/api/telegram/login/send-code', {
           phone
         })
+        this.phone = this.loginResult.phone ?? phone
         return this.loginResult
       })
     },

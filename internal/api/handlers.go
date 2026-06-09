@@ -890,8 +890,13 @@ func (h handlers) sendCode(c *gin.Context) {
 		errorText(c, http.StatusBadRequest, "phone is required")
 		return
 	}
+	phone, err := telegram.NormalizePhone(req.Phone)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
 	accountID, err := h.deps.Accounts.Save(c.Request.Context(), model.Account{
-		Phone:  req.Phone,
+		Phone:  phone,
 		Status: model.AccountStatusLoginRequired,
 	})
 	if err != nil {
@@ -899,13 +904,13 @@ func (h handlers) sendCode(c *gin.Context) {
 		return
 	}
 	sessionPath := h.sessionPath(accountID)
-	sent, err := h.deps.Telegram.SendCode(c.Request.Context(), req.Phone, sessionPath)
+	sent, err := h.deps.Telegram.SendCode(c.Request.Context(), phone, sessionPath)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	h.deps.CodeStore.Save(req.Phone, sent.PhoneCodeHash)
-	c.JSON(http.StatusOK, gin.H{"status": model.AccountStatusLoginRequired})
+	h.deps.CodeStore.Save(phone, sent.PhoneCodeHash)
+	c.JSON(http.StatusOK, gin.H{"status": model.AccountStatusLoginRequired, "phone": phone})
 }
 
 func (h handlers) signIn(c *gin.Context) {
@@ -920,7 +925,12 @@ func (h handlers) signIn(c *gin.Context) {
 		errorText(c, http.StatusBadRequest, "phone and code are required")
 		return
 	}
-	account, err := h.deps.Accounts.FindByPhone(c.Request.Context(), req.Phone)
+	phone, err := telegram.NormalizePhone(req.Phone)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
+	account, err := h.deps.Accounts.FindByPhone(c.Request.Context(), phone)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, sql.ErrNoRows) {
@@ -929,12 +939,12 @@ func (h handlers) signIn(c *gin.Context) {
 		errorJSON(c, status, err)
 		return
 	}
-	hash, ok := h.deps.CodeStore.Take(req.Phone)
+	hash, ok := h.deps.CodeStore.Take(phone)
 	if !ok {
 		errorText(c, http.StatusBadRequest, "login code hash is missing; call send-code first")
 		return
 	}
-	profile, err := h.deps.Telegram.SignIn(c.Request.Context(), req.Phone, req.Code, hash, h.sessionPath(account.ID))
+	profile, err := h.deps.Telegram.SignIn(c.Request.Context(), phone, req.Code, hash, h.sessionPath(account.ID))
 	if err != nil {
 		if errors.Is(err, telegram.ErrPasswordRequired) {
 			c.JSON(http.StatusAccepted, gin.H{"status": model.AccountStatusLoginRequired, "password_required": true})
@@ -958,7 +968,12 @@ func (h handlers) password(c *gin.Context) {
 		errorText(c, http.StatusBadRequest, "phone and password are required")
 		return
 	}
-	account, err := h.deps.Accounts.FindByPhone(c.Request.Context(), req.Phone)
+	phone, err := telegram.NormalizePhone(req.Phone)
+	if err != nil {
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
+	account, err := h.deps.Accounts.FindByPhone(c.Request.Context(), phone)
 	if err != nil {
 		errorJSON(c, http.StatusNotFound, err)
 		return

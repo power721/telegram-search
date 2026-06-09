@@ -5,6 +5,9 @@ import HomeView from './HomeView.vue'
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn((path: string) => {
+    if (path === '/api/auth/me') {
+      return Promise.resolve({ id: 1, username: 'admin', role: 'admin' })
+    }
     if (path === '/api/status') {
       return Promise.resolve({
         service: 'ok',
@@ -56,6 +59,8 @@ describe('HomeView', () => {
     const wrapper = mount(HomeView)
     await new Promise((resolve) => setTimeout(resolve, 0))
     expect(wrapper.text()).toContain('存储使用')
+    expect(wrapper.text()).toContain('管理员账号')
+    expect(wrapper.text()).toContain('admin')
     expect(wrapper.text()).toContain('4.3 GB')
     expect(wrapper.text()).toContain('资源类型统计')
     expect(wrapper.text()).toContain('网盘')

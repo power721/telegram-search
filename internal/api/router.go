@@ -3,9 +3,12 @@ package api
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/apikey"
@@ -28,6 +31,7 @@ type AccountRuntime interface {
 }
 
 type Dependencies struct {
+	Logger           *zap.Logger
 	Users            *repository.UserRepository
 	APIKeys          *repository.APIKeyRepository
 	APIKeyService    *apikey.Service
@@ -66,8 +70,22 @@ type Dependencies struct {
 
 func NewRouter(deps Dependencies) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
+	if deps.Logger == nil {
+		deps.Logger = zap.NewNop()
+	}
 	router := gin.New()
-	router.Use(gin.Recovery())
+	router.Use(func(c *gin.Context) {
+		c.Set(apiLoggerKey, deps.Logger)
+		c.Next()
+	})
+	router.Use(gin.CustomRecoveryWithWriter(gin.DefaultErrorWriter, func(c *gin.Context, recovered any) {
+		deps.Logger.Error("api panic recovered",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Any("panic", recovered),
+		)
+		errorWithCode(c, http.StatusInternalServerError, "internal_error", fmt.Sprint(recovered))
+	}))
 
 	h := handlers{deps: deps}
 	if h.deps.APIKeyService == nil && h.deps.APIKeys != nil && h.deps.Settings != nil {

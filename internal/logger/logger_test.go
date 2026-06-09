@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func TestNewWritesNamedLogFiles(t *testing.T) {
@@ -35,6 +37,26 @@ func TestNewWritesNamedLogFiles(t *testing.T) {
 		if info.Size() == 0 {
 			t.Fatalf("%s is empty", name)
 		}
+	}
+}
+
+func TestAppLoggerWritesToConsole(t *testing.T) {
+	var console bytes.Buffer
+	dir := t.TempDir()
+	logs, err := newWithConsole(dir, zapcore.AddSync(&console))
+	if err != nil {
+		t.Fatalf("newWithConsole returned error: %v", err)
+	}
+	defer func() {
+		_ = logs.Sync()
+	}()
+
+	logs.App.Info("api server listening", zap.String("address", "0.0.0.0:8080"))
+	_ = logs.Sync()
+
+	output := console.String()
+	if !strings.Contains(output, "api server listening") || !strings.Contains(output, "0.0.0.0:8080") {
+		t.Fatalf("console output = %q, want listening address", output)
 	}
 }
 

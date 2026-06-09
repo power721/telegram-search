@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/backup"
@@ -43,6 +44,7 @@ const (
 	setupAPIKeyDoneKey      = "setup.api_key_done"
 	setupListenRulesDoneKey = "setup.listen_rules_done"
 )
+const apiLoggerKey = "api.logger"
 
 func (h handlers) health(c *gin.Context) {
 	resp := gin.H{
@@ -2624,5 +2626,22 @@ func errorText(c *gin.Context, status int, msg string) {
 }
 
 func errorWithCode(c *gin.Context, status int, code string, msg string) {
+	if status >= http.StatusInternalServerError {
+		apiLogger(c).Error("api request failed",
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Int("status", status),
+			zap.String("error", msg),
+		)
+	}
 	c.JSON(status, gin.H{"error": gin.H{"code": code, "message": localizedErrorMessage(status, msg)}})
+}
+
+func apiLogger(c *gin.Context) *zap.Logger {
+	if value, ok := c.Get(apiLoggerKey); ok {
+		if logger, ok := value.(*zap.Logger); ok && logger != nil {
+			return logger
+		}
+	}
+	return zap.L()
 }

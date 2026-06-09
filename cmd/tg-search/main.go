@@ -156,6 +156,7 @@ func run(configPath string) error {
 		Events:     eventBroker,
 		Handlers: map[string]taskpkg.Handler{
 			model.TaskTypeGapRecovery: historyService.RunGapRecoveryTask,
+			model.TaskTypeHistorySync: historyService.RunHistorySyncTask,
 		},
 		PollInterval: 2 * time.Second,
 	})

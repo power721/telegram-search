@@ -149,6 +149,64 @@ func (s *Service) RunGapRecoveryTask(ctx context.Context, item model.Task, progr
 	return err
 }
 
+func (s *Service) RunHistorySyncTask(ctx context.Context, item model.Task, progress taskpkg.ProgressSink) error {
+	var payload taskpkg.HistorySyncPayload
+	if err := json.Unmarshal([]byte(item.PayloadJSON), &payload); err != nil {
+		return fmt.Errorf("decode history sync payload: %w", err)
+	}
+	channelIDs := normalizeHistorySyncChannelIDs(payload)
+	if len(channelIDs) == 0 {
+		return fmt.Errorf("history sync channel_ids is required")
+	}
+	if payload.MaxMessages < 0 {
+		return fmt.Errorf("history sync max_messages must be non-negative")
+	}
+	total := len(channelIDs)
+	for i, channelID := range channelIDs {
+		if err := checkTaskStatus(ctx, progress); err != nil {
+			return err
+		}
+		if err := reportTaskProgress(ctx, progress, i, total, fmt.Sprintf("syncing channel %d", channelID)); err != nil {
+			return err
+		}
+		if _, err := s.syncChannel(ctx, channelID, "", payload.MaxMessages, historyTaskProgressSink{ProgressSink: progress}); err != nil {
+			return err
+		}
+		if err := reportTaskProgress(ctx, progress, i+1, total, fmt.Sprintf("synced channel %d", channelID)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeHistorySyncChannelIDs(payload taskpkg.HistorySyncPayload) []int64 {
+	seen := map[int64]struct{}{}
+	out := make([]int64, 0, len(payload.ChannelIDs)+1)
+	if payload.ChannelID > 0 {
+		seen[payload.ChannelID] = struct{}{}
+		out = append(out, payload.ChannelID)
+	}
+	for _, id := range payload.ChannelIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+type historyTaskProgressSink struct {
+	taskpkg.ProgressSink
+}
+
+func (s historyTaskProgressSink) Progress(context.Context, int64, int64, string) error {
+	return nil
+}
+
 func (s *Service) RecoverGapWithProgress(ctx context.Context, payload taskpkg.GapRecoveryPayload, progress taskpkg.ProgressSink) (SyncResult, error) {
 	if payload.ChannelID <= 0 || payload.FromMessageID <= 0 || payload.ToMessageID < payload.FromMessageID {
 		return SyncResult{}, fmt.Errorf("invalid gap recovery range %d..%d for channel %d", payload.FromMessageID, payload.ToMessageID, payload.ChannelID)

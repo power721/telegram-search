@@ -315,6 +315,43 @@ Request:
 
 Deep and Full changes check DB storage quota before saving. If DB usage is at or above `storage.max_db_size`, the API returns `409` with `storage_quota_exceeded`.
 
+### `POST /api/channels/:id/sync`
+
+Creates a persistent `history_sync` task for one channel. The task is visible on the Tasks page and is restored after service restart if it has not finished.
+
+Response:
+
+```json
+{
+  "task_id": 12,
+  "job_id": "12",
+  "status": "queued"
+}
+```
+
+### `POST /api/channels/sync`
+
+Creates one persistent `history_sync` task for selected channels. `max_messages` is optional; when omitted, each channel uses its saved Sync Profile.
+
+Request:
+
+```json
+{
+  "channel_ids": [1, 2, 3],
+  "max_messages": 1000
+}
+```
+
+Response:
+
+```json
+{
+  "task_id": 13,
+  "job_id": "13",
+  "status": "queued"
+}
+```
+
 ### `POST /api/channels/web-access/check`
 
 Runs Telegram Web Access Detection for selected channels.

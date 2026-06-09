@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -3944,12 +3945,9 @@ func TestRemoteSearchResultAPI(t *testing.T) {
 	}
 }
 
-func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
+func TestBatchSyncAPIEnqueuesHistorySyncTask(t *testing.T) {
 	ctx := context.Background()
 	deps, conn := testDepsWithDB(t)
-	deps.SyncQueue = scheduler.NewRetryQueue(scheduler.RetryQueueOptions{
-		Policy: retry.Policy{BaseDelay: time.Millisecond, MaxDelay: time.Millisecond, MaxTries: 1, Sleep: func(context.Context, time.Duration) error { return nil }},
-	})
 	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
 	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 10, AccessHash: 20, Title: "VIP", Type: model.ChannelTypeChannel})
 	deps.History = history.NewService(history.Options{
@@ -3970,21 +3968,28 @@ func TestBatchSyncAPIReturnsAsyncJob(t *testing.T) {
 		t.Fatalf("status = %d body=%s, want 202", w.Code, w.Body.String())
 	}
 	var body struct {
-		JobID  string `json:"job_id"`
+		TaskID int64  `json:"task_id"`
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if body.JobID == "" || body.Status != "queued" {
-		t.Fatalf("response = %+v, want queued job id", body)
+	if body.TaskID == 0 || body.Status != model.TaskStatusQueued {
+		t.Fatalf("response = %+v, want queued task id", body)
 	}
-	done, err := deps.SyncQueue.Wait(ctx, body.JobID)
+	task, err := deps.TaskRepository.FindByID(ctx, body.TaskID)
 	if err != nil {
-		t.Fatalf("wait job: %v", err)
+		t.Fatalf("find history sync task: %v", err)
 	}
-	if done.Status != scheduler.RetryJobSucceeded {
-		t.Fatalf("job status = %q error=%s, want succeeded", done.Status, done.Error)
+	if task.Type != model.TaskTypeHistorySync || task.Status != model.TaskStatusQueued {
+		t.Fatalf("task = %+v, want queued history sync", task)
+	}
+	var payload taskpkg.HistorySyncPayload
+	if err := json.Unmarshal([]byte(task.PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	if !reflect.DeepEqual(payload.ChannelIDs, []int64{channelID}) {
+		t.Fatalf("payload channel_ids = %+v, want [%d]", payload.ChannelIDs, channelID)
 	}
 }
 

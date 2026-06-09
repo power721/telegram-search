@@ -155,6 +155,65 @@ func TestProcessorFiltersRealtimeMessagesByEnabledWatchRule(t *testing.T) {
 	}
 }
 
+func TestProcessorKeepsRealtimeImageMessagesWhenRuleAllowsImages(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	rules := repository.NewWatchRuleRepository(fixture.conn)
+	_, err := rules.Create(ctx, model.WatchRule{
+		ChannelID:    fixture.channelID,
+		Enabled:      true,
+		MessageTypes: []string{"image"},
+		LinkTypes:    []string{"cloud_drive"},
+	})
+	if err != nil {
+		t.Fatalf("create watch rule: %v", err)
+	}
+	processor := NewProcessor(ProcessorOptions{
+		DB:        fixture.conn,
+		Channels:  fixture.channels,
+		Messages:  fixture.messages,
+		Links:     fixture.links,
+		Files:     fixture.files,
+		Extractor: link.NewExtractor(),
+		Filter:    messagefilter.New(rules),
+	})
+
+	if err := processor.Process(ctx, Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         15,
+		MessageType:       "photo",
+		MediaSummary:      "photo",
+		Text:              "cover",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+		Files: []model.File{{
+			FileName:  "telegram-photo-42.jpg",
+			Extension: ".jpg",
+			MimeType:  "image/jpeg",
+			Category:  "image",
+		}},
+	}); err != nil {
+		t.Fatalf("process image event: %v", err)
+	}
+
+	results, err := fixture.messages.Search(ctx, repository.SearchParams{Query: "cover", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 15 || results[0].MessageType != "photo" {
+		t.Fatalf("results = %+v, want stored photo message 15", results)
+	}
+	files, err := fixture.files.FindByMessageID(ctx, results[0].ID)
+	if err != nil {
+		t.Fatalf("find files: %v", err)
+	}
+	if len(files) != 1 || files[0].Category != "image" {
+		t.Fatalf("files = %+v, want image metadata", files)
+	}
+}
+
 func TestProcessorSkipsRealtimeMessagesWithoutEnabledWatchRule(t *testing.T) {
 	ctx := context.Background()
 	fixture := newProcessorFixture(t)

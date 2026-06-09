@@ -122,6 +122,8 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		result, err := p.filter.Apply(ctx, messagefilter.Request{
 			ChannelID:      channel.ID,
 			Text:           event.Text,
+			MessageType:    event.MessageType,
+			Files:          event.Files,
 			RequireRule:    true,
 			RequireEnabled: true,
 		})

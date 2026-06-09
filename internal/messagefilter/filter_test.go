@@ -43,6 +43,86 @@ func TestFilterAppliesLinksIncludesAndExcludes(t *testing.T) {
 	}
 }
 
+func TestFilterKeepsCloudDriveLinkWithMediaCover(t *testing.T) {
+	rules := fakeRules{byChannel: map[int64]model.WatchRule{
+		1: {
+			ChannelID:    1,
+			Enabled:      true,
+			MessageTypes: []string{"link"},
+			LinkTypes:    []string{"cloud_drive"},
+		},
+	}}
+	filter := New(rules)
+
+	result, err := filter.Apply(context.Background(), Request{
+		ChannelID:   1,
+		Text:        "海报 https://pan.quark.cn/s/abc",
+		MessageType: "photo",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if !result.Keep || len(result.Links) != 1 || result.Links[0].Category != "cloud_drive" {
+		t.Fatalf("result = %+v, want cloud drive link kept even when message has photo cover", result)
+	}
+}
+
+func TestFilterKeepsImageAndVideoMessagesByType(t *testing.T) {
+	rules := fakeRules{byChannel: map[int64]model.WatchRule{
+		1: {
+			ChannelID:    1,
+			Enabled:      true,
+			MessageTypes: []string{"image", "video"},
+			LinkTypes:    []string{"cloud_drive"},
+		},
+	}}
+	filter := New(rules)
+
+	image, err := filter.Apply(context.Background(), Request{
+		ChannelID:   1,
+		Text:        "cover",
+		MessageType: "photo",
+		Files:       []model.File{{FileName: "cover.jpg", MimeType: "image/jpeg", Category: "image"}},
+	})
+	if err != nil {
+		t.Fatalf("Apply image returned error: %v", err)
+	}
+	if !image.Keep {
+		t.Fatalf("image result = %+v, want keep", image)
+	}
+
+	video, err := filter.Apply(context.Background(), Request{
+		ChannelID:   1,
+		Text:        "clip",
+		MessageType: "video",
+		Files:       []model.File{{FileName: "clip.mp4", MimeType: "video/mp4", Category: "video"}},
+	})
+	if err != nil {
+		t.Fatalf("Apply video returned error: %v", err)
+	}
+	if !video.Keep {
+		t.Fatalf("video result = %+v, want keep", video)
+	}
+}
+
+func TestFilterAppliesLinkTypes(t *testing.T) {
+	rules := fakeRules{byChannel: map[int64]model.WatchRule{
+		1: {ChannelID: 1, Enabled: true, MessageTypes: []string{"link"}, LinkTypes: []string{"magnet"}},
+	}}
+	filter := New(rules)
+
+	result, err := filter.Apply(context.Background(), Request{
+		ChannelID: 1,
+		Text:      "网盘 https://pan.quark.cn/s/abc",
+	})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if result.Keep || result.Reason != ReasonLinkTypeMiss || len(result.Links) != 0 {
+		t.Fatalf("result = %+v, want cloud drive link filtered out", result)
+	}
+}
+
 func TestFilterHandlesMissingAndDisabledRules(t *testing.T) {
 	rules := fakeRules{byChannel: map[int64]model.WatchRule{
 		2: {ChannelID: 2, Enabled: false, Includes: []string{"庆余年"}},

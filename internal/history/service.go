@@ -904,6 +904,8 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 			result, err := s.filter.Apply(ctx, messagefilter.Request{
 				ChannelID:      msg.ChannelID,
 				Text:           msg.Text,
+				MessageType:    msg.MessageType,
+				Files:          msg.Files,
 				RequireRule:    false,
 				RequireEnabled: false,
 			})

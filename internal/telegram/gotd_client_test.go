@@ -199,6 +199,46 @@ func TestConvertMessageClassifiesPhotoMedia(t *testing.T) {
 	if converted.MessageType != "photo" || converted.MediaSummary != "photo" {
 		t.Fatalf("media metadata = %q/%q, want photo/photo", converted.MessageType, converted.MediaSummary)
 	}
+	if len(converted.Files) != 1 {
+		t.Fatalf("files = %+v, want one photo file", converted.Files)
+	}
+	file := converted.Files[0]
+	if file.FileName != "telegram-photo-42.jpg" || file.Extension != ".jpg" || file.MimeType != "image/jpeg" || file.Category != "image" {
+		t.Fatalf("photo file = %+v, want synthetic jpeg metadata", file)
+	}
+}
+
+func TestConvertMessageExtractsVideoFileMetadata(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	media := &tg.MessageMediaDocument{}
+	media.SetDocument(&tg.Document{
+		ID:       42,
+		MimeType: "video/mp4",
+		Size:     12345,
+		Attributes: []tg.DocumentAttributeClass{
+			&tg.DocumentAttributeVideo{W: 1920, H: 1080, Duration: 60},
+		},
+	})
+	message := &tg.Message{
+		ID:      10,
+		Date:    int(now.Unix()),
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "video",
+	}
+	message.SetMedia(media)
+
+	converted := convertMessage(message)
+
+	if converted.MessageType != "video" || converted.MediaSummary != "video/mp4" {
+		t.Fatalf("media metadata = %q/%q, want video/video/mp4", converted.MessageType, converted.MediaSummary)
+	}
+	if len(converted.Files) != 1 {
+		t.Fatalf("files = %+v, want one video file", converted.Files)
+	}
+	file := converted.Files[0]
+	if file.FileName != "telegram-video-42.mp4" || file.Extension != ".mp4" || file.MimeType != "video/mp4" || file.SizeBytes != 12345 || file.Category != "video" {
+		t.Fatalf("video file = %+v, want mp4 metadata", file)
+	}
 }
 
 func TestConvertMessageClassifiesWebPagePhotoMedia(t *testing.T) {

@@ -591,6 +591,75 @@ func TestSyncChannelAppliesWatchRuleAndIgnoresEnabled(t *testing.T) {
 	}
 }
 
+func TestSyncChannelKeepsVideoMessagesWhenRuleAllowsVideos(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	files := repository.NewFileRepository(conn)
+	_, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	rules := repository.NewWatchRuleRepository(conn)
+	_, err := rules.Create(ctx, model.WatchRule{
+		ChannelID:    channelID,
+		Enabled:      false,
+		MessageTypes: []string{"video"},
+		LinkTypes:    []string{"cloud_drive"},
+	})
+	if err != nil {
+		t.Fatalf("create watch rule: %v", err)
+	}
+	now := time.Now().UTC()
+	fake := &fakeTelegramClient{batches: map[int64][]telegram.Message{
+		0: {
+			{
+				TelegramMessageID: 4,
+				MessageType:       "video",
+				MediaSummary:      "video/mp4",
+				Text:              "clip",
+				RawJSON:           "{}",
+				Date:              now,
+				Files: []model.File{{
+					FileName:  "telegram-video-42.mp4",
+					Extension: ".mp4",
+					MimeType:  "video/mp4",
+					SizeBytes: 12345,
+					Category:  "video",
+				}},
+			},
+			{TelegramMessageID: 3, Text: "plain text", RawJSON: "{}", Date: now.Add(-time.Minute)},
+		},
+	}}
+	service := NewService(Options{
+		DB:               conn,
+		Accounts:         accounts,
+		Channels:         channels,
+		Messages:         messages,
+		Links:            links,
+		Files:            files,
+		Telegram:         fake,
+		Sessions:         session.NewManager(filepath.Join(t.TempDir(), "sessions")),
+		Extractor:        link.NewExtractor(),
+		HistoryBatchSize: 10,
+		Filter:           messagefilter.New(rules),
+	})
+
+	if _, err := service.SyncChannel(ctx, channelID); err != nil {
+		t.Fatalf("SyncChannel returned error: %v", err)
+	}
+	results, err := messages.Search(ctx, repository.SearchParams{Query: "clip", Limit: 10})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) != 1 || results[0].TelegramMessageID != 4 || results[0].MessageType != "video" {
+		t.Fatalf("results = %+v, want stored video message 4", results)
+	}
+	storedFiles, err := files.FindByMessageID(ctx, results[0].ID)
+	if err != nil {
+		t.Fatalf("find files: %v", err)
+	}
+	if len(storedFiles) != 1 || storedFiles[0].Category != "video" {
+		t.Fatalf("files = %+v, want video metadata", storedFiles)
+	}
+}
+
 func TestSyncChannelWithoutWatchRuleKeepsExistingBehavior(t *testing.T) {
 	ctx := context.Background()
 	conn, accounts, channels, messages, links := setupHistoryTestStore(t)

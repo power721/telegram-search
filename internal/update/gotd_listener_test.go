@@ -104,3 +104,50 @@ func TestEventsFromGotdUpdatesIncludesHiddenAndButtonURLs(t *testing.T) {
 		}
 	}
 }
+
+func TestEventsFromGotdUpdatesIncludesPhotoAndVideoFiles(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	photoMessage := &tg.Message{
+		ID:      20,
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "poster",
+		Date:    int(now.Unix()),
+	}
+	photoMessage.SetMedia(&tg.MessageMediaPhoto{
+		Photo: &tg.Photo{ID: 42},
+	})
+	videoMedia := &tg.MessageMediaDocument{}
+	videoMedia.SetDocument(&tg.Document{
+		ID:       43,
+		MimeType: "video/mp4",
+		Size:     12345,
+		Attributes: []tg.DocumentAttributeClass{
+			&tg.DocumentAttributeVideo{W: 1920, H: 1080, Duration: 60},
+		},
+	})
+	videoMessage := &tg.Message{
+		ID:      21,
+		PeerID:  &tg.PeerChannel{ChannelID: 200},
+		Message: "clip",
+		Date:    int(now.Unix()),
+	}
+	videoMessage.SetMedia(videoMedia)
+	updates := &tg.Updates{
+		Updates: []tg.UpdateClass{
+			&tg.UpdateNewChannelMessage{Message: photoMessage},
+			&tg.UpdateNewChannelMessage{Message: videoMessage},
+		},
+	}
+
+	events := EventsFromGotdUpdates(1, updates)
+
+	if len(events) != 2 {
+		t.Fatalf("len = %d, want 2: %+v", len(events), events)
+	}
+	if events[0].MessageType != "photo" || len(events[0].Files) != 1 || events[0].Files[0].Category != "image" {
+		t.Fatalf("photo event = %+v, want image file metadata", events[0])
+	}
+	if events[1].MessageType != "video" || len(events[1].Files) != 1 || events[1].Files[0].Category != "video" {
+		t.Fatalf("video event = %+v, want video file metadata", events[1])
+	}
+}

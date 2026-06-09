@@ -10,7 +10,7 @@ const setup = useSetupStore()
 
 const includes = ref('')
 const excludes = ref('')
-const messageTypes = ref(['link', 'text'])
+const messageTypes = ref(['link', 'text', 'image', 'video'])
 const linkTypes = ref(['cloud_drive', 'magnet', 'ed2k', 'other'])
 
 function terms(value: string) {
@@ -51,6 +51,7 @@ async function submit() {
         <n-form-item label="消息类型">
           <n-checkbox-group v-model:value="messageTypes">
             <n-checkbox value="link">链接</n-checkbox>
+            <n-checkbox value="image">图片</n-checkbox>
             <n-checkbox value="video">视频</n-checkbox>
             <n-checkbox value="audio">音频</n-checkbox>
             <n-checkbox value="file">文件</n-checkbox>

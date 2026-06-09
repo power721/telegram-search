@@ -253,6 +253,8 @@ func fileCategory(file model.File) string {
 	ext := strings.ToLower(file.Extension)
 	mimeType := strings.ToLower(file.MimeType)
 	switch {
+	case ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" || ext == ".gif" || strings.HasPrefix(mimeType, "image/"):
+		return "image"
 	case ext == ".mp4" || ext == ".mkv" || ext == ".avi" || strings.HasPrefix(mimeType, "video/"):
 		return "video"
 	case ext == ".pdf" || ext == ".epub" || ext == ".mobi":

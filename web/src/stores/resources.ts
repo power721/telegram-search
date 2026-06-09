@@ -1,11 +1,16 @@
 import { defineStore } from 'pinia'
-import { apiGet } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
 import type {
   LinksGroupedResponse,
   ResourceItem,
   ResourcesGroupedResponse,
   ResourcesResponse
 } from '@/api/types'
+
+export interface ResourceDeleteManyResult {
+  deleted: number
+  missing_ids: string[]
+}
 
 export interface ResourceFilters {
   keyword?: string
@@ -65,6 +70,23 @@ export const useResourcesStore = defineStore('resources', {
         this.linkTypesGrouped = response.grouped
         return response.grouped
       })
+    },
+    async deleteResource(id: string) {
+      return this.deleteResources([id])
+    },
+    async deleteResources(ids: string[]) {
+      return this.withLoading(async () => {
+        const result = await apiPost<ResourceDeleteManyResult>('/api/resources/bulk-delete', { ids })
+        const missing = new Set(result.missing_ids ?? [])
+        this.removeResources(ids.filter((id) => !missing.has(id)))
+        return result
+      })
+    },
+    removeResources(ids: string[]) {
+      const targets = new Set(ids)
+      const removed = this.items.filter((item) => targets.has(item.id)).length
+      this.items = this.items.filter((item) => !targets.has(item.id))
+      this.total = Math.max(0, this.total - removed)
     },
     async withLoading<T>(fn: () => Promise<T>): Promise<T> {
       this.loading = true

@@ -157,7 +157,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	resourceAccess := api.Group("")
 	resourceAccess.Use(h.requireAdminSession())
 	resourceAccess.GET("/resources/grouped", h.resourcesGrouped)
+	resourceAccess.POST("/resources/bulk-delete", h.bulkDeleteResources)
 	resourceAccess.GET("/resources/:id", h.resource)
+	resourceAccess.DELETE("/resources/:id", h.deleteResource)
 	resourceAccess.GET("/resources", h.resources)
 
 	mediaAccess := router.Group("")

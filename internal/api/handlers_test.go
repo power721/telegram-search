@@ -351,6 +351,74 @@ func TestResourcesAPI(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteResourcesAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu resources", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu", Note: "ubuntu"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	if _, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", SizeBytes: 5000, Category: "software"}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var list resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &list); err != nil {
+		t.Fatalf("invalid list JSON: %v", err)
+	}
+	if len(list.Items) != 2 {
+		t.Fatalf("resources = %+v, want two items", list.Items)
+	}
+
+	body := fmt.Sprintf(`{"ids":[%q,%q,"file:999999"]}`, list.Items[0].ID, list.Items[1].ID)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/resources/bulk-delete", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("bulk delete status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var deleted resource.DeleteManyResult
+	if err := json.Unmarshal(w.Body.Bytes(), &deleted); err != nil {
+		t.Fatalf("invalid delete JSON: %v", err)
+	}
+	if deleted.Deleted != 2 || len(deleted.MissingIDs) != 1 || deleted.MissingIDs[0] != "file:999999" {
+		t.Fatalf("delete result = %+v, want two deleted and missing file", deleted)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/resources?q=ubuntu", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("list after delete status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var after resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &after); err != nil {
+		t.Fatalf("invalid after JSON: %v", err)
+	}
+	if after.Total != 0 {
+		t.Fatalf("total after delete = %d, want 0", after.Total)
+	}
+}
+
 func TestResourcesAPIMediaURLsRequireAdminSession(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

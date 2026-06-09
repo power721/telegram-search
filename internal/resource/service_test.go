@@ -72,6 +72,74 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryDeleteManyRemovesLinksAndFiles(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+	files := repository.NewFileRepository(conn)
+	stats := repository.NewResourceStatsRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu old", RawJSON: "{}", Date: time.Date(2026, 6, 7, 12, 0, 0, 0, time.UTC)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu new", RawJSON: "{}", Date: time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{Type: "url", Category: "http", URL: "https://example.com/ubuntu"}}); err != nil {
+			t.Fatalf("save duplicate link: %v", err)
+		}
+	}
+	if _, err := files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "ubuntu.iso", Extension: ".iso", SizeBytes: 5000, Category: "software"}}); err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+
+	service := NewService(links, files, stats)
+	before, err := service.List(ctx, Query{Keyword: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("List before delete returned error: %v", err)
+	}
+	if len(before.Items) != 2 {
+		t.Fatalf("items before delete = %+v, want link and file", before.Items)
+	}
+	ids := []string{before.Items[0].ID, before.Items[1].ID, "link:https://example.com/missing"}
+	result, err := service.DeleteMany(ctx, ids)
+	if err != nil {
+		t.Fatalf("DeleteMany returned error: %v", err)
+	}
+	if result.Deleted != 2 || len(result.MissingIDs) != 1 || result.MissingIDs[0] != "link:https://example.com/missing" {
+		t.Fatalf("delete result = %+v, want two deleted and one missing", result)
+	}
+	after, err := service.List(ctx, Query{Keyword: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("List after delete returned error: %v", err)
+	}
+	if after.Total != 0 || len(after.Items) != 0 {
+		t.Fatalf("items after delete = %+v total=%d, want empty", after.Items, after.Total)
+	}
+	grouped, err := service.GlobalGrouped(ctx)
+	if err != nil {
+		t.Fatalf("GlobalGrouped returned error: %v", err)
+	}
+	if grouped["http"] != 0 || grouped["files"] != 0 {
+		t.Fatalf("grouped after delete = %+v, want empty resource counts", grouped)
+	}
+}
+
 func TestResourceLibraryRanksQualityBeforeFreshness(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

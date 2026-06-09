@@ -1,16 +1,18 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
 import { useResourcesStore } from './resources'
 
 vi.mock('@/api/client', () => ({
-  apiGet: vi.fn()
+  apiGet: vi.fn(),
+  apiPost: vi.fn()
 }))
 
 describe('useResourcesStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(apiGet).mockReset()
+    vi.mocked(apiPost).mockReset()
   })
 
   it('loads resources and grouped counts', async () => {
@@ -54,5 +56,27 @@ describe('useResourcesStore', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/resources?limit=50&offset=50')
     expect(store.total).toBe(75)
+  })
+
+  it('deletes selected resources through the bulk endpoint', async () => {
+    vi.mocked(apiPost).mockResolvedValue({
+      deleted: 1,
+      missing_ids: ['link:missing']
+    })
+    const store = useResourcesStore()
+    store.items = [
+      { id: 'link:https://example.com/course', kind: 'link', category: 'cloud_drive', title: 'Course' },
+      { id: 'file:7', kind: 'file', category: 'files', file_name: 'ubuntu.iso' }
+    ]
+    store.total = 2
+
+    const result = await store.deleteResources(['link:https://example.com/course', 'link:missing'])
+
+    expect(apiPost).toHaveBeenCalledWith('/api/resources/bulk-delete', {
+      ids: ['link:https://example.com/course', 'link:missing']
+    })
+    expect(result.deleted).toBe(1)
+    expect(store.items.map((item) => item.id)).toEqual(['file:7'])
+    expect(store.total).toBe(1)
   })
 })

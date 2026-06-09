@@ -2252,6 +2252,53 @@ func (h handlers) resource(c *gin.Context) {
 	errorText(c, http.StatusNotFound, "resource not found")
 }
 
+func (h handlers) deleteResource(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	if err := h.deps.Resources.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		if errors.Is(err, resource.ErrInvalidResourceID) {
+			errorJSON(c, http.StatusBadRequest, err)
+			return
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h handlers) bulkDeleteResources(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	var req struct {
+		IDs []string `json:"ids"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	if len(req.IDs) == 0 {
+		errorText(c, http.StatusBadRequest, "ids are required")
+		return
+	}
+	result, err := h.deps.Resources.DeleteMany(c.Request.Context(), req.IDs)
+	if err != nil {
+		if errors.Is(err, resource.ErrInvalidResourceID) {
+			errorJSON(c, http.StatusBadRequest, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
 func readResourceQuery(c *gin.Context) (resource.Query, bool) {
 	accountID, channelID, limit, offset, ok := readFilters(c)
 	if !ok {

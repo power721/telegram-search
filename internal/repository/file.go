@@ -263,6 +263,18 @@ WHERE ` + strings.Join(where, " AND ")
 	return total, nil
 }
 
+func (r *FileRepository) DeleteResourceByID(ctx context.Context, id int64) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM telegram_files WHERE id = ?`, id)
+	if err != nil {
+		return 0, fmt.Errorf("delete resource file: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete resource file rows affected: %w", err)
+	}
+	return affected, nil
+}
+
 func fileSearchWhere(params FileSearchParams) ([]string, []any) {
 	where := []string{`m.deleted = 0`}
 	args := []any{}

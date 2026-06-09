@@ -2,7 +2,10 @@ package resource
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,11 +121,18 @@ type ListResult struct {
 	Grouped map[string]int `json:"grouped"`
 }
 
+type DeleteManyResult struct {
+	Deleted    int      `json:"deleted"`
+	MissingIDs []string `json:"missing_ids"`
+}
+
 type Service struct {
 	links *repository.LinkRepository
 	files *repository.FileRepository
 	stats *repository.ResourceStatsRepository
 }
+
+var ErrInvalidResourceID = errors.New("invalid resource id")
 
 func NewService(links *repository.LinkRepository, files *repository.FileRepository, stats ...*repository.ResourceStatsRepository) *Service {
 	service := &Service{links: links, files: files}
@@ -204,7 +214,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		}
 		for _, file := range files {
 			items = append(items, Item{
-				ID:                "file:" + file.FileName + ":" + file.MessageDate.Format(time.RFC3339Nano),
+				ID:                "file:" + strconv.FormatInt(file.ID, 10),
 				Kind:              "file",
 				Type:              "files",
 				Category:          "files",
@@ -241,6 +251,115 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		end = len(items)
 	}
 	return ListResult{Items: items[offset:end], Total: total, Grouped: grouped}, nil
+}
+
+func (s *Service) Delete(ctx context.Context, id string) error {
+	deleted, err := s.deleteOne(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return sql.ErrNoRows
+	}
+	return s.RefreshGlobalGrouped(ctx)
+}
+
+func (s *Service) DeleteMany(ctx context.Context, ids []string) (DeleteManyResult, error) {
+	result := DeleteManyResult{MissingIDs: []string{}}
+	seen := map[string]struct{}{}
+	targets := []string{}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		if err := validateResourceID(id); err != nil {
+			return result, err
+		}
+		targets = append(targets, id)
+	}
+	for _, id := range targets {
+		deleted, err := s.deleteOne(ctx, id)
+		if err != nil {
+			return result, err
+		}
+		if deleted {
+			result.Deleted++
+		} else {
+			result.MissingIDs = append(result.MissingIDs, id)
+		}
+	}
+	if result.Deleted > 0 {
+		if err := s.RefreshGlobalGrouped(ctx); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
+}
+
+func validateResourceID(id string) error {
+	kind, value, err := parseResourceID(id)
+	if err != nil {
+		return err
+	}
+	if kind != "file" {
+		return nil
+	}
+	fileID, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || fileID <= 0 {
+		return ErrInvalidResourceID
+	}
+	return nil
+}
+
+func (s *Service) deleteOne(ctx context.Context, id string) (bool, error) {
+	kind, value, err := parseResourceID(id)
+	if err != nil {
+		return false, err
+	}
+	switch kind {
+	case "link":
+		if s.links == nil {
+			return false, nil
+		}
+		affected, err := s.links.DeleteResourceByURL(ctx, value)
+		return affected > 0, err
+	case "file":
+		if s.files == nil {
+			return false, nil
+		}
+		fileID, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || fileID <= 0 {
+			return false, ErrInvalidResourceID
+		}
+		affected, err := s.files.DeleteResourceByID(ctx, fileID)
+		return affected > 0, err
+	default:
+		return false, ErrInvalidResourceID
+	}
+}
+
+func parseResourceID(id string) (string, string, error) {
+	switch {
+	case strings.HasPrefix(id, "link:"):
+		url := strings.TrimPrefix(id, "link:")
+		if strings.TrimSpace(url) == "" {
+			return "", "", ErrInvalidResourceID
+		}
+		return "link", url, nil
+	case strings.HasPrefix(id, "file:"):
+		value := strings.TrimPrefix(id, "file:")
+		if strings.TrimSpace(value) == "" {
+			return "", "", ErrInvalidResourceID
+		}
+		return "file", value, nil
+	default:
+		return "", "", ErrInvalidResourceID
+	}
 }
 
 func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]int, error) {

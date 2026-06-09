@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useDialog } from 'naive-ui'
+import type { ResourceItem } from '@/api/types'
 import AppPagination from '@/components/common/AppPagination.vue'
 import ResourceFilters from '@/components/resources/ResourceFilters.vue'
 import ResourceTable from '@/components/resources/ResourceTable.vue'
@@ -9,11 +11,13 @@ import { useResourcesStore } from '@/stores/resources'
 const pageSizeOptions = [20, 50, 100]
 const resources = useResourcesStore()
 const channels = useChannelsStore()
+const dialog = useDialog()
 const keyword = ref('')
 const category = ref('')
 const channelId = ref<string | number>('')
 const pageSize = ref(50)
 const offset = ref(0)
+const selectedResourceIds = ref<string[]>([])
 
 const page = computed(() => Math.floor(offset.value / pageSize.value) + 1)
 const allCount = computed(() => {
@@ -75,6 +79,56 @@ async function changePageSize(value: number) {
   await load()
 }
 
+function toggleResourceSelection(item: ResourceItem, selected: boolean) {
+  const next = new Set(selectedResourceIds.value)
+  if (selected) {
+    next.add(item.id)
+  } else {
+    next.delete(item.id)
+  }
+  selectedResourceIds.value = [...next]
+}
+
+function toggleCurrentPageSelection(selected: boolean) {
+  selectedResourceIds.value = selected ? resources.items.map((item) => item.id) : []
+}
+
+function confirmDeleteResource(item: ResourceItem) {
+  dialog.warning({
+    title: '删除资源',
+    content: `确定删除 ${resourceLabel(item)}？`,
+    positiveText: '删除资源',
+    positiveButtonProps: { type: 'error' },
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await resources.deleteResource(item.id)
+      selectedResourceIds.value = selectedResourceIds.value.filter((id) => id !== item.id)
+      await load()
+    }
+  })
+}
+
+function confirmDeleteSelectedResources() {
+  const ids = [...selectedResourceIds.value]
+  if (ids.length === 0) return
+  dialog.warning({
+    title: '删除资源',
+    content: `确定删除选中的 ${ids.length} 个资源？`,
+    positiveText: '删除资源',
+    positiveButtonProps: { type: 'error' },
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await resources.deleteResources(ids)
+      selectedResourceIds.value = []
+      await load()
+    }
+  })
+}
+
+function resourceLabel(item: ResourceItem) {
+  return item.media?.title || item.title || item.file_name || item.url || item.id
+}
+
 onMounted(() => {
   void channels.loadChannels()
   void load()
@@ -88,6 +142,17 @@ onMounted(() => {
         <p class="page-kicker">Telegram 资源库</p>
         <h1 class="page-title">资源</h1>
         <p class="page-subtitle">按类型、关键词和来源浏览已索引的链接与文件资源。</p>
+      </div>
+      <div class="header-actions">
+        <n-button
+          :disabled="selectedResourceIds.length === 0 || resources.loading"
+          ghost
+          type="error"
+          @click="confirmDeleteSelectedResources"
+        >
+          删除选中
+        </n-button>
+        <n-button :loading="resources.loading" @click="load">刷新</n-button>
       </div>
     </div>
 
@@ -120,7 +185,14 @@ onMounted(() => {
       <span class="skeleton-line" />
       <span class="skeleton-line short" />
     </div>
-    <ResourceTable class="table" :items="resources.items" />
+    <ResourceTable
+      class="table"
+      :items="resources.items"
+      :selected-ids="selectedResourceIds"
+      @delete="confirmDeleteResource"
+      @toggle-select="toggleResourceSelection"
+      @toggle-select-all="toggleCurrentPageSelection"
+    />
     <AppPagination
       :loading="resources.loading"
       :page="page"

@@ -1,8 +1,20 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
 import ResourcesView from './ResourcesView.vue'
+
+const dialogWarning = vi.fn((options: { onPositiveClick?: () => void }) => {
+  options.onPositiveClick?.()
+})
+
+vi.mock('naive-ui', async () => {
+  const actual = await vi.importActual<typeof import('naive-ui')>('naive-ui')
+  return {
+    ...actual,
+    useDialog: () => ({ warning: dialogWarning })
+  }
+})
 
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn((path: string) => {
@@ -31,13 +43,15 @@ vi.mock('@/api/client', () => ({
       total: 75,
       grouped: { cloud_drive: 1, magnet: 2, ed2k: 3, http: 4, files: 5 }
     })
-  })
+  }),
+  apiPost: vi.fn().mockResolvedValue({ deleted: 1, missing_ids: [] })
 }))
 
 describe('ResourcesView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    vi.mocked(apiPost).mockResolvedValue({ deleted: 1, missing_ids: [] })
   })
 
   it('renders resource filters and table', async () => {
@@ -118,6 +132,33 @@ describe('ResourcesView', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/channels')
     expect(apiGet).toHaveBeenCalledWith('/api/resources?channel_id=7&limit=50')
     expect(wrapper.text()).toContain('第 1 / 2 页')
+  })
+
+  it('deletes one resource after confirmation', async () => {
+    const wrapper = mountResourcesView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(dialogWarning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '删除资源',
+        positiveText: '删除资源'
+      })
+    )
+    expect(apiPost).toHaveBeenCalledWith('/api/resources/bulk-delete', { ids: ['link:1'] })
+  })
+
+  it('deletes selected resources after confirmation', async () => {
+    const wrapper = mountResourcesView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await wrapper.get('input[aria-label="选择资源 Course Pack"]').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text() === '删除选中')!.trigger('click')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiPost).toHaveBeenCalledWith('/api/resources/bulk-delete', { ids: ['link:1'] })
   })
 })
 

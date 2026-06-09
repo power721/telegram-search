@@ -1,16 +1,37 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import type { ResourceItem } from '@/api/types'
 import { telegramMessageHref } from '@/utils/telegramLinks'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   items: ResourceItem[]
+  selectedIds?: string[]
+}>(), {
+  selectedIds: () => []
+})
+
+const emit = defineEmits<{
+  delete: [item: ResourceItem]
+  toggleSelect: [item: ResourceItem, selected: boolean]
+  toggleSelectAll: [selected: boolean]
 }>()
 
 const failedImageThumbs = ref(new Set<string>())
 const activeVideo = ref<ResourceItem | null>(null)
 const videoDialogVisible = ref(false)
 const isVideoMaximized = ref(false)
+const selectedSet = computed(() => new Set(props.selectedIds))
+const selectedItemsCount = computed(() => props.items.filter((item) => selectedSet.value.has(item.id)).length)
+const allCurrentPageSelected = computed(() => props.items.length > 0 && selectedItemsCount.value === props.items.length)
+const partlyCurrentPageSelected = computed(() => selectedItemsCount.value > 0 && !allCurrentPageSelected.value)
+
+function toggleResourceSelection(item: ResourceItem, event: Event) {
+  emit('toggleSelect', item, (event.target as HTMLInputElement).checked)
+}
+
+function toggleCurrentPageSelection(event: Event) {
+  emit('toggleSelectAll', (event.target as HTMLInputElement).checked)
+}
 
 function showImageThumb(item: ResourceItem) {
   return Boolean(item.media?.image_url && !failedImageThumbs.value.has(item.id))
@@ -137,10 +158,21 @@ function formatDate(value?: string) {
 <template>
   <div class="resource-table data-table">
     <div class="table-head sticky-head">
+      <label class="select-cell">
+        <input
+          :checked="allCurrentPageSelected"
+          :disabled="items.length === 0"
+          :indeterminate="partlyCurrentPageSelected"
+          aria-label="选择当前页全部资源"
+          type="checkbox"
+          @change="toggleCurrentPageSelection"
+        />
+      </label>
       <span>资源</span>
       <span>类型</span>
       <span>来源</span>
       <span>发布时间</span>
+      <span>操作</span>
     </div>
     <div v-if="items.length === 0" class="empty-state">
       <strong>暂无资源</strong>
@@ -148,6 +180,14 @@ function formatDate(value?: string) {
     </div>
     <template v-for="item in items" :key="item.id">
       <article class="table-row">
+        <label class="select-cell">
+          <input
+            :aria-label="`选择资源 ${itemLabel(item)}`"
+            :checked="selectedSet.has(item.id)"
+            type="checkbox"
+            @change="toggleResourceSelection(item, $event)"
+          />
+        </label>
         <div class="resource-cell">
           <button
             v-if="showPlayableVideo(item)"
@@ -211,6 +251,9 @@ function formatDate(value?: string) {
           <template v-else>{{ item.channel_title || 'Telegram' }}</template>
         </span>
         <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
+        <span class="resource-actions">
+          <button class="delete-resource-button" type="button" @click="emit('delete', item)">删除</button>
+        </span>
       </article>
     </template>
     <n-modal :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
@@ -277,7 +320,7 @@ function formatDate(value?: string) {
 .table-row {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 120px 150px 180px;
+  grid-template-columns: 28px minmax(0, 1fr) 120px 150px 180px 72px;
   padding: 8px 10px;
 }
 
@@ -315,6 +358,18 @@ function formatDate(value?: string) {
   display: flex;
   gap: 10px;
   min-width: 0;
+}
+
+.select-cell {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.select-cell input {
+  accent-color: var(--app-accent);
+  height: 16px;
+  width: 16px;
 }
 
 .resource-copy {
@@ -464,6 +519,27 @@ img.resource-thumb {
   color: var(--app-text-muted);
 }
 
+.resource-actions {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.delete-resource-button {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--app-danger, #d03050) 35%, var(--app-border));
+  border-radius: 6px;
+  color: var(--app-danger, #d03050);
+  cursor: pointer;
+  font: inherit;
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+.delete-resource-button:hover {
+  background: color-mix(in srgb, var(--app-danger, #d03050) 9%, transparent);
+}
+
 .video-player-dialog {
   max-width: min(1200px, calc(100vw - 32px));
   width: 1200px;
@@ -529,6 +605,14 @@ img.resource-thumb {
 
   .table-row {
     grid-template-columns: 1fr;
+  }
+
+  .select-cell {
+    justify-content: flex-start;
+  }
+
+  .resource-actions {
+    justify-content: flex-start;
   }
 
   .resource-thumb-preview {

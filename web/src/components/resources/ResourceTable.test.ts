@@ -20,6 +20,32 @@ describe('ResourceTable', () => {
     expect(wrapper.find('.empty-state').text()).toContain('暂无资源')
   })
 
+  it('emits row selection, page selection, and delete events', async () => {
+    const items = [
+      {
+        id: 'link:https://example.com/course',
+        kind: 'link' as const,
+        category: 'cloud_drive',
+        title: 'Course Pack',
+        url: 'https://example.com/course'
+      }
+    ]
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items,
+        selectedIds: []
+      }
+    })
+
+    await wrapper.get('input[aria-label="选择资源 Course Pack"]').setValue(true)
+    await wrapper.get('input[aria-label="选择当前页全部资源"]').setValue(true)
+    await wrapper.findAll('button').find((button) => button.text() === '删除')!.trigger('click')
+
+    expect(wrapper.emitted('toggleSelect')?.[0]).toEqual([items[0], true])
+    expect(wrapper.emitted('toggleSelectAll')?.[0]).toEqual([true])
+    expect(wrapper.emitted('delete')?.[0]).toEqual([items[0]])
+  })
+
   it('styles external links as visible links', () => {
     expect(resourceTableSource).toMatch(/\.external-link\s*\{[\s\S]*color:\s*var\(--app-accent\);/)
     expect(resourceTableSource).toMatch(/\.external-link\s*\{[\s\S]*text-decoration:\s*underline;/)

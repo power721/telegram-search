@@ -258,6 +258,18 @@ GROUP BY COALESCE(NULLIF(type, ''), 'url')`)
 	return grouped, rows.Err()
 }
 
+func (r *LinkRepository) DeleteResourceByURL(ctx context.Context, url string) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM telegram_links WHERE url = ?`, url)
+	if err != nil {
+		return 0, fmt.Errorf("delete resource link: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("delete resource link rows affected: %w", err)
+	}
+	return affected, nil
+}
+
 func linkSearchWhere(params LinkSearchParams) ([]string, []any) {
 	where := []string{`m.deleted = 0`}
 	args := []any{}

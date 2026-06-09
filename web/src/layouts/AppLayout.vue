@@ -12,7 +12,8 @@ const navItems = [
   { label: '账号', eyebrow: '账号管理', to: '/accounts', name: 'accounts' },
   { label: '任务', eyebrow: '任务队列', to: '/tasks', name: 'tasks' },
   { label: '日志', eyebrow: '运行日志', to: '/logs', name: 'logs' },
-  { label: '设置', eyebrow: '系统设置', to: '/settings', name: 'settings' }
+  { label: '设置', eyebrow: '系统设置', to: '/settings', name: 'settings' },
+  { label: 'API', eyebrow: '接口帮助', to: '/api-help', name: 'api-help' }
 ]
 
 const activeName = computed(() => String(route.name ?? 'home'))

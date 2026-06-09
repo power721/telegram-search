@@ -21,6 +21,8 @@ describe('AppLayout', () => {
     expect(wrapper.find('.app-toolbar').exists()).toBe(true)
     expect(wrapper.find('.content-frame').exists()).toBe(true)
     expect(wrapper.find('.nav-item.active span').text()).toBe('资源')
+    const labels = wrapper.findAll('.nav-item span').map((item) => item.text())
+    expect(labels.slice(-2)).toEqual(['设置', 'API'])
     expect(wrapper.text()).toContain('TG Search')
     expect(wrapper.text()).toContain('本地索引控制台')
   })

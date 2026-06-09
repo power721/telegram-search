@@ -8,13 +8,15 @@ defineProps<{
 }>()
 
 const failedImageThumbs = ref(new Set<string>())
+const activeVideo = ref<ResourceItem | null>(null)
+const videoDialogVisible = ref(false)
 
 function showImageThumb(item: ResourceItem) {
   return Boolean(item.media?.image_url && !failedImageThumbs.value.has(item.id))
 }
 
-function showVideoThumb(item: ResourceItem) {
-  return Boolean(item.media?.video_url && (!item.media?.image_url || failedImageThumbs.value.has(item.id)))
+function showPlayableVideo(item: ResourceItem) {
+  return Boolean(item.media?.video_url)
 }
 
 function markImageThumbFailed(item: ResourceItem) {
@@ -62,6 +64,25 @@ function itemLabel(item: ResourceItem) {
   return item.media?.title || item.title || item.file_name || item.url || '-'
 }
 
+function openVideoPlayer(item: ResourceItem) {
+  if (!item.media?.video_url) return
+  activeVideo.value = item
+  videoDialogVisible.value = true
+}
+
+function closeVideoPlayer() {
+  videoDialogVisible.value = false
+  activeVideo.value = null
+}
+
+function handleVideoDialogVisibleUpdate(show: boolean) {
+  if (show) {
+    videoDialogVisible.value = true
+    return
+  }
+  closeVideoPlayer()
+}
+
 function mediaMetaParts(item: ResourceItem) {
   return [
     item.media?.year,
@@ -104,7 +125,24 @@ function formatDate(value?: string) {
     <template v-for="item in items" :key="item.id">
       <article class="table-row">
         <div class="resource-cell">
-          <span v-if="showImageThumb(item)" class="resource-thumb-frame">
+          <button
+            v-if="showPlayableVideo(item)"
+            class="resource-thumb-button"
+            type="button"
+            :aria-label="`播放视频 ${itemLabel(item)}`"
+            @click="openVideoPlayer(item)"
+          >
+            <img
+              v-if="showImageThumb(item)"
+              class="resource-thumb"
+              :src="item.media?.image_url"
+              alt=""
+              loading="lazy"
+              @error="markImageThumbFailed(item)"
+            />
+            <span v-else class="resource-thumb resource-video-placeholder" aria-hidden="true"></span>
+          </button>
+          <span v-else-if="showImageThumb(item)" class="resource-thumb-frame">
             <img
               class="resource-thumb"
               :src="item.media?.image_url"
@@ -114,15 +152,6 @@ function formatDate(value?: string) {
             />
             <img class="resource-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
           </span>
-          <video
-            v-else-if="showVideoThumb(item)"
-            class="resource-thumb"
-            :poster="item.media?.image_url"
-            :src="item.media?.video_url"
-            muted
-            playsinline
-            preload="metadata"
-          ></video>
           <div class="resource-copy">
             <strong>
               <a
@@ -160,6 +189,24 @@ function formatDate(value?: string) {
         <time :datetime="item.datetime">{{ formatDate(item.datetime) }}</time>
       </article>
     </template>
+    <n-modal :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
+      <n-card v-if="activeVideo" class="video-player-dialog" :bordered="false">
+        <div class="video-player-header">
+          <h2>{{ itemLabel(activeVideo) }}</h2>
+          <n-button aria-label="关闭视频播放" circle quaternary size="small" @click="closeVideoPlayer">×</n-button>
+        </div>
+        <video
+          :key="activeVideo.id"
+          class="video-player"
+          :poster="activeVideo.media?.image_url"
+          :src="activeVideo.media?.video_url"
+          autoplay
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+      </n-card>
+    </n-modal>
   </div>
 </template>
 
@@ -225,6 +272,48 @@ function formatDate(value?: string) {
   width: 88px;
 }
 
+.resource-thumb-button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  display: flex;
+  flex: 0 0 88px;
+  height: 55px;
+  padding: 0;
+  position: relative;
+  width: 88px;
+}
+
+.resource-thumb-button:hover .resource-thumb {
+  border-color: var(--app-accent);
+}
+
+.resource-thumb-button::before,
+.resource-thumb-button::after {
+  content: "";
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+}
+
+.resource-thumb-button::before {
+  background: rgba(0, 0, 0, 0.52);
+  border-radius: 999px;
+  height: 28px;
+  width: 28px;
+}
+
+.resource-thumb-button::after {
+  border-bottom: 7px solid transparent;
+  border-left: 11px solid #fff;
+  border-top: 7px solid transparent;
+  margin-left: 2px;
+}
+
 .resource-thumb {
   aspect-ratio: 16 / 10;
   background: var(--app-bg-muted);
@@ -234,6 +323,13 @@ function formatDate(value?: string) {
   height: 55px;
   object-fit: cover;
   width: 88px;
+}
+
+.resource-video-placeholder {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.12) 12.5%, transparent 12.5% 87.5%, rgba(255, 255, 255, 0.12) 87.5%),
+    linear-gradient(135deg, #24292f, #57606a);
+  display: block;
 }
 
 .resource-thumb-preview {
@@ -294,6 +390,38 @@ function formatDate(value?: string) {
 
 .table-row time {
   color: var(--app-text-muted);
+}
+
+.video-player-dialog {
+  max-width: min(920px, calc(100vw - 32px));
+  width: 920px;
+}
+
+.video-player-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.video-player-header h2 {
+  color: var(--app-heading);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.video-player {
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 6px;
+  display: block;
+  max-height: calc(100vh - 180px);
+  width: 100%;
 }
 
 @media (max-width: 760px) {

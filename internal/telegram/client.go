@@ -15,6 +15,11 @@ var ErrPasswordRequired = errors.New("telegram password required")
 var ErrCredentialsNotConfigured = errors.New("telegram api settings are not configured")
 
 const (
+	DefaultAPIID   = 26375241
+	DefaultAPIHash = "70f574f48a016d683c64f2f7a217d04f"
+)
+
+const (
 	QRLoginStatusPending = "pending"
 	QRLoginStatusOnline  = "online"
 )

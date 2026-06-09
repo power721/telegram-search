@@ -51,7 +51,7 @@ describe('ResourceTable', () => {
     expect(wrapper.text()).toContain(expected)
   })
 
-  it('opens the Telegram message position only from the channel column', () => {
+  it('opens the Telegram message position from the resource title and channel column', () => {
     const wrapper = mount(ResourceTable, {
       props: {
         items: [
@@ -70,8 +70,13 @@ describe('ResourceTable', () => {
     })
 
     expect(wrapper.find('a.table-row').exists()).toBe(false)
+    expect(wrapper.find('a.title-link').attributes('href')).toBe('tg://resolve?domain=resources&post=77')
     expect(wrapper.find('a.channel-link').attributes('href')).toBe('tg://resolve?domain=resources&post=77')
     expect(wrapper.find('a.external-link').attributes('href')).toBe('https://example.com/course')
+    for (const link of wrapper.findAll('a.title-link, a.channel-link')) {
+      expect(link.attributes('target')).toBe('_blank')
+      expect(link.attributes('rel')).toContain('noopener')
+    }
   })
 
   it('renders media thumbnails for resources with image URLs', () => {

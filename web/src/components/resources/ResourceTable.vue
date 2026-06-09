@@ -98,7 +98,18 @@ function formatDate(value?: string) {
             preload="metadata"
           ></video>
           <div class="resource-copy">
-            <strong>{{ itemLabel(item) }}</strong>
+            <strong>
+              <a
+                v-if="messageHref(item)"
+                class="title-link"
+                :href="messageHref(item)"
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {{ itemLabel(item) }}
+              </a>
+              <template v-else>{{ itemLabel(item) }}</template>
+            </strong>
             <p v-if="item.url">
               <a class="external-link" :href="item.url" rel="noopener noreferrer" target="_blank">{{ item.url }}</a>
             </p>
@@ -230,6 +241,7 @@ function formatDate(value?: string) {
 }
 
 .external-link,
+.title-link,
 .channel-link {
   text-decoration: none;
 }
@@ -244,10 +256,12 @@ function formatDate(value?: string) {
   color: var(--app-accent-hover);
 }
 
+.title-link,
 .channel-link {
   color: inherit;
 }
 
+.title-link:hover,
 .channel-link:hover {
   color: var(--app-accent);
 }

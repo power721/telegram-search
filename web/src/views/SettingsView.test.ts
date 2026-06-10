@@ -326,6 +326,21 @@ describe('SettingsView', () => {
     expect(panes.map((pane) => pane.find('h2').text())).toEqual(['账号与安全', '存储', '运行参数', '系统'])
   })
 
+  it('keeps API key and Telegram API panels in the right security column', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    const leftPanels = wrapper.findAll('.security-column-left > .panel')
+    const rightPanels = wrapper.findAll('.security-column-right > .panel')
+
+    expect(leftPanels.map((panel) => panel.find('h2').text())).toEqual(['管理员账号'])
+    expect(rightPanels.map((panel) => panel.find('h2').text())).toEqual(['API 密钥', 'Telegram API'])
+  })
+
   it('loads and saves runtime settings from the runtime tab', async () => {
     const wrapper = mount(SettingsView, {
       global: {

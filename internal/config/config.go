@@ -328,7 +328,12 @@ func validate(cfg Config) error {
 }
 
 func writeGeneratedConfig(path string, cfg Config) error {
-	data, err := yaml.Marshal(cfg)
+	data, err := yaml.Marshal(generatedFileConfig{
+		Server: cfg.Server,
+		Storage: generatedStorageConfig{
+			Path: cfg.Storage.Path,
+		},
+	})
 	if err != nil {
 		return fmt.Errorf("marshal generated config: %w", err)
 	}
@@ -339,6 +344,15 @@ func writeGeneratedConfig(path string, cfg Config) error {
 		return fmt.Errorf("write generated config %s: %w", path, err)
 	}
 	return nil
+}
+
+type generatedFileConfig struct {
+	Server  ServerConfig           `yaml:"server"`
+	Storage generatedStorageConfig `yaml:"storage"`
+}
+
+type generatedStorageConfig struct {
+	Path string `yaml:"path"`
 }
 
 func dockerRuntimeConfig() Config {

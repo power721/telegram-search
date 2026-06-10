@@ -1,14 +1,5 @@
 server:
   host: 0.0.0.0
   port: 9900
-sync:
-  workers: 5
-  history_batch_size: 100
-  telegram_request_interval: 2s
 storage:
   path: /data/tg-search
-  max_db_size: 10GB
-  max_media_cache: 20GB
-telegram:
-  media:
-    concurrency: 2

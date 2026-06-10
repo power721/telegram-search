@@ -5,10 +5,9 @@
 - `server.host` is bound to a private interface unless a reverse proxy adds authentication and TLS.
 - `server.port` does not conflict with other local services.
 - `storage.path` points to persistent storage mounted at `/data/tg-search`.
-- `storage.max_db_size` is set for the host disk size.
-- `storage.max_media_cache` is set for the host disk size.
+- Database and media cache limits are set for the host disk size in Settings > Storage.
 - DB quota enforcement reports usage, warns, and blocks new `Deep` or `Full` sync starts when the database quota is exceeded.
-- Telegram API credentials are configured in `config.yaml`.
+- Telegram API credentials are configured in the setup flow or Settings > Account and Security.
 
 ## Storage
 

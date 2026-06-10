@@ -103,34 +103,14 @@ go build -o /tmp/tg-search ./cmd/tg-search
 
 ## 3. 配置文件
 
-典型生产配置：
+典型生产配置只需要启动期参数：
 
 ```yaml
 server:
   host: 0.0.0.0
   port: 9900
-sync:
-  workers: 5
-  history_batch_size: 100
-  telegram_request_interval: 2s
 storage:
   path: /data/tg-search
-  max_db_size: 10GB
-  max_media_cache: 20GB
-telegram:
-  proxy: ""
-  reconnect_timeout: 5m
-  dial_timeout: 10s
-  rate_limit:
-    enabled: true
-    rate_per_second: 10
-    burst: 5
-  stream:
-    concurrency: 2
-    buffers: 4
-    chunk_timeout: 20s
-  media:
-    concurrency: 2
 ```
 
 配置说明：
@@ -139,20 +119,17 @@ telegram:
 | --- | --- |
 | `server.host` | HTTP 监听地址。Docker 内通常用 `0.0.0.0`，本地开发可用 `127.0.0.1`。 |
 | `server.port` | HTTP 监听端口，默认 `9900`。 |
-| `sync.workers` | 历史同步并发 worker 数。 |
-| `sync.history_batch_size` | 每批拉取/处理的历史消息数量。 |
-| `sync.telegram_request_interval` | Telegram 请求节流间隔。 |
 | `storage.path` | 运行时数据目录。 |
-| `storage.max_db_size` | SQLite 数据库预算，低于 `100MB` 会被拒绝。 |
-| `storage.max_media_cache` | 媒体缓存预算，低于 `100MB` 会被拒绝。 |
-| `telegram.proxy` | Telegram 客户端代理地址，按运行环境配置。 |
-| `telegram.reconnect_timeout` | 监听断线后的重连窗口。 |
-| `telegram.dial_timeout` | Telegram 连接超时。 |
-| `telegram.rate_limit.*` | Telegram 请求限速。 |
-| `telegram.stream.*` | 视频流式代理并发、缓冲和分片超时。 |
-| `telegram.media.concurrency` | 图片/视频代理下载并发。 |
 
-运行时设置页面可以覆盖部分配置并保存到数据库。服务启动时会先加载配置文件，再应用数据库里的运行时设置。
+以下内容在管理界面的「设置」页面维护并保存到数据库：
+
+| 设置页 | 内容 |
+| --- | --- |
+| 账号与安全 | 管理员用户名/密码、API Key、Telegram `app_id` 和 `app_hash`。 |
+| 存储 | SQLite 数据库预算、媒体缓存预算，低于 `100MB` 会被拒绝。 |
+| 运行参数 | 历史同步 worker、批量大小、Telegram 请求间隔、代理、重连/拨号超时、请求限速、视频流式读取和媒体下载并发。 |
+
+服务启动时会先加载配置文件，再应用数据库里的运行时设置。旧版配置文件中的 `sync.*`、`storage.max_*` 和 `telegram.*` 字段仍会被读取，可作为首次启动或尚未保存设置页参数时的默认值；新生成的默认配置不再写入这些字段。
 
 ## 4. 数据目录
 
@@ -412,4 +389,4 @@ curl -b cookies.txt -X POST http://127.0.0.1:9900/api/maintenance/sqlite
 
 ### 历史同步被拒绝
 
-当数据库容量超过 `storage.max_db_size` 时，系统可能拒绝新的高成本写入任务。可提高容量预算、清理资源或备份后维护数据库。
+当数据库容量超过设置页里的数据库容量上限时，系统可能拒绝新的高成本写入任务。可在「设置 > 存储」提高容量预算、清理资源或备份后维护数据库。

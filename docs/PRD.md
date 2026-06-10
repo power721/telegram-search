@@ -203,9 +203,7 @@ Authorization: <API_KEY>
 * App ID
 * App Hash
 
-允许跳过。
-
-如果跳过，则使用项目内置默认配置。
+允许跳过，但登录 Telegram 前必须在初始化流程或管理后台设置有效的 App ID 和 App Hash。
 
 后续允许在管理后台修改。
 

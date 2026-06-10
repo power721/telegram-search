@@ -383,6 +383,13 @@ describe('ResourceTable', () => {
     expect(player.attributes('autoplay')).toBeDefined()
     expect(resourceTableSource).toContain(':block-scroll="false"')
     expect(resourceTableSource).toMatch(/\.video-player-dialog\s*\{[\s\S]*width:\s*1200px;/)
+    expect(wrapper.find('[aria-label="关闭视频播放"]').classes()).toContain('video-player-close')
+    expect(resourceTableSource).toMatch(/class="video-player-close"[\s\S]*size="small"/)
+    const closeButtonStyle = resourceTableSource.match(/\.video-player-close\s*\{([\s\S]*?)\}/)?.[1] ?? ''
+    expect(closeButtonStyle).not.toMatch(/(^|\n)\s*height:/)
+    expect(closeButtonStyle).not.toMatch(/(^|\n)\s*min-width:/)
+    expect(resourceTableSource).toMatch(/\.video-player-close-icon\s*\{[\s\S]*height:\s*20px;/)
+    expect(resourceTableSource).toMatch(/\.video-player-close-icon\s*\{[\s\S]*width:\s*20px;/)
 
     await wrapper.find('[aria-label="最大化播放窗口"]').trigger('click')
 

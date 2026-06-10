@@ -315,7 +315,19 @@ function formatDate(value?: string) {
                 <path d="M3 16v5h5" />
               </svg>
             </n-button>
-            <n-button aria-label="关闭视频播放" circle quaternary size="small" @click="closeVideoPlayer">×</n-button>
+            <n-button
+              aria-label="关闭视频播放"
+              class="video-player-close"
+              circle
+              quaternary
+              size="small"
+              @click="closeVideoPlayer"
+            >
+              <svg class="video-player-close-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </n-button>
           </div>
         </div>
         <video
@@ -596,6 +608,16 @@ function formatDate(value?: string) {
   stroke-linejoin: round;
   stroke-width: 2;
   width: 16px;
+}
+
+.video-player-close-icon {
+  fill: none;
+  height: 20px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.4;
+  width: 20px;
 }
 
 .video-player {

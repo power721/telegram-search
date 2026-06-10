@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -16,13 +17,14 @@ import (
 )
 
 type savedSearchRequest struct {
-	Name           string                   `json:"name"`
-	Keyword        string                   `json:"keyword"`
-	Filters        model.SavedSearchFilters `json:"filters"`
-	NotifyRSS      *bool                    `json:"notify_rss"`
-	NotifyWebhook  *bool                    `json:"notify_webhook"`
-	NotifyTelegram *bool                    `json:"notify_telegram"`
-	Enabled        *bool                    `json:"enabled"`
+	Name            string                   `json:"name"`
+	Keyword         string                   `json:"keyword"`
+	Filters         model.SavedSearchFilters `json:"filters"`
+	NotifyRSS       *bool                    `json:"notify_rss"`
+	NotifyWebhook   *bool                    `json:"notify_webhook"`
+	NotifyTelegram  *bool                    `json:"notify_telegram"`
+	TelegramChatIDs *[]int64                 `json:"telegram_chat_ids"`
+	Enabled         *bool                    `json:"enabled"`
 }
 
 type webhookRequest struct {
@@ -33,6 +35,25 @@ type webhookRequest struct {
 	Enabled *bool    `json:"enabled"`
 }
 
+type savedSearchInput struct {
+	Item               model.SavedSearch
+	TelegramChatIDs    []int64
+	TelegramChatIDsSet bool
+}
+
+func (h handlers) telegramBotChats(c *gin.Context) {
+	if h.deps.BotSubscriptions == nil {
+		errorText(c, http.StatusServiceUnavailable, "telegram bot chats are unavailable")
+		return
+	}
+	items, err := h.deps.BotSubscriptions.FindChats(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h handlers) savedSearches(c *gin.Context) {
 	if h.deps.SavedSearches == nil {
 		errorText(c, http.StatusServiceUnavailable, "saved searches are unavailable")
@@ -40,6 +61,10 @@ func (h handlers) savedSearches(c *gin.Context) {
 	}
 	items, err := h.deps.SavedSearches.FindAll(c.Request.Context())
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.enrichSavedSearches(c.Request.Context(), items); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -60,6 +85,10 @@ func (h handlers) savedSearch(c *gin.Context) {
 		handleNotFound(c, err)
 		return
 	}
+	if err := h.enrichSavedSearch(c.Request.Context(), &item); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	c.JSON(http.StatusOK, item)
 }
 
@@ -68,17 +97,26 @@ func (h handlers) createSavedSearch(c *gin.Context) {
 		errorText(c, http.StatusServiceUnavailable, "saved searches are unavailable")
 		return
 	}
-	item, ok := readSavedSearchRequest(c, 0)
+	input, ok := readSavedSearchRequest(c, 0)
 	if !ok {
 		return
 	}
-	id, err := h.deps.SavedSearches.Create(c.Request.Context(), item)
+	id, err := h.deps.SavedSearches.Create(c.Request.Context(), input.Item)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	input.Item.ID = id
+	if err := h.syncSavedSearchTelegramChats(c.Request.Context(), input); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	created, err := h.deps.SavedSearches.FindByID(c.Request.Context(), id)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.enrichSavedSearch(c.Request.Context(), &created); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -94,16 +132,24 @@ func (h handlers) updateSavedSearch(c *gin.Context) {
 	if !ok {
 		return
 	}
-	item, ok := readSavedSearchRequest(c, id)
+	input, ok := readSavedSearchRequest(c, id)
 	if !ok {
 		return
 	}
-	if err := h.deps.SavedSearches.Update(c.Request.Context(), item); err != nil {
+	if err := h.deps.SavedSearches.Update(c.Request.Context(), input.Item); err != nil {
 		handleRepositoryWriteError(c, err)
+		return
+	}
+	if err := h.syncSavedSearchTelegramChats(c.Request.Context(), input); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	updated, err := h.deps.SavedSearches.FindByID(c.Request.Context(), id)
 	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if err := h.enrichSavedSearch(c.Request.Context(), &updated); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
@@ -163,16 +209,16 @@ func (h handlers) testSavedSearch(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": matches, "total": len(matches)})
 }
 
-func readSavedSearchRequest(c *gin.Context, id int64) (model.SavedSearch, bool) {
+func readSavedSearchRequest(c *gin.Context, id int64) (savedSearchInput, bool) {
 	var req savedSearchRequest
 	if !bindJSON(c, &req) {
-		return model.SavedSearch{}, false
+		return savedSearchInput{}, false
 	}
 	name := strings.TrimSpace(req.Name)
 	keyword := strings.TrimSpace(req.Keyword)
 	if keyword == "" {
 		errorText(c, http.StatusBadRequest, "keyword is required")
-		return model.SavedSearch{}, false
+		return savedSearchInput{}, false
 	}
 	if name == "" {
 		name = keyword
@@ -187,7 +233,57 @@ func readSavedSearchRequest(c *gin.Context, id int64) (model.SavedSearch, bool) 
 		NotifyTelegram: boolValue(req.NotifyTelegram, false),
 		Enabled:        boolValue(req.Enabled, true),
 	}
-	return item, true
+	input := savedSearchInput{
+		Item:               item,
+		TelegramChatIDsSet: req.TelegramChatIDs != nil,
+	}
+	if req.TelegramChatIDs != nil {
+		input.TelegramChatIDs = *req.TelegramChatIDs
+		if !item.NotifyTelegram {
+			input.TelegramChatIDs = nil
+		}
+	}
+	return input, true
+}
+
+func (h handlers) syncSavedSearchTelegramChats(ctx context.Context, input savedSearchInput) error {
+	if h.deps.BotSubscriptions == nil || !input.TelegramChatIDsSet {
+		return nil
+	}
+	if err := h.deps.BotSubscriptions.ReplaceSavedSearchChats(ctx, input.Item.ID, input.TelegramChatIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (h handlers) enrichSavedSearch(ctx context.Context, item *model.SavedSearch) error {
+	if h.deps.BotSubscriptions == nil || item == nil || item.ID == 0 {
+		return nil
+	}
+	chatIDs, err := h.deps.BotSubscriptions.FindChatIDsBySavedSearch(ctx, item.ID)
+	if err != nil {
+		return err
+	}
+	item.TelegramChatIDs = chatIDs
+	return nil
+}
+
+func (h handlers) enrichSavedSearches(ctx context.Context, items []model.SavedSearch) error {
+	if h.deps.BotSubscriptions == nil || len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+	chatIDsBySearch, err := h.deps.BotSubscriptions.FindChatIDsBySavedSearches(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		items[i].TelegramChatIDs = chatIDsBySearch[items[i].ID]
+	}
+	return nil
 }
 
 func (h handlers) webhooks(c *gin.Context) {

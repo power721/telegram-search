@@ -261,6 +261,7 @@ export interface SavedSearch {
   notify_rss: boolean
   notify_webhook: boolean
   notify_telegram: boolean
+  telegram_chat_ids?: number[]
   enabled: boolean
   created_at?: string
   updated_at?: string
@@ -268,6 +269,22 @@ export interface SavedSearch {
 
 export interface SavedSearchesResponse {
   items: SavedSearch[]
+}
+
+export interface TelegramBotChat {
+  chat_id: number
+  title: string
+  username: string
+  first_name: string
+  last_name: string
+  type: string
+  last_seen_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TelegramBotChatsResponse {
+  items: TelegramBotChat[]
 }
 
 export interface Webhook {

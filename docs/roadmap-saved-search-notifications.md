@@ -115,8 +115,8 @@ Add a Telegram Bot adapter that reuses the existing resource search and saved se
 Commands:
 
 - `/search <keyword>`
-- `/subscribe <keyword>`
-- `/unsubscribe <id>`
+- `/subscribe <keyword or saved_search_id>`
+- `/unsubscribe <subscription_id or saved_search_id>`
 - `/subscriptions`
 
 Acceptance criteria:
@@ -265,4 +265,3 @@ resource_scores
 - Store webhook secrets but never return them in list/detail responses after creation unless explicitly needed.
 - Persist notification payloads before attempting delivery so failed deliveries are observable and retryable.
 - Do not call external webhooks synchronously from history sync or listener hot paths.
-

@@ -400,6 +400,25 @@ CREATE TABLE IF NOT EXISTS telegram_bot_sent_resources (
 CREATE INDEX IF NOT EXISTS idx_telegram_bot_sent_resources_chat ON telegram_bot_sent_resources(chat_id);
 `,
 	},
+	{
+		version: 10,
+		name:    "telegram_bot_chats",
+		sql: `
+CREATE TABLE IF NOT EXISTS telegram_bot_chats (
+  chat_id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  username TEXT NOT NULL DEFAULT '',
+  first_name TEXT NOT NULL DEFAULT '',
+  last_name TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL DEFAULT '',
+  last_seen_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_chats_last_seen_at ON telegram_bot_chats(last_seen_at);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

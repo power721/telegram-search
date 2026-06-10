@@ -284,6 +284,8 @@ jianguoyun
 - `/i/:fileid` 返回图片数据，带 `Cache-Control: public, max-age=86400`。
 - 也可以直接使用 `X-API-Key` 请求 `/v/:fileid` 或 `/i/:fileid`。
 
+图片代理会在服务端写入本地文件缓存。缓存目录为 `storage.path/thumbnails/image-proxy/`，命中后直接读取本地文件。清理任务默认每小时运行一次，删除 7 天未访问的图片；当媒体缓存超过 `storage.max_media_cache` 时，按最近访问时间淘汰最旧文件，直到约为上限的 90%。签名 URL 过期只影响访问授权，不会立即删除已缓存的图片。
+
 视频 Range 示例：
 
 ```bash

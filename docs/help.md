@@ -168,6 +168,8 @@ telegram:
 | `index/` | 本地索引目录。 |
 | `thumbnails/` | 缩略图和媒体缓存。 |
 
+图片代理会把 `/i/:fileid` 下载到 `thumbnails/image-proxy/`。命中缓存时直接读取本地文件，不再请求 Telegram。清理任务每小时检查一次：删除 7 天未访问的图片；当媒体缓存超过 `storage.max_media_cache` 时，按最近访问时间从旧到新淘汰到上限的 90%。视频代理仍按 Range 流式读取，不写入该图片缓存。
+
 不要公开、提交或分享 `sessions/`、`tg-search.db`、日志、备份和配置中的敏感信息。
 
 ## 5. 首次初始化

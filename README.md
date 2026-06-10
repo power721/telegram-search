@@ -99,7 +99,7 @@ X-API-Key: <api-key>
 
 ## 数据目录
 
-容器内默认数据目录为 `/data/tg-search`，包含配置、数据库、Telegram session、日志、备份、索引和缩略图。Compose 默认映射到本仓库的 `./data`，一键安装脚本默认使用 Docker volume `tg-search-data`。
+容器内默认数据目录为 `/data/tg-search`，包含配置、数据库、Telegram session、日志、备份、索引和缩略图。图片代理缓存位于 `thumbnails/image-proxy/`，会按 7 天未访问过期和 `storage.max_media_cache` 容量上限自动清理。Compose 默认映射到本仓库的 `./data`，一键安装脚本默认使用 Docker volume `tg-search-data`。
 
 备份和恢复 Compose 数据目录：
 

@@ -17,6 +17,7 @@
 - `/data/tg-search/logs` exists and has enough disk space.
 - `/data/tg-search/backup` is included in operational backup retention.
 - `/data/tg-search/index` and `/data/tg-search/thumbnails` exist.
+- `/data/tg-search/thumbnails/image-proxy` is treated as disposable image proxy cache. It is cleaned hourly, expires files after 7 days without access, and trims oldest files when `storage.max_media_cache` is exceeded.
 - `scripts/backup.sh` can write a SQLite backup into `/data/tg-search/backup`.
 - Restore drills stop the service before replacing `/data/tg-search/tg-search.db`.
 

@@ -993,6 +993,8 @@ HEAD /i/:fileid
 
 `/v/:fileid` 支持 HTTP Range 请求，并设置 `Accept-Ranges: bytes`。公开搜索 API 返回的媒体 URL 会带 `exp` 和 `sig`，默认 24 小时有效。
 
+`/i/:fileid` 会把图片写入 `storage.path/thumbnails/image-proxy/` 本地缓存。命中缓存时直接返回本地文件；未命中时从 Telegram 下载并原子写入缓存。清理任务每小时运行一次，删除 7 天未访问的图片；当媒体缓存超过 `storage.max_media_cache` 时，按最近访问时间淘汰最旧文件到上限的 90%。`/v/:fileid` 仍按 Range 流式代理，不写入图片缓存。
+
 ## 路由速查
 
 ```text

@@ -317,6 +317,74 @@ CREATE INDEX IF NOT EXISTS idx_telegram_files_telegram_file_id ON telegram_files
 ALTER TABLE api_keys ADD COLUMN usage_count INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 7,
+		name:    "saved_searches_notifications",
+		sql: `
+CREATE TABLE IF NOT EXISTS saved_searches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  keyword TEXT NOT NULL,
+  filters_json TEXT NOT NULL DEFAULT '{}',
+  notify_rss INTEGER NOT NULL DEFAULT 1,
+  notify_webhook INTEGER NOT NULL DEFAULT 0,
+  notify_telegram INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webhooks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  url TEXT NOT NULL,
+  events_json TEXT NOT NULL DEFAULT '[]',
+  secret TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_type TEXT NOT NULL,
+  target_type TEXT NOT NULL,
+  target_id INTEGER NOT NULL DEFAULT 0,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL,
+  retry_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  next_run_at DATETIME,
+  delivered_at DATETIME,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_saved_searches_enabled ON saved_searches(enabled);
+CREATE INDEX IF NOT EXISTS idx_webhooks_enabled ON webhooks(enabled);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status_next_run_at ON notification_deliveries(status, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_event_type ON notification_deliveries(event_type);
+`,
+	},
+	{
+		version: 8,
+		name:    "telegram_bot_subscriptions",
+		sql: `
+CREATE TABLE IF NOT EXISTS telegram_bot_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  saved_search_id INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE(chat_id, saved_search_id),
+  FOREIGN KEY(saved_search_id) REFERENCES saved_searches(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_saved_search ON telegram_bot_subscriptions(saved_search_id, enabled);
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_chat ON telegram_bot_subscriptions(chat_id, enabled);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

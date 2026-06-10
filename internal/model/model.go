@@ -176,6 +176,86 @@ type ListenRules struct {
 	IgnoredLinkPatterns []string `json:"ignored_link_patterns"`
 }
 
+const (
+	NotificationEventResourceCreated     = "resource.created"
+	NotificationEventResourceUpdated     = "resource.updated"
+	NotificationEventTaskCompleted       = "task.completed"
+	NotificationEventTaskFailed          = "task.failed"
+	NotificationEventAccountOffline      = "account.offline"
+	NotificationEventChannelSyncComplete = "channel.sync.completed"
+	NotificationEventSavedSearchMatched  = "saved_search.matched"
+)
+
+const (
+	NotificationTargetSavedSearch = "saved_search"
+	NotificationTargetWebhook     = "webhook"
+	NotificationTargetTelegram    = "telegram"
+)
+
+const (
+	NotificationDeliveryPending   = "pending"
+	NotificationDeliverySucceeded = "succeeded"
+	NotificationDeliveryFailed    = "failed"
+)
+
+type SavedSearchFilters struct {
+	Type       string   `json:"type,omitempty"`
+	Category   string   `json:"category,omitempty"`
+	CloudTypes []string `json:"cloud_types,omitempty"`
+	AccountID  int64    `json:"account_id,omitempty"`
+	ChannelID  int64    `json:"channel_id,omitempty"`
+}
+
+type SavedSearch struct {
+	ID             int64              `json:"id"`
+	Name           string             `json:"name"`
+	Keyword        string             `json:"keyword"`
+	Filters        SavedSearchFilters `json:"filters"`
+	NotifyRSS      bool               `json:"notify_rss"`
+	NotifyWebhook  bool               `json:"notify_webhook"`
+	NotifyTelegram bool               `json:"notify_telegram"`
+	Enabled        bool               `json:"enabled"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+}
+
+type Webhook struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Events    []string  `json:"events"`
+	Secret    string    `json:"-"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type NotificationDelivery struct {
+	ID          int64      `json:"id"`
+	EventType   string     `json:"event_type"`
+	TargetType  string     `json:"target_type"`
+	TargetID    int64      `json:"target_id"`
+	PayloadJSON string     `json:"payload_json"`
+	Status      string     `json:"status"`
+	RetryCount  int64      `json:"retry_count"`
+	LastError   string     `json:"last_error"`
+	NextRunAt   *time.Time `json:"next_run_at,omitempty"`
+	DeliveredAt *time.Time `json:"delivered_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type TelegramBotSubscription struct {
+	ID            int64     `json:"id"`
+	ChatID        int64     `json:"chat_id"`
+	SavedSearchID int64     `json:"saved_search_id"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	SavedSearch   string    `json:"saved_search,omitempty"`
+	Keyword       string    `json:"keyword,omitempty"`
+}
+
 type ChannelIndexedCounts struct {
 	Messages int64 `json:"messages"`
 	Links    int64 `json:"links"`

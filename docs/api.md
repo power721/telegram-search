@@ -817,6 +817,111 @@ GET /api/channels?account_id=1
 }
 ```
 
+## 搜索订阅与通知接口
+
+### `GET /api/saved-searches`
+
+返回保存的搜索订阅。
+
+### `POST /api/saved-searches`
+
+创建搜索订阅。新资源由历史同步或实时监听写入后，会匹配启用的保存搜索并生成通知投递记录。
+
+```json
+{
+  "name": "哪吒3",
+  "keyword": "哪吒3",
+  "filters": {
+    "category": "cloud_drive",
+    "cloud_types": ["quark"]
+  },
+  "notify_rss": true,
+  "notify_webhook": true,
+  "notify_telegram": false,
+  "enabled": true
+}
+```
+
+### `GET /api/saved-searches/:id`
+
+返回单个搜索订阅。
+
+### `PUT /api/saved-searches/:id`
+
+更新搜索订阅。
+
+### `DELETE /api/saved-searches/:id`
+
+删除搜索订阅。
+
+### `POST /api/saved-searches/:id/test`
+
+使用当前资源库测试搜索订阅匹配结果。
+
+### `GET /api/webhooks`
+
+返回 Webhook 配置。响应不会返回 `secret`。
+
+### `POST /api/webhooks`
+
+创建 Webhook。
+
+```json
+{
+  "name": "n8n",
+  "url": "https://example.com/hook",
+  "events": ["resource.created", "saved_search.matched"],
+  "secret": "optional-shared-secret",
+  "enabled": true
+}
+```
+
+投递请求为 `POST`，`Content-Type` 是 `application/json`：
+
+```json
+{
+  "event_type": "saved_search.matched",
+  "delivery_id": 1,
+  "created_at": "2026-06-10T12:00:00Z",
+  "payload": {
+    "saved_search_id": 1,
+    "keyword": "哪吒3",
+    "resource_title": "哪吒3 4K"
+  }
+}
+```
+
+请求头：
+
+| Header | 说明 |
+| --- | --- |
+| `X-TG-Search-Event` | 事件类型。 |
+| `X-TG-Search-Delivery` | 投递记录 ID。 |
+| `X-TG-Search-Signature` | 配置 `secret` 时返回 `sha256=<hmac>`。 |
+
+非 2xx 响应会标记失败并按退避时间重试。达到最大重试次数后保留为 `failed` 且不再调度。
+
+### `GET /api/webhooks/:id`
+
+返回单个 Webhook 配置。
+
+### `PUT /api/webhooks/:id`
+
+更新 Webhook。省略 `secret` 时保留原值。
+
+### `DELETE /api/webhooks/:id`
+
+删除 Webhook。
+
+### `GET /api/notification-deliveries`
+
+返回通知投递记录。支持参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `status` | `pending`、`succeeded`、`failed`。 |
+| `limit` / `offset` | 分页。 |
+
 ## 任务接口
 
 ### `GET /api/tasks`
@@ -1060,6 +1165,18 @@ GET    /api/resources/grouped
 GET    /api/resources/:id
 DELETE /api/resources/:id
 POST   /api/resources/bulk-delete
+GET    /api/saved-searches
+POST   /api/saved-searches
+GET    /api/saved-searches/:id
+PUT    /api/saved-searches/:id
+DELETE /api/saved-searches/:id
+POST   /api/saved-searches/:id/test
+GET    /api/webhooks
+POST   /api/webhooks
+GET    /api/webhooks/:id
+PUT    /api/webhooks/:id
+DELETE /api/webhooks/:id
+GET    /api/notification-deliveries
 GET    /api/tasks
 GET    /api/tasks/:id
 POST   /api/tasks/:id/retry
@@ -1077,6 +1194,9 @@ POST   /api/maintenance/sqlite
 POST   /api/maintenance/backup
 GET    /api/search
 POST   /api/search
+GET    /feeds/latest
+GET    /feeds/search
+GET    /feeds/saved/:id
 GET    /v/:fileid
 HEAD   /v/:fileid
 GET    /i/:fileid

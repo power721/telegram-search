@@ -11,35 +11,38 @@ import (
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	taskpkg "tg-search/internal/task"
 )
 
 type ProcessorOptions struct {
-	DB        *sql.DB
-	Channels  *repository.ChannelRepository
-	Messages  *repository.MessageRepository
-	Links     *repository.LinkRepository
-	Files     *repository.FileRepository
-	Resources *resource.Service
-	Cursors   *repository.SyncCursorRepository
-	Tasks     *taskpkg.Service
-	Extractor *link.Extractor
-	Filter    *messagefilter.Filter
+	DB            *sql.DB
+	Channels      *repository.ChannelRepository
+	Messages      *repository.MessageRepository
+	Links         *repository.LinkRepository
+	Files         *repository.FileRepository
+	Resources     *resource.Service
+	Notifications *notification.Service
+	Cursors       *repository.SyncCursorRepository
+	Tasks         *taskpkg.Service
+	Extractor     *link.Extractor
+	Filter        *messagefilter.Filter
 }
 
 type Processor struct {
-	db        *sql.DB
-	channels  *repository.ChannelRepository
-	messages  *repository.MessageRepository
-	links     *repository.LinkRepository
-	files     *repository.FileRepository
-	resources *resource.Service
-	cursors   *repository.SyncCursorRepository
-	tasks     *taskpkg.Service
-	extractor *link.Extractor
-	filter    *messagefilter.Filter
+	db            *sql.DB
+	channels      *repository.ChannelRepository
+	messages      *repository.MessageRepository
+	links         *repository.LinkRepository
+	files         *repository.FileRepository
+	resources     *resource.Service
+	notifications *notification.Service
+	cursors       *repository.SyncCursorRepository
+	tasks         *taskpkg.Service
+	extractor     *link.Extractor
+	filter        *messagefilter.Filter
 }
 
 func NewProcessor(opts ProcessorOptions) *Processor {
@@ -47,16 +50,17 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		opts.Extractor = link.NewExtractor()
 	}
 	return &Processor{
-		db:        opts.DB,
-		channels:  opts.Channels,
-		messages:  opts.Messages,
-		links:     opts.Links,
-		files:     opts.Files,
-		resources: opts.Resources,
-		cursors:   opts.Cursors,
-		tasks:     opts.Tasks,
-		extractor: opts.Extractor,
-		filter:    opts.Filter,
+		db:            opts.DB,
+		channels:      opts.Channels,
+		messages:      opts.Messages,
+		links:         opts.Links,
+		files:         opts.Files,
+		resources:     opts.Resources,
+		notifications: opts.Notifications,
+		cursors:       opts.Cursors,
+		tasks:         opts.Tasks,
+		extractor:     opts.Extractor,
+		filter:        opts.Filter,
 	}
 }
 
@@ -141,6 +145,7 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		}
 		extracted = result.Links
 	}
+	createdResources := []resource.Item{}
 	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		date := event.Date
 		if date.IsZero() {
@@ -165,6 +170,9 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		if _, err := p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted); err != nil {
 			return err
 		}
+		if event.Type == EventNewMessage {
+			createdResources = append(createdResources, updateResourceItemsFromMessage(channel, stored[0], extracted, stored[0].Files)...)
+		}
 		if p.files == nil {
 			return nil
 		}
@@ -173,7 +181,87 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 	}); err != nil {
 		return err
 	}
+	p.enqueueCreatedResources(ctx, createdResources)
 	return p.refreshResourceStats(ctx)
+}
+
+func (p *Processor) enqueueCreatedResources(ctx context.Context, items []resource.Item) {
+	if p.notifications == nil {
+		return
+	}
+	for _, item := range items {
+		_, _ = p.notifications.EnqueueResourceCreated(ctx, item)
+	}
+}
+
+func updateResourceItemsFromMessage(channel model.Channel, msg model.Message, links []model.Link, files []model.File) []resource.Item {
+	items := make([]resource.Item, 0, len(links)+len(files))
+	for _, link := range links {
+		category := link.Category
+		if category == "" {
+			category = updateResourceCategoryFromLink(link)
+		}
+		title := link.Note
+		if title == "" {
+			title = link.URL
+		}
+		items = append(items, resource.Item{
+			ID:                "link:" + link.URL,
+			Kind:              "link",
+			Type:              link.Type,
+			Category:          category,
+			URL:               link.URL,
+			Password:          link.Password,
+			Note:              link.Note,
+			Title:             title,
+			SourceSnippet:     link.SourceSnippet,
+			Datetime:          msg.Date,
+			AccountID:         msg.AccountID,
+			ChannelID:         channel.ID,
+			TelegramChannelID: channel.TelegramChannelID,
+			ChannelTitle:      channel.Title,
+			ChannelUsername:   channel.Username,
+			TelegramMessageID: msg.TelegramMessageID,
+			MessageType:       msg.MessageType,
+			MediaSummary:      msg.MediaSummary,
+		})
+	}
+	for _, file := range files {
+		items = append(items, resource.Item{
+			ID:                "file:" + file.FileName,
+			Kind:              "file",
+			Type:              file.Category,
+			Category:          "files",
+			FileName:          file.FileName,
+			Extension:         file.Extension,
+			MimeType:          file.MimeType,
+			SizeBytes:         file.SizeBytes,
+			Title:             file.FileName,
+			Datetime:          msg.Date,
+			AccountID:         msg.AccountID,
+			ChannelID:         channel.ID,
+			TelegramChannelID: channel.TelegramChannelID,
+			ChannelTitle:      channel.Title,
+			ChannelUsername:   channel.Username,
+			TelegramMessageID: msg.TelegramMessageID,
+			MessageType:       msg.MessageType,
+			MediaSummary:      msg.MediaSummary,
+		})
+	}
+	return items
+}
+
+func updateResourceCategoryFromLink(link model.Link) string {
+	switch link.Type {
+	case "magnet":
+		return "magnet"
+	case "ed2k":
+		return "ed2k"
+	case "url":
+		return "http"
+	default:
+		return "cloud_drive"
+	}
 }
 
 func (p *Processor) deleteMessage(ctx context.Context, channel model.Channel, event Event) error {

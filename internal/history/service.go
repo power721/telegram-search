@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/retry"
@@ -33,6 +35,7 @@ type Options struct {
 	Links            *repository.LinkRepository
 	Files            *repository.FileRepository
 	Resources        *resource.Service
+	Notifications    *notification.Service
 	Cursors          *repository.SyncCursorRepository
 	Telegram         telegram.Client
 	Sessions         *session.Manager
@@ -53,6 +56,7 @@ type Service struct {
 	links            *repository.LinkRepository
 	files            *repository.FileRepository
 	resources        *resource.Service
+	notifications    *notification.Service
 	cursors          *repository.SyncCursorRepository
 	telegram         telegram.Client
 	sessions         *session.Manager
@@ -137,6 +141,7 @@ func NewService(opts Options) *Service {
 		links:            opts.Links,
 		files:            opts.Files,
 		resources:        opts.Resources,
+		notifications:    opts.Notifications,
 		cursors:          opts.Cursors,
 		telegram:         opts.Telegram,
 		sessions:         opts.Sessions,
@@ -1125,6 +1130,13 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 	}
 
 	var linkCount int
+	channel := model.Channel{ID: channelID, AccountID: accountID}
+	if s.channels != nil {
+		if found, err := s.channels.FindByID(ctx, channelID); err == nil {
+			channel = found
+		}
+	}
+	createdResources := []resource.Item{}
 	err := dbpkg.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		if len(filtered) > 0 {
 			stored, err := s.messages.SaveBatchTx(ctx, tx, filtered)
@@ -1143,6 +1155,7 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 					}
 				}
 				linkCount += len(extracted)
+				createdResources = append(createdResources, resourceItemsFromMessage(channel, msg, extracted, msg.Files)...)
 			}
 		}
 		if cursor > 0 && s.cursors != nil {
@@ -1161,5 +1174,92 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 	if err != nil {
 		return 0, fmt.Errorf("store history batch: %w", err)
 	}
+	s.enqueueCreatedResources(ctx, createdResources)
 	return linkCount, nil
+}
+
+func (s *Service) enqueueCreatedResources(ctx context.Context, items []resource.Item) {
+	if s.notifications == nil {
+		return
+	}
+	for _, item := range items {
+		if _, err := s.notifications.EnqueueResourceCreated(ctx, item); err != nil {
+			s.logger.Warn("enqueue resource notification failed", zap.String("resource_id", item.ID), zap.Error(err))
+		}
+	}
+}
+
+func resourceItemsFromMessage(channel model.Channel, msg model.Message, links []model.Link, files []model.File) []resource.Item {
+	items := make([]resource.Item, 0, len(links)+len(files))
+	for _, link := range links {
+		category := link.Category
+		if category == "" {
+			category = resourceCategoryFromLink(link)
+		}
+		items = append(items, resource.Item{
+			ID:                "link:" + link.URL,
+			Kind:              "link",
+			Type:              link.Type,
+			Category:          category,
+			URL:               link.URL,
+			Password:          link.Password,
+			Note:              link.Note,
+			Title:             firstResourceTitle(link.Note, link.URL),
+			SourceSnippet:     link.SourceSnippet,
+			Datetime:          msg.Date,
+			AccountID:         msg.AccountID,
+			ChannelID:         channel.ID,
+			TelegramChannelID: channel.TelegramChannelID,
+			ChannelTitle:      channel.Title,
+			ChannelUsername:   channel.Username,
+			TelegramMessageID: msg.TelegramMessageID,
+			MessageType:       msg.MessageType,
+			MediaSummary:      msg.MediaSummary,
+		})
+	}
+	for _, file := range files {
+		items = append(items, resource.Item{
+			ID:                "file:" + file.FileName,
+			Kind:              "file",
+			Type:              file.Category,
+			Category:          "files",
+			FileName:          file.FileName,
+			Extension:         file.Extension,
+			MimeType:          file.MimeType,
+			SizeBytes:         file.SizeBytes,
+			Title:             file.FileName,
+			Datetime:          msg.Date,
+			AccountID:         msg.AccountID,
+			ChannelID:         channel.ID,
+			TelegramChannelID: channel.TelegramChannelID,
+			ChannelTitle:      channel.Title,
+			ChannelUsername:   channel.Username,
+			TelegramMessageID: msg.TelegramMessageID,
+			MessageType:       msg.MessageType,
+			MediaSummary:      msg.MediaSummary,
+		})
+	}
+	return items
+}
+
+func resourceCategoryFromLink(link model.Link) string {
+	switch link.Type {
+	case "magnet":
+		return "magnet"
+	case "ed2k":
+		return "ed2k"
+	case "url":
+		return "http"
+	default:
+		return "cloud_drive"
+	}
+}
+
+func firstResourceTitle(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }

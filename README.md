@@ -1,83 +1,107 @@
 # tg-search
 
-Self-hosted personal Telegram search foundation.
+tg-search 是一个自托管的 Telegram 资源搜索服务。它使用个人 Telegram 账号读取频道消息，把消息、链接和文件索引到本地 SQLite，并提供网页管理界面、管理 API、公开搜索 API 和可签名的媒体代理地址。
 
-`tg-search` stores data locally under `/data/tg-search`, exposes a local REST API, and includes a Vue admin shell for first-run setup, login, storage usage, Telegram onboarding, channel control, task observability, Global Search, and the Telegram Resource Library.
+适合的场景：
 
-## Quickstart
+- 管理自己的 Telegram 频道资源库。
+- 在本地搜索历史消息、网盘链接、磁力、电驴链接和视频文件。
+- 给外部应用、机器人或站点接入统一的资源搜索 API。
+- 用网页界面完成 Telegram 登录、频道同步、监听规则、任务和日志管理。
 
-Create `config.yaml` locally for development, or `/data/tg-search/config.yaml` in production:
+## 快速安装
 
-```yaml
-server:
-  host: 127.0.0.1
-  port: 9900
-sync:
-  workers: 5
-  history_batch_size: 100
-  telegram_request_interval: 2s
-storage:
-  path: /data/tg-search
-  max_db_size: 10GB
-  max_media_cache: 20GB
-telegram:
-  media:
-    concurrency: 2
-```
-
-Telegram App ID and App Hash are configured in the admin setup flow or later from Settings.
-
-Build and run:
-
-```bash
-VERSION=$(git describe --tags --always)
-go build -ldflags "-X 'tg-search/internal/build.Version=${VERSION}'" -o /tmp/tg-search ./cmd/tg-search
-/tmp/tg-search -config config.yaml
-```
-
-Install and open with Docker in one command:
+推荐使用 Docker。脚本会拉取 `haroldli/tg-search:latest`，创建/复用 `tg-search-data` 数据卷，启动容器并尝试打开管理界面：
 
 ```bash
 scripts/install-docker.sh
 ```
 
-The script pulls `haroldli/tg-search:latest`, replaces any existing `tg-search`
-container, starts it with the `tg-search-data` Docker volume, and opens
-`http://127.0.0.1:9900`.
-
-Run with Docker manually:
+指定端口或不自动打开浏览器：
 
 ```bash
-docker run -d --name tg-search --restart unless-stopped -p 9900:9900 -v tg-search-data:/data/tg-search haroldli/tg-search:latest
+scripts/install-docker.sh --port 19900 --no-open
 ```
 
-Then open `http://127.0.0.1:9900` for the admin shell, or check the service:
+手动 Docker 运行：
 
 ```bash
-docker logs -f tg-search
-curl http://127.0.0.1:9900/api/health
+docker run -d \
+  --name tg-search \
+  --restart unless-stopped \
+  -p 9900:9900 \
+  -v tg-search-data:/data/tg-search \
+  haroldli/tg-search:latest
 ```
 
-To upgrade the container later:
-
-```bash
-docker pull haroldli/tg-search:latest
-docker rm -f tg-search
-docker run -d --name tg-search --restart unless-stopped -p 9900:9900 -v tg-search-data:/data/tg-search haroldli/tg-search:latest
-```
-
-Run with Docker Compose:
+Docker Compose 运行：
 
 ```bash
 mkdir -p data
 docker compose up -d
-docker compose logs -f tg-search
-curl http://127.0.0.1:9900/api/health
 ```
 
-The container stores config, database, sessions, logs, backups, index files, and thumbnails under `/data/tg-search`. The one-command Docker example keeps them in the `tg-search-data` Docker volume. The Compose example mounts them as `./data`. If `config.yaml` does not exist, the app creates one on first start.
+仓库内的 `compose.yaml` 使用远程镜像 `haroldli/tg-search:latest`，不会在本地构建镜像。需要提前刷新镜像时可以执行：
 
-Back up and restore local runtime data:
+```bash
+docker compose pull
+docker compose up -d
+```
+
+启动后打开：
+
+```text
+http://127.0.0.1:9900
+```
+
+检查服务：
+
+```bash
+docker logs -f tg-search
+curl http://127.0.0.1:9900/api/health
+curl http://127.0.0.1:9900/api/ready
+```
+
+## 首次初始化
+
+首次打开管理界面后，按向导完成：
+
+```text
+管理员账号 -> API Key -> Telegram API -> Telegram 登录 -> 监听规则 -> 频道选择
+```
+
+Telegram API 的 `app_id` 和 `app_hash` 需要从 Telegram 官方开发者后台获取。Telegram 登录支持验证码、两步验证密码和 QR 登录。账号上线后系统会先同步频道元数据，不会在登录步骤直接拉取完整历史消息。
+
+完成初始化后，在「频道」页面选择需要管理的频道：
+
+- 使用单频道或批量同步操作拉取历史消息。
+- 开启 `listen_enabled` 后实时监听新消息。
+- `history_sync_enabled` 和 `sync_profile` 是废弃兼容字段，当前不要作为有效配置使用。
+- `remote_search_allowed` 是预留字段，当前不要作为公开能力开关依赖。
+
+## 常用路径
+
+```text
+管理界面:       http://127.0.0.1:9900
+健康检查:       GET /api/health
+就绪检查:       GET /api/ready
+管理 API:       /api/*
+公开搜索 API:   GET/POST /api/search
+视频代理:       GET/HEAD /v/:fileid
+图片代理:       GET/HEAD /i/:fileid
+```
+
+管理 API 使用登录后的 `tg_search_session` Cookie。公开搜索 API 和媒体代理可使用 API Key：
+
+```text
+X-API-Key: <api-key>
+```
+
+## 数据目录
+
+容器内默认数据目录为 `/data/tg-search`，包含配置、数据库、Telegram session、日志、备份、索引和缩略图。Compose 默认映射到本仓库的 `./data`，一键安装脚本默认使用 Docker volume `tg-search-data`。
+
+备份和恢复 Compose 数据目录：
 
 ```bash
 DATA_DIR=./data scripts/backup.sh
@@ -86,137 +110,30 @@ DATA_DIR=./data scripts/restore.sh ./data/backup/tg-search-YYYYMMDDTHHMMSSZ.db
 docker compose up -d
 ```
 
-Start the web admin shell:
+## 本地开发
+
+后端：
+
+```bash
+go build -o /tmp/tg-search ./cmd/tg-search
+/tmp/tg-search -config config.yaml
+```
+
+前端开发服务器：
 
 ```bash
 npm install --prefix web
 npm run web:dev
 ```
 
-Development URLs:
+开发地址：
 
 ```text
 Backend:  http://127.0.0.1:9900
 Frontend: http://127.0.0.1:5173
 ```
 
-The Vite development server proxies `/api` requests to the backend at `http://127.0.0.1:9900`.
-
-## First-Run Setup
-
-```text
-Admin Account -> API Key -> Telegram API -> Telegram Login -> Home
-```
-
-Telegram Login starts a metadata-only channel sync after the account is online. It collects account and channel metadata such as title, username, member count, description, avatar state, sync state, and listen state. It does not fetch message history during onboarding.
-
-Channel Control adds Sync Profiles (`Quick`, `Normal`, `Deep`, `Full`), per-channel history/listen/remote-search toggles, Telegram Web Access Detection for `https://t.me/s/{username}`, listen rule filters, and display-only remote search task records. Web Access Detection is not a search-engine indexing signal.
-
-## Runtime Reliability
-
-Long-running work is tracked in persistent `sync_tasks` rows. The admin Tasks page shows task type, status, progress, retry count, FloodWait scheduling, error messages, and retry/cancel/pause/resume actions.
-
-Task states:
-
-```text
-queued -> running -> succeeded
-queued -> running -> failed
-failed -> queued
-running -> canceling -> canceled
-running -> paused -> running
-running -> flood_wait -> queued
-running -> reconnecting -> running
-```
-
-On startup, unfinished retryable tasks are restored from SQLite. Future `flood_wait` tasks keep their `next_run_at`; past or unscheduled unfinished tasks return to `queued`; `succeeded` and `canceled` tasks stay unchanged. `/api/events` streams `task.updated`, `account.updated`, `listener.updated`, and `activity.created` events with Server-Sent Events.
-
-Realtime listeners start only when an account has at least one channel with `listen_enabled=true`. Disconnects mark the account `RECONNECTING`; FloodWait marks `FLOOD_WAIT`; successful reconnect returns the account to `ONLINE`. Detected realtime message gaps enqueue `gap_recovery` tasks.
-
-## Local Index
-
-Message metadata and content are stored separately:
-
-```text
-telegram_messages          -> account/channel/message ids, sender, dates, type, delete state
-telegram_message_contents  -> text and raw_json
-telegram_sync_cursors      -> per-account/channel sync state
-```
-
-FTS5 indexes persisted local message content only. Remote Telegram search results are display-only, marked `source="remote"`, and are not written into local message, content, link, file, or FTS tables.
-
-## Foundation APIs
-
-```text
-GET    /api/setup/status
-POST   /api/setup/admin
-POST   /api/setup/api-key
-POST   /api/setup/telegram-api
-POST   /api/setup/complete
-POST   /api/auth/login
-POST   /api/auth/logout
-GET    /api/auth/me
-GET    /api/settings/telegram-api
-PUT    /api/settings/telegram-api
-POST   /api/telegram/login/send-code
-POST   /api/telegram/login/sign-in
-POST   /api/telegram/login/password
-GET    /api/accounts
-DELETE /api/accounts/:id
-POST   /api/accounts/:id/channels/sync-metadata
-GET    /api/channels
-PATCH  /api/channels/:id/control
-POST   /api/channels/:id/analyze
-POST   /api/channels/web-access/check
-GET    /api/watch-rules
-POST   /api/watch-rules
-PUT    /api/watch-rules/:id
-DELETE /api/watch-rules/:id
-GET    /api/search
-POST   /api/admin/search/remote
-GET    /api/admin/search/remote/:task_id
-GET    /api/admin/search/global
-GET    /api/admin/search/messages
-GET    /api/admin/search/links
-GET    /api/admin/search/files
-GET    /api/admin/search/channels
-GET    /api/resources
-GET    /api/resources/grouped
-GET    /api/resources/:id
-GET    /api/storage/usage
-GET    /api/health
-GET    /api/ready
-GET    /api/status
-GET    /api/tasks
-GET    /api/tasks/:id
-POST   /api/tasks/:id/retry
-POST   /api/tasks/:id/cancel
-POST   /api/tasks/:id/pause
-POST   /api/tasks/:id/resume
-GET    /api/events
-```
-
-Global Search returns grouped Messages, Links, Files, and Channels. Resources returns the Telegram Resource Library with `cloud_drive`, `magnet`, `ed2k`, `http`, and `files` groups.
-
-## Storage Quota
-
-`storage.max_db_size` limits the local SQLite database budget, and `storage.max_media_cache` limits cached media-derived files such as thumbnails. Phase 1 reports usage, shows quota warnings, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded; existing runtime recovery and read-only search remain available.
-
-## Storage Usage Response
-
-```json
-{
-  "db_bytes": 3200000000,
-  "index_bytes": 1100000000,
-  "media_cache_bytes": 0,
-  "total_bytes": 4300000000,
-  "max_db_bytes": 10000000000,
-  "max_media_bytes": 20000000000,
-  "db_over_quota": false,
-  "media_over_quota": false
-}
-```
-
-## Development
+常用检查：
 
 ```bash
 GOCACHE=/tmp/go-build-cache go test ./...
@@ -225,13 +142,11 @@ npm run web:test
 npm run web:build
 ```
 
-## Release
+## 文档
 
-Pushing a `v*` tag runs the release workflow. It tests Go and frontend code, builds the embedded admin console, injects the Git tag into `internal/build.Version`, publishes Linux binaries named `tg-search-linux-amd64` and `tg-search-linux-arm64`, writes checksums, and pushes Docker images for `linux/amd64` and `linux/arm64` to Docker Hub as `<DOCKERHUB_USERNAME>/tg-search:latest` and `<DOCKERHUB_USERNAME>/tg-search:<version>` with the leading `v` removed from the Git tag. Docker Hub publishing requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` GitHub secrets.
-
-Operational docs:
-
-- Detailed API documentation: `docs/api.md`
-- API response contract: `docs/api-response-contract.md`
-- Smoke test guide: `docs/smoke-test-guide.md`
-- Production deployment checklist: `docs/production-deployment-checklist.md`
+- 完整帮助文档：[docs/help.md](docs/help.md)
+- 管理 API 文档：[docs/api.md](docs/api.md)
+- 公开 API 集成文档：[docs/public-api.md](docs/public-api.md)
+- API 响应约定：[docs/api-response-contract.md](docs/api-response-contract.md)
+- 冒烟测试指南：[docs/smoke-test-guide.md](docs/smoke-test-guide.md)
+- 生产部署检查清单：[docs/production-deployment-checklist.md](docs/production-deployment-checklist.md)

@@ -1,7 +1,7 @@
 services:
   tg-search:
-    build: .
     image: haroldli/tg-search:latest
+    pull_policy: always
     container_name: tg-search
     restart: unless-stopped
     ports:

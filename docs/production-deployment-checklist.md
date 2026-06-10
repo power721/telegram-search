@@ -22,9 +22,10 @@
 
 ## Runtime
 
-- Docker Compose startup is verified:
+- Docker Compose startup is verified with the published image:
 
 ```bash
+docker compose pull
 docker compose up -d
 docker compose logs -f tg-search
 curl http://127.0.0.1:9900/api/health

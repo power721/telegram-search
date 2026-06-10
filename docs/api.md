@@ -1,20 +1,16 @@
-# tg-search API Documentation
+# tg-search 管理 API 文档
 
-This document describes the active REST API surface for the local index, search, resource library, and runtime reliability baseline. REST responses are JSON. `/api/events` uses Server-Sent Events.
+本文描述 tg-search 管理端 REST API。公开搜索 API 的兼容响应、API Key 用法和外部接入示例见 [public-api.md](public-api.md)。
 
-## Local Index Model
+## 基本约定
 
-Message storage is split:
+默认地址：
 
 ```text
-telegram_messages          -> metadata
-telegram_message_contents  -> text and raw_json
-telegram_sync_cursors      -> per account/channel cursor state
+http://127.0.0.1:9900
 ```
 
-`telegram_messages_fts` indexes only persisted local content from `telegram_message_contents.text`. Remote Telegram search results are display-only and are not inserted into `telegram_messages`, `telegram_message_contents`, `telegram_links`, `telegram_files`, or FTS.
-
-## Error Response
+除公开 API 和媒体代理外，管理接口均返回 JSON。错误响应：
 
 ```json
 {
@@ -25,48 +21,105 @@ telegram_sync_cursors      -> per account/channel cursor state
 }
 ```
 
-## Authentication
+分页参数通用约定：
 
-Administrator browser/API routes require an authenticated admin session cookie created by `POST /api/auth/login`.
+| 参数 | 说明 |
+| --- | --- |
+| `limit` | 返回数量。未传时不同接口使用默认值，负数会报错。 |
+| `offset` | 偏移量，负数会报错。 |
+| `q` / `keyword` | 关键词。 |
+| `account_id` | 账号 ID。 |
+| `channel_id` | 频道 ID。 |
+| `date_from` / `date_to` | 日期过滤，格式为 `YYYY-MM-DD`。 |
+| `sort` / `order` | 排序字段和方向，按具体接口支持范围生效。 |
 
-API keys are limited external credentials. They can access only:
+## 认证
 
-- `GET /api/search`
-- `POST /api/search`
-- `GET /v/:fileid`
-- `GET /i/:fileid`
-
-Send API keys with one of:
+管理 API 使用管理员会话 Cookie：
 
 ```text
-X-API-Key: <api-key>
-Authorization: <api-key>
+tg_search_session=<token>
 ```
 
-API keys are not accepted in query parameters. Media proxy endpoints accept API keys in request headers, and signed media URLs use `exp` and `sig` query parameters.
+登录：
 
-Health, readiness, first-run setup, and admin login/session endpoints remain available without an API key where required for bootstrap. If `GET /api/health` receives an API key header, it validates the key and returns the current service version when valid. API key management requires an authenticated admin session.
+```bash
+curl -i -c cookies.txt \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"secret123"}' \
+  http://127.0.0.1:9900/api/auth/login
+```
 
-## Setup
+使用会话：
+
+```bash
+curl -b cookies.txt http://127.0.0.1:9900/api/status
+```
+
+API Key 只用于公开 API 和媒体代理，不授予管理权限。
+
+## 公开基础接口
+
+### `GET /api/health`
+
+健康检查。无认证时返回：
+
+```json
+{ "service": "ok" }
+```
+
+如果请求头带 API Key，会校验 key；校验成功时额外返回 `version`。
+
+### `GET /api/ready`
+
+就绪检查，检查数据库和运行时目录。
+
+```json
+{
+  "ready": true,
+  "checks": {
+    "database": "ok",
+    "runtime_dirs": "ok"
+  }
+}
+```
+
+## 初始化接口
+
+初始化接口用于首次启动流程。
 
 ### `GET /api/setup/status`
 
-Returns first-run setup state.
+返回初始化状态。
 
 ```json
 {
   "complete": false,
-  "admin_configured": false,
-  "api_key_configured": false,
-  "telegram_configured": false
+  "admin_configured": true,
+  "api_key_configured": true,
+  "api_key_step_complete": true,
+  "telegram_configured": false,
+  "telegram_login_complete": false,
+  "listen_rules_configured": false,
+  "current_step": "telegram_api"
 }
+```
+
+`current_step` 可能值：
+
+```text
+admin
+api_key
+telegram_api
+telegram_login
+listen_rules
+channel_selection
+complete
 ```
 
 ### `POST /api/setup/admin`
 
-Creates the first admin user.
-
-Request:
+创建第一个管理员。
 
 ```json
 {
@@ -75,7 +128,7 @@ Request:
 }
 ```
 
-Response `201`:
+响应 `201`：
 
 ```json
 {
@@ -87,9 +140,9 @@ Response `201`:
 
 ### `POST /api/setup/api-key`
 
-Ensures the active API key exists during first-run setup. The key is generated automatically and this endpoint has no request body.
+生成或返回初始化默认 API Key，无请求体。
 
-Response `201`:
+响应 `201`：
 
 ```json
 {
@@ -97,20 +150,15 @@ Response `201`:
   "name": "default",
   "prefix": "0123abcd",
   "key": "0123abcd...",
+  "usage_count": 0,
   "created_at": "2026-06-08T02:00:00Z",
   "updated_at": "2026-06-08T02:00:00Z"
 }
 ```
 
-### `POST /api/setup/complete`
-
-Marks setup complete and returns setup status.
-
 ### `POST /api/setup/telegram-api`
 
-Stores Telegram API credentials for first-run setup. `app_hash` is write-only and is never returned.
-
-Request:
+保存 Telegram API 凭据。`app_hash` 不会在响应里回显。
 
 ```json
 {
@@ -119,7 +167,7 @@ Request:
 }
 ```
 
-Response `200`:
+响应：
 
 ```json
 {
@@ -129,11 +177,56 @@ Response `200`:
 }
 ```
 
-## Telegram Settings
+### `POST /api/setup/listen-rules`
+
+保存全局监听规则。
+
+```json
+{
+  "includes": ["电影"],
+  "excludes": ["广告"],
+  "message_types": ["text", "photo", "video", "document"],
+  "link_types": ["cloud_drive", "magnet", "ed2k", "http"],
+  "ignored_link_patterns": ["t.me"]
+}
+```
+
+`message_types` 和 `link_types` 不能为空。
+
+### `POST /api/setup/complete`
+
+标记初始化完成，返回最新 setup status。
+
+## 登录和会话
+
+### `POST /api/auth/login`
+
+```json
+{
+  "username": "admin",
+  "password": "secret123"
+}
+```
+
+响应会设置 `tg_search_session` Cookie，并返回用户对象。
+
+### `POST /api/auth/logout`
+
+清除当前 Cookie。
+
+```json
+{ "logged_out": true }
+```
+
+### `GET /api/auth/me`
+
+返回当前登录用户。未登录返回 `401`。
+
+## 设置接口
 
 ### `GET /api/settings/telegram-api`
 
-Returns redacted Telegram API configuration state.
+返回 Telegram API 设置状态。
 
 ```json
 {
@@ -145,13 +238,18 @@ Returns redacted Telegram API configuration state.
 
 ### `PUT /api/settings/telegram-api`
 
-Updates Telegram API credentials. The response is the same redacted shape as `GET /api/settings/telegram-api`.
+更新 Telegram API 凭据。
 
-## API Key Settings
+```json
+{
+  "app_id": 123456,
+  "app_hash": "new_app_hash"
+}
+```
 
 ### `GET /api/settings/api-key`
 
-Returns the active API key. Requires an authenticated admin session. The full key is returned so it can be viewed in settings.
+返回当前启用 API Key。需要管理员会话。
 
 ```json
 {
@@ -159,6 +257,7 @@ Returns the active API key. Requires an authenticated admin session. The full ke
   "name": "default",
   "prefix": "0123abcd",
   "key": "0123abcd...",
+  "usage_count": 5,
   "last_used_at": "2026-06-08T03:00:00Z",
   "created_at": "2026-06-08T02:00:00Z",
   "updated_at": "2026-06-08T02:00:00Z"
@@ -167,33 +266,116 @@ Returns the active API key. Requires an authenticated admin session. The full ke
 
 ### `POST /api/settings/api-key/regenerate`
 
-Creates a replacement API key, disables old keys immediately, and returns the new full key. Requires an authenticated admin session.
+生成新的 API Key，并立即禁用旧 key。响应同 `GET /api/settings/api-key`，包含新 key 明文。
 
-## Telegram Login
+### `GET /api/settings/runtime`
 
-Telegram onboarding creates or updates an account, stores the local session path, and starts metadata-only channel sync after successful login. It does not sync message history.
-
-### `POST /api/telegram/login/send-code`
-
-Request:
+返回运行时设置。
 
 ```json
 {
-  "phone": "+10000000000"
+  "sync": {
+    "workers": 5,
+    "history_batch_size": 100,
+    "telegram_request_interval": "2s"
+  },
+  "storage": {
+    "max_db_size": "10GB",
+    "max_media_cache": "20GB"
+  },
+  "telegram": {
+    "proxy": "",
+    "reconnect_timeout": "5m",
+    "dial_timeout": "10s",
+    "rate_limit": {
+      "enabled": true,
+      "rate_per_second": 10,
+      "burst": 5
+    },
+    "stream": {
+      "concurrency": 2,
+      "buffers": 4,
+      "chunk_timeout": "20s"
+    },
+    "media": {
+      "concurrency": 2
+    }
+  }
 }
 ```
 
-Response `200`:
+### `PUT /api/settings/runtime`
+
+保存运行时设置。请求体同 `GET /api/settings/runtime`。保存后会立即更新媒体下载并发；其他设置在相关服务读取运行时配置时生效，重启后仍会从数据库加载。
+
+### `PUT /api/settings/admin`
+
+修改管理员用户名或密码。
 
 ```json
 {
-  "status": "LOGIN_REQUIRED"
+  "username": "admin",
+  "current_password": "old-password",
+  "new_password": "new-password"
+}
+```
+
+### `GET /api/settings/version`
+
+返回当前版本。
+
+```json
+{
+  "current_version": "v1.2.3",
+  "update_available": false
+}
+```
+
+传 `check_update=1` 时会请求 GitHub latest release：
+
+```text
+GET /api/settings/version?check_update=1
+```
+
+### `GET /api/settings/system-info`
+
+返回系统信息。
+
+```json
+{
+  "name": "Linux",
+  "version": "6.8.0",
+  "architecture": "amd64",
+  "go_version": "go1.25.0",
+  "cpu_count": 4,
+  "hostname": "host"
+}
+```
+
+## Telegram 登录
+
+这些接口需要管理员会话。
+
+### `POST /api/telegram/login/send-code`
+
+发送手机验证码。
+
+```json
+{ "phone": "+10000000000" }
+```
+
+响应：
+
+```json
+{
+  "status": "LOGIN_REQUIRED",
+  "phone": "+10000000000"
 }
 ```
 
 ### `POST /api/telegram/login/sign-in`
 
-Request:
+提交验证码。
 
 ```json
 {
@@ -202,31 +384,7 @@ Request:
 }
 ```
 
-Response `200`:
-
-```json
-{
-  "status": "ONLINE",
-  "account": {
-    "id": 1,
-    "phone": "+10000000000",
-    "telegram_user_id": 42,
-    "first_name": "Ada",
-    "last_name": "Lovelace",
-    "username": "ada",
-    "status": "ONLINE",
-    "session_path": "/data/tg-search/sessions/1.session",
-    "last_online_at": "2026-06-08T02:00:00Z",
-    "last_error": ""
-  },
-  "metadata_sync": {
-    "status": "succeeded",
-    "channel_count": 3
-  }
-}
-```
-
-If 2FA is required, response `202`:
+如果需要两步验证密码，响应 `202`：
 
 ```json
 {
@@ -235,11 +393,11 @@ If 2FA is required, response `202`:
 }
 ```
 
+成功响应会返回账号和元数据同步结果。
+
 ### `POST /api/telegram/login/password`
 
-Submits the 2FA password for a pending login.
-
-Request:
+提交两步验证密码。
 
 ```json
 {
@@ -248,15 +406,36 @@ Request:
 }
 ```
 
-Response `200` uses the same successful login shape as `/api/telegram/login/sign-in`.
+### `POST /api/telegram/login/qr/start`
 
-If metadata sync fails after login, the account remains `ONLINE`, `account.last_error` is stored, and `metadata_sync.status` is `failed`.
+开始 QR 登录。
 
-## Accounts
+```json
+{
+  "login_id": "abc",
+  "status": "pending",
+  "qr_url": "tg://login?token=...",
+  "expires_at": "2026-06-08T02:00:00Z"
+}
+```
+
+### `GET /api/telegram/login/qr/:login_id`
+
+轮询 QR 登录状态。成功时返回在线账号响应；未完成时返回新的 `qr_url` 和 `expires_at`。
+
+### `DELETE /api/telegram/login/qr/:login_id`
+
+取消 QR 登录。
+
+```json
+{ "canceled": true }
+```
+
+## 账号接口
 
 ### `GET /api/accounts`
 
-Returns Telegram accounts.
+返回所有 Telegram 账号。
 
 ```json
 {
@@ -269,277 +448,399 @@ Returns Telegram accounts.
       "last_name": "Lovelace",
       "username": "ada",
       "status": "ONLINE",
-      "session_path": "/data/tg-search/sessions/1.session",
-      "last_online_at": "2026-06-08T02:00:00Z",
-      "last_error": ""
+      "last_error": "",
+      "created_at": "2026-06-08T02:00:00Z",
+      "updated_at": "2026-06-08T02:00:00Z"
     }
   ]
 }
 ```
 
+账号状态：
+
+```text
+NEW
+LOGIN_REQUIRED
+SYNCING
+ONLINE
+RECONNECTING
+FLOOD_WAIT
+DISCONNECTED
+```
+
+### `POST /api/accounts/:id/logout`
+
+退出 Telegram 登录，停止监听并移除本地 session，账号状态变为 `LOGIN_REQUIRED`。
+
 ### `DELETE /api/accounts/:id`
 
-Stops account runtime state, logs out the Telegram session, removes the local session file, and deletes the account row.
+删除账号及关联状态。
 
 ### `POST /api/accounts/:id/channels/sync-metadata`
 
-Runs metadata-only channel sync for an account. The sync stores channel title, username, type, member count, description, avatar state, `sync_state="metadata_only"`, and `listen_state="disabled"`. It does not fetch message history.
+同步该账号的频道元数据。可能返回后台任务或直接返回同步结果。
 
-### `GET /api/channels?account_id=1`
+## 频道接口
 
-Returns channels for an account. Omit `account_id` to list all channels.
+### `GET /api/channels`
+
+返回频道列表。支持 `account_id` 过滤。
+
+```text
+GET /api/channels?account_id=1
+```
+
+响应：
+
+```json
+{
+  "items": [
+    {
+      "id": 10,
+      "account_id": 1,
+      "telegram_channel_id": 100,
+      "title": "Channel",
+      "username": "channel",
+      "type": "channel",
+      "member_count": 1000,
+      "listen_enabled": true,
+      "indexed_message_count": 120
+    }
+  ]
+}
+```
+
+### `GET /api/channels/:id`
+
+返回单个频道。
 
 ### `PATCH /api/channels/:id/control`
 
-Updates per-channel control settings.
-
-Sync Profiles:
-
-```text
-Quick  -> latest 100 messages
-Normal -> latest 1000 messages
-Deep   -> latest 10000 messages
-Full   -> all available history
-```
-
-Request:
+更新单个频道控制项。当前有效控制字段是 `listen_enabled`。`history_sync_enabled`、`sync_profile` 为废弃兼容字段，`remote_search_allowed` 为预留字段，调用方不要依赖这些字段产生实际效果。
 
 ```json
 {
-  "history_sync_enabled": true,
-  "sync_profile": "Normal",
-  "listen_enabled": false,
-  "remote_search_allowed": true
+  "listen_enabled": true
 }
 ```
 
-Deep and Full changes check DB storage quota before saving. If DB usage is at or above `storage.max_db_size`, the API returns `409` with `storage_quota_exceeded`.
+### `PATCH /api/channels/control`
 
-### `POST /api/channels/:id/sync`
-
-Creates a persistent `history_sync` task for one channel. The task is visible on the Tasks page and is restored after service restart if it has not finished.
-
-Response:
+批量更新频道控制项。当前建议只传 `listen_enabled`。
 
 ```json
 {
-  "task_id": 12,
-  "job_id": "12",
-  "status": "queued"
-}
-```
-
-### `POST /api/channels/sync`
-
-Creates one persistent `history_sync` task for selected channels. `max_messages` is optional; when omitted, each channel uses its saved Sync Profile.
-
-Request:
-
-```json
-{
-  "channel_ids": [1, 2, 3],
-  "max_messages": 1000
-}
-```
-
-Response:
-
-```json
-{
-  "task_id": 13,
-  "job_id": "13",
-  "status": "queued"
-}
-```
-
-### `POST /api/channels/web-access/check`
-
-Runs Telegram Web Access Detection for selected channels.
-
-This check only determines whether a public username channel can be viewed through:
-
-```text
-https://t.me/s/{username}
-```
-
-The detector parses the page for `tgme_widget_message_wrap`. It does not mean Google/Bing indexing, PanSou indexing, Telegram public searchability, or complete content access.
-
-Request:
-
-```json
-{
-  "channel_ids": [1, 2]
+  "channel_ids": [10, 11],
+  "control": {
+    "listen_enabled": true
+  }
 }
 ```
 
 ### `POST /api/channels/:id/analyze`
 
-Returns lightweight channel analysis from stored metadata and existing local counts only. It does not fetch Telegram history.
+返回频道控制项、Watch Rule 和索引统计概览。响应中可能包含废弃或预留控制字段，调用方应以管理界面当前可用操作为准。
 
-Response includes:
+### `POST /api/channels/:id/sync`
+
+为单个频道发起历史同步任务。
+
+响应 `202`：
 
 ```json
 {
-  "channel": {},
-  "control": {},
-  "watch_rule": null,
-  "indexed_counts": {
-    "messages": 0,
-    "links": 0,
-    "files": 0
+  "task_id": 123,
+  "job_id": "123",
+  "status": "queued",
+  "task": {
+    "id": 123,
+    "type": "history_sync",
+    "status": "queued"
   }
 }
 ```
 
-## Listen Rules
+### `POST /api/channels/sync`
 
-### `GET /api/listen-rules`
-
-Returns the global listen rules used by history sync and realtime listeners.
-
-### `PUT /api/listen-rules`
-
-Updates the global listen rules.
+批量发起历史同步。
 
 ```json
 {
-  "includes": ["电影", "课程"],
-  "excludes": ["广告"],
-  "message_types": ["text", "file"],
-  "link_types": ["cloud_drive", "magnet", "ed2k", "http"],
-  "ignored_link_patterns": ["t.me", "*.t.me", "toapp.mypikpak.com", "telegra.ph", "www.themoviedb.org"]
+  "channel_ids": [10, 11],
+  "max_messages": 500
 }
 ```
 
-`ignored_link_patterns` accepts exact hosts such as `t.me`, wildcard subdomains such as `*.t.me`, and URL prefixes. Matching links are excluded from stored extracted links; the message text itself is not dropped solely because it contains an ignored link.
+`max_messages` 可省略。传入时必须为正整数。
 
-### `POST /api/watch-rules`
+### `POST /api/channels/web-access/check`
 
-Creates a listen rule.
+检测 Telegram Web 访问能力。
 
 ```json
 {
-  "channel_id": 1,
-  "enabled": true,
-  "includes": ["电影", "课程"],
-  "excludes": ["广告"],
-  "message_types": ["text", "file"],
-  "link_types": ["cloud_drive", "magnet", "ed2k", "http"]
+  "channel_ids": [10, 11]
 }
 ```
 
-`PUT /api/watch-rules/:id` uses the same payload. `GET /api/watch-rules` and `GET /api/watch-rules/:id` return these fields.
-
-## External Search
-
-### `GET /api/search?kw=ubuntu`
-
-Public integration search endpoint protected by API key. It returns sanitized resource results and does not require an admin session.
-
-`kw`, `q`, or `keyword` is optional. When omitted or blank, the endpoint returns the latest matching resources by `limit`. `limit` defaults to `50` and is capped at `3000`.
-
-Set `include_media_metadata=true` to include extracted media metadata in a `media` object, for example `media.title`, `media.year`, `media.quality`, `media.tmdb_id`, `media.category`, and `media.tags`. The default is `false`. GET also accepts the alias `media_metadata=true`; POST accepts either `include_media_metadata` or `media_metadata` in the JSON body.
-
-Set `include_image=true` to include cover image URLs for cloud-drive resources in `images`. The default is `false`. Video file resources still return signed playback URLs when available.
-
-## Admin Search
-
-### `GET /api/admin/search/global?q=ubuntu`
-
-Returns grouped local search results.
+响应：
 
 ```json
 {
-  "messages": { "items": [], "total": 0 },
-  "links": { "items": [], "total": 0 },
-  "files": { "items": [], "total": 0 },
-  "channels": { "items": [], "total": 0 }
-}
-```
-
-`total` is the full filtered match count for each group, not the number of items in the current page. `items` is paginated by `limit` and `offset`.
-
-Scoped endpoints use the same filters (`q`, `account_id`, `channel_id`, `limit`, `offset`, `sort`, date range where applicable):
-
-```text
-GET /api/admin/search/messages
-GET /api/admin/search/links
-GET /api/admin/search/files
-GET /api/admin/search/channels
-```
-
-Supported `sort` values:
-
-```text
-date_desc
-date_asc
-```
-
-Omitting `sort` uses `date_desc`.
-
-Admin legacy endpoints remain available:
-
-```text
-GET /api/admin/search
-GET /api/messages/latest
-GET /api/links
-GET /api/links/merged
-```
-
-## Remote Search
-
-### `POST /api/admin/search/remote`
-
-Executes a display-only Telegram remote search for an unsynced channel.
-
-Constraints:
-
-- `query` must be non-empty.
-- `channel_id` must reference an unsynced channel.
-- `remote_search_allowed` must be `true`.
-- Results are stored only in short-lived memory and do not write local index rows.
-
-Request:
-
-```json
-{
-  "channel_id": 1,
-  "query": "ubuntu iso"
-}
-```
-
-Response `202`:
-
-```json
-{
-  "id": 1,
-  "status": "queued",
-  "source": "remote",
-  "expires_at": "2026-06-08T10:30:00Z"
-}
-```
-
-### `GET /api/admin/search/remote/:task_id`
-
-Returns temporary remote results:
-
-```json
-{
-  "task": {},
   "items": [
     {
-      "source": "remote",
-      "channel_id": 1,
-      "telegram_message_id": 99,
-      "text": "ubuntu iso"
+      "channel_id": 10,
+      "web_access": true,
+      "checked_at": "2026-06-08T02:00:00Z",
+      "error": ""
     }
   ]
 }
 ```
 
-## Runtime Tasks
+## 监听规则
 
-Long-running work is represented by persistent `sync_tasks` rows. Task statuses:
+### `GET /api/listen-rules`
+
+返回全局监听规则。
+
+### `PUT /api/listen-rules`
+
+更新全局监听规则，请求体同 `POST /api/setup/listen-rules`。
+
+### `GET /api/watch-rules`
+
+返回频道级 Watch Rules。
+
+### `POST /api/watch-rules`
+
+创建频道级 Watch Rule。
+
+```json
+{
+  "channel_id": 10,
+  "enabled": true,
+  "includes": ["电影"],
+  "excludes": ["广告"],
+  "message_types": ["text", "video"],
+  "link_types": ["cloud_drive", "magnet"]
+}
+```
+
+### `GET /api/watch-rules/:id`
+
+返回单个 Watch Rule。
+
+### `PUT /api/watch-rules/:id`
+
+更新 Watch Rule。`enabled` 必填。
+
+### `DELETE /api/watch-rules/:id`
+
+删除 Watch Rule。
+
+```json
+{ "deleted": true }
+```
+
+## 搜索接口
+
+管理搜索接口只搜索本地已索引内容，远程 Telegram 搜索除外。
+
+### `GET /api/admin/search`
+
+兼容消息搜索接口，返回 `{"items":[]}`。参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `q` | 必填，搜索关键词。 |
+| `account_id` / `channel_id` | 可选过滤。 |
+| `link_type` | 可选链接类型过滤。 |
+| `date_from` / `date_to` | 日期过滤。 |
+| `before_date` / `before_id` | 游标分页。 |
+| `limit` / `offset` | 分页。 |
+
+### `GET /api/admin/search/global`
+
+全局搜索，返回 `messages`、`links`、`files`、`channels` 四组结果。
+
+### `GET /api/admin/search/messages`
+
+搜索消息，返回：
+
+```json
+{
+  "items": [],
+  "total": 0
+}
+```
+
+### `GET /api/admin/search/links`
+
+搜索链接。额外支持 `link_type` 或 `type`。
+
+### `GET /api/admin/search/files`
+
+搜索文件。额外支持 `file_type` 或 `category`。
+
+### `GET /api/admin/search/channels`
+
+搜索频道标题、用户名和描述。
+
+### `POST /api/admin/search/remote`
+
+执行 Telegram 远程搜索。该能力仍在内部演进中，`remote_search_allowed` 暂时不要作为稳定权限开关依赖。
+
+```json
+{
+  "channel_id": 10,
+  "query": "keyword"
+}
+```
+
+响应 `202`，返回远程搜索任务。
+
+### `GET /api/admin/search/remote/:task_id`
+
+返回远程搜索结果。远程结果不会写入本地索引。
+
+## 消息和链接接口
+
+### `GET /api/messages/latest`
+
+返回最新消息，支持 `account_id`、`channel_id`、`before_date`、`before_id`、`limit`。
+
+### `GET /api/links`
+
+返回链接列表，支持：
+
+| 参数 | 说明 |
+| --- | --- |
+| `type` | 链接类型。 |
+| `keyword` | 关键词。 |
+| `account_id` / `channel_id` | 过滤。 |
+| `date_from` / `date_to` | 日期过滤。 |
+| `sort` | 排序。 |
+| `limit` / `offset` | 分页。 |
+
+### `GET /api/links/grouped`
+
+按链接类型返回数量。
+
+```json
+{
+  "grouped": {
+    "cloud_drive": 10,
+    "magnet": 3
+  }
+}
+```
+
+### `GET /api/links/merged`
+
+按链接类型聚合返回资源链接。支持 `q` 或 `keyword`、`type`、账号/频道、日期和分页过滤。
+
+## 资源库接口
+
+### `GET /api/resources`
+
+返回资源库条目。支持参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `q` / `keyword` | 关键词。 |
+| `type` | 资源类型或文件分类。 |
+| `category` | `cloud_drive`、`magnet`、`ed2k`、`http`、`files` 等。 |
+| `extension` | 文件扩展名过滤。 |
+| `account_id` / `channel_id` | 过滤。 |
+| `sort` | 排序。 |
+| `limit` / `offset` | 分页。 |
+
+响应：
+
+```json
+{
+  "items": [
+    {
+      "id": "link:https://example.com",
+      "kind": "link",
+      "type": "quark",
+      "category": "cloud_drive",
+      "url": "https://example.com",
+      "password": "abcd",
+      "title": "资源标题",
+      "datetime": "2026-06-08T02:00:00Z",
+      "channel_id": 10,
+      "channel_title": "Channel",
+      "telegram_message_id": 123
+    }
+  ],
+  "total": 1,
+  "grouped": {
+    "cloud_drive": 1,
+    "magnet": 0,
+    "ed2k": 0,
+    "http": 0,
+    "files": 0
+  }
+}
+```
+
+### `GET /api/resources/grouped`
+
+返回全局资源分类数量。
+
+### `GET /api/resources/:id`
+
+返回单个资源。资源 ID 形如 `link:<url>` 或 `file:<id>`，URL 中的特殊字符需要进行 URL 编码。
+
+### `DELETE /api/resources/:id`
+
+删除单个资源。
+
+### `POST /api/resources/bulk-delete`
+
+批量删除资源。
+
+```json
+{
+  "ids": ["link:https://example.com", "file:12"]
+}
+```
+
+响应：
+
+```json
+{
+  "deleted": 2,
+  "missing_ids": []
+}
+```
+
+## 任务接口
+
+### `GET /api/tasks`
+
+返回任务列表。支持 `status`、`type`、`q`、`sort`、`order`、`limit`、`offset`。
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "type": "history_sync",
+      "status": "running",
+      "progress": 50,
+      "total": 100,
+      "message": "",
+      "retry_count": 0
+    }
+  ],
+  "total": 1
+}
+```
+
+任务状态：
 
 ```text
 queued
@@ -553,80 +854,102 @@ flood_wait
 reconnecting
 ```
 
-Task types:
+### `GET /api/tasks/:id`
 
-```text
-metadata_sync
-channel_analysis
-web_access_detection
-history_sync
-listener_recovery
-remote_search
-backup
-gap_recovery
+返回任务详情。
+
+### `POST /api/tasks/:id/retry`
+
+重试失败任务。
+
+### `POST /api/tasks/:id/cancel`
+
+取消可取消任务。
+
+### `POST /api/tasks/:id/pause`
+
+暂停可暂停任务。
+
+### `POST /api/tasks/:id/resume`
+
+恢复暂停任务。
+
+### `DELETE /api/tasks/:id`
+
+删除可删除任务。
+
+### `POST /api/tasks/bulk-delete`
+
+批量删除任务。
+
+```json
+{ "ids": [1, 2, 3] }
 ```
 
-### `GET /api/tasks`
+## 日志接口
 
-Returns tasks ordered by recent update time.
+### `GET /api/logs`
 
-Optional query parameters:
+查询日志。支持：
 
-```text
-status
-type
-limit
-offset
-```
+| 参数 | 说明 |
+| --- | --- |
+| `file` | 日志文件名。 |
+| `level` | 日志级别。 |
+| `q` | 文本关键词。 |
+| `order` | 排序方向。 |
+| `limit` / `offset` | 分页。 |
 
-Response:
+### `GET /api/logs/:file/download`
+
+下载指定日志文件。
+
+## 状态和事件
+
+### `GET /api/status`
+
+返回服务统计。
 
 ```json
 {
-  "items": [
-    {
-      "id": 1,
-      "type": "history_sync",
-      "status": "running",
-      "progress": 25,
-      "total": 100,
-      "message": "history sync batch stored",
-      "error_code": "",
-      "error_message": "",
-      "retry_count": 0,
-      "next_run_at": null,
-      "payload_json": "{\"channel_id\":1}",
-      "started_at": "2026-06-08T12:00:00Z",
-      "finished_at": null,
-      "created_at": "2026-06-08T12:00:00Z",
-      "updated_at": "2026-06-08T12:00:05Z"
-    }
-  ]
+  "service": "ok",
+  "accounts": 1,
+  "channels": 10,
+  "messages": 1000,
+  "links": 200,
+  "account_states": {
+    "ONLINE": 1
+  }
 }
 ```
 
-### `GET /api/tasks/:id`
+### `GET /api/storage/usage`
 
-Returns one task.
+返回存储用量。
 
-### Task Actions
-
-```text
-POST /api/tasks/:id/retry
-POST /api/tasks/:id/cancel
-POST /api/tasks/:id/pause
-POST /api/tasks/:id/resume
+```json
+{
+  "db_bytes": 3200000000,
+  "index_bytes": 1100000000,
+  "media_cache_bytes": 0,
+  "total_bytes": 4300000000,
+  "max_db_bytes": 10000000000,
+  "max_media_bytes": 20000000000,
+  "db_over_quota": false,
+  "media_over_quota": false
+}
 ```
-
-Each action returns the updated task. Invalid state transitions return `409`.
-
-## Runtime Events
 
 ### `GET /api/events`
 
-Streams Server-Sent Events with `Content-Type: text/event-stream`.
+Server-Sent Events。连接成功后先发送注释 `: connected`，随后按事件类型推送：
 
-Event names:
+```text
+event: task.updated
+data: {"type":"task.updated","payload":{...}}
+```
+
+常见事件类型：
 
 ```text
 task.updated
@@ -635,173 +958,125 @@ listener.updated
 activity.created
 ```
 
-Example event:
+## 维护接口
+
+### `POST /api/maintenance/sqlite`
+
+执行 SQLite 维护/优化。
+
+```json
+{
+  "operations": ["PRAGMA optimize"]
+}
+```
+
+### `POST /api/maintenance/backup`
+
+创建 SQLite 备份。
+
+```json
+{
+  "path": "/data/tg-search/backup/tg-search-20260608T020000Z.db"
+}
+```
+
+## 媒体代理
+
+媒体代理既可用管理员 Cookie，也可用 API Key 或签名 URL 访问。
 
 ```text
-event: task.updated
-data: {"type":"task.updated","payload":{"id":1,"status":"running"},"created_at":"2026-06-08T12:00:00Z"}
+GET  /v/:fileid
+HEAD /v/:fileid
+GET  /i/:fileid
+HEAD /i/:fileid
 ```
 
-Slow event subscribers use bounded buffers. If a client cannot keep up, stale queued events may be dropped in favor of newer events.
+`/v/:fileid` 支持 HTTP Range 请求，并设置 `Accept-Ranges: bytes`。公开搜索 API 返回的媒体 URL 会带 `exp` 和 `sig`，默认 24 小时有效。
 
-## Runtime Recovery
-
-On startup, unfinished retryable tasks in `running`, `canceling`, `paused`, `flood_wait`, or `reconnecting` are restored from SQLite. Tasks with `next_run_at` in the future remain scheduled as `flood_wait`; tasks with no `next_run_at` or a past `next_run_at` return to `queued`. `succeeded` and `canceled` tasks are not restarted.
-
-Realtime listener failures mark the account `RECONNECTING` or `FLOOD_WAIT`. If reconnect succeeds, the account returns to `ONLINE`. Realtime update gaps enqueue `gap_recovery` tasks with the missing message ID range.
-
-## Resources
-
-### `GET /api/resources`
-
-Returns the Telegram Resource Library from local indexed links and files. Duplicate links are collapsed by URL, keeping the newest source message.
-
-Requires an authenticated admin session cookie. API keys cannot access resource library endpoints directly.
-
-Filters:
+## 路由速查
 
 ```text
-q
-type
-category
-channel_id
-account_id
-extension
-sort
-limit
-offset
+GET    /api/health
+GET    /api/ready
+GET    /api/setup/status
+POST   /api/setup/admin
+POST   /api/setup/api-key
+POST   /api/setup/telegram-api
+POST   /api/setup/listen-rules
+POST   /api/setup/complete
+POST   /api/auth/login
+POST   /api/auth/logout
+GET    /api/auth/me
+GET    /api/settings/telegram-api
+PUT    /api/settings/telegram-api
+GET    /api/settings/runtime
+PUT    /api/settings/runtime
+PUT    /api/settings/admin
+GET    /api/settings/version
+GET    /api/settings/api-key
+POST   /api/settings/api-key/regenerate
+GET    /api/settings/system-info
+POST   /api/telegram/login/send-code
+POST   /api/telegram/login/sign-in
+POST   /api/telegram/login/password
+POST   /api/telegram/login/qr/start
+GET    /api/telegram/login/qr/:login_id
+DELETE /api/telegram/login/qr/:login_id
+GET    /api/accounts
+POST   /api/accounts/:id/logout
+DELETE /api/accounts/:id
+POST   /api/accounts/:id/channels/sync-metadata
+GET    /api/channels
+GET    /api/channels/:id
+PATCH  /api/channels/:id/control
+PATCH  /api/channels/control
+POST   /api/channels/:id/analyze
+POST   /api/channels/:id/sync
+POST   /api/channels/sync
+POST   /api/channels/web-access/check
+GET    /api/listen-rules
+PUT    /api/listen-rules
+GET    /api/watch-rules
+POST   /api/watch-rules
+GET    /api/watch-rules/:id
+PUT    /api/watch-rules/:id
+DELETE /api/watch-rules/:id
+GET    /api/admin/search
+GET    /api/admin/search/global
+GET    /api/admin/search/messages
+GET    /api/admin/search/links
+GET    /api/admin/search/files
+GET    /api/admin/search/channels
+POST   /api/admin/search/remote
+GET    /api/admin/search/remote/:task_id
+GET    /api/messages/latest
+GET    /api/links
+GET    /api/links/grouped
+GET    /api/links/merged
+GET    /api/resources
+GET    /api/resources/grouped
+GET    /api/resources/:id
+DELETE /api/resources/:id
+POST   /api/resources/bulk-delete
+GET    /api/tasks
+GET    /api/tasks/:id
+POST   /api/tasks/:id/retry
+POST   /api/tasks/:id/cancel
+POST   /api/tasks/:id/pause
+POST   /api/tasks/:id/resume
+DELETE /api/tasks/:id
+POST   /api/tasks/bulk-delete
+GET    /api/logs
+GET    /api/logs/:file/download
+GET    /api/status
+GET    /api/storage/usage
+GET    /api/events
+POST   /api/maintenance/sqlite
+POST   /api/maintenance/backup
+GET    /api/search
+POST   /api/search
+GET    /v/:fileid
+HEAD   /v/:fileid
+GET    /i/:fileid
+HEAD   /i/:fileid
 ```
-
-Resource groups:
-
-```text
-cloud_drive
-magnet
-ed2k
-http
-files
-```
-
-Response:
-
-```json
-{
-  "items": [],
-  "total": 0,
-  "grouped": {
-    "cloud_drive": 0,
-    "magnet": 0,
-    "ed2k": 0,
-    "http": 0,
-    "files": 0
-  }
-}
-```
-
-### `GET /api/resources/grouped`
-
-Returns cached global resource counts for dashboard summaries. Search result grouping is returned by `GET /api/resources`.
-
-### `GET /api/resources/:id`
-
-Returns one resource item from the current local resource library.
-
-## Auth
-
-### `POST /api/auth/login`
-
-Creates an `HttpOnly` admin session cookie named `tg_search_session`.
-
-Request:
-
-```json
-{
-  "username": "admin",
-  "password": "secret123"
-}
-```
-
-### `GET /api/auth/me`
-
-Returns the logged-in admin user. `password_hash` is never returned.
-
-### `POST /api/auth/logout`
-
-Deletes the in-memory session and clears the browser cookie.
-
-## Storage
-
-### `GET /api/storage/usage`
-
-Returns local storage usage and quota state.
-
-`storage.max_db_size` controls the SQLite database budget. `storage.max_media_cache` controls cached media-derived files such as thumbnails. Human-readable MB/GB settings use 1024-based units, and each limit must be at least 100MB. Phase 1 reports usage, warns through quota flags, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded.
-
-```json
-{
-  "db_bytes": 3200000000,
-  "index_bytes": 1100000000,
-  "media_cache_bytes": 0,
-  "total_bytes": 4300000000,
-  "max_db_bytes": 10737418240,
-  "max_media_bytes": 21474836480,
-  "db_over_quota": false,
-  "media_over_quota": false
-}
-```
-
-## Health
-
-### `GET /api/health`
-
-Returns process health without checking downstream readiness. If an API key is provided in `X-API-Key` or `Authorization`, the key is validated. A valid key adds the current service version to the response; an invalid key returns `401`.
-
-```json
-{
-  "service": "ok"
-}
-```
-
-Authenticated response:
-
-```json
-{
-  "service": "ok",
-  "version": "1.2.3"
-}
-```
-
-### `GET /api/ready`
-
-Returns `200` when SQLite responds and runtime directories are writable. Returns `503` with failed checks when the service should not receive work yet.
-
-```json
-{
-  "ready": true,
-  "checks": {
-    "database": "ok",
-    "runtime_dirs": "ok"
-  }
-}
-```
-
-## Status
-
-### `GET /api/status`
-
-Returns basic runtime counts and Telegram account status summary.
-
-```json
-{
-  "service": "ok",
-  "accounts": 0,
-  "channels": 0,
-  "messages": 0,
-  "links": 0,
-  "account_states": {}
-}
-```
-
-## Search And Resources
-
-Message search, link, maintenance, and backup endpoints from the existing backend remain available while later phases reshape them around Global Search and the Telegram Resource Library.

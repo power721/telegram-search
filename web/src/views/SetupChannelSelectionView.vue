@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TelegramChannel } from '@/api/types'
 import AppPagination from '@/components/common/AppPagination.vue'
@@ -15,6 +15,9 @@ const setup = useSetupStore()
 const selected = reactive<Record<number, boolean>>({})
 const page = ref(1)
 const pageSize = 50
+const emptyRefreshAttempts = ref(0)
+const maxEmptyRefreshAttempts = 10
+let emptyRefreshTimer: number | undefined
 
 const visibleChannels = computed(() => {
   const start = (page.value - 1) * pageSize
@@ -28,6 +31,10 @@ onMounted(async () => {
   await loadChannels()
 })
 
+onUnmounted(() => {
+  stopEmptyRefresh()
+})
+
 async function loadChannels() {
   await channels.loadChannels()
   for (const channel of channels.items) {
@@ -35,6 +42,33 @@ async function loadChannels() {
   }
   if (page.value > totalPages.value) {
     page.value = totalPages.value
+  }
+  scheduleEmptyRefresh()
+}
+
+function scheduleEmptyRefresh() {
+  stopEmptyRefresh()
+  if (channels.items.length > 0 || emptyRefreshAttempts.value >= maxEmptyRefreshAttempts) {
+    return
+  }
+  emptyRefreshTimer = window.setTimeout(async () => {
+    if (channels.loading) {
+      scheduleEmptyRefresh()
+      return
+    }
+    emptyRefreshAttempts.value += 1
+    try {
+      await loadChannels()
+    } catch {
+      scheduleEmptyRefresh()
+    }
+  }, 3000)
+}
+
+function stopEmptyRefresh() {
+  if (emptyRefreshTimer) {
+    window.clearTimeout(emptyRefreshTimer)
+    emptyRefreshTimer = undefined
   }
 }
 
@@ -137,8 +171,12 @@ async function finish() {
             <tr v-if="!channels.loading && channels.items.length === 0">
               <td colspan="6">
                 <div class="empty-state">
-                  <strong>未找到频道</strong>
-                  <span>刷新元数据后，当前账号可访问的频道会显示在这里。</span>
+                  <strong>正在更新频道列表</strong>
+                  <span>后台正在同步当前账号可访问的频道，稍后会自动刷新，也可以手动点击刷新。</span>
+                  <span v-if="emptyRefreshAttempts < maxEmptyRefreshAttempts" class="empty-state-note">
+                    已自动刷新 {{ emptyRefreshAttempts }} / {{ maxEmptyRefreshAttempts }} 次
+                  </span>
+                  <span v-else class="empty-state-note">如果仍为空，请确认 Telegram 账号已登录并稍后手动刷新。</span>
                 </div>
               </td>
             </tr>

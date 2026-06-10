@@ -15,12 +15,14 @@ type Service struct {
 	savedSearches *repository.SavedSearchRepository
 	deliveries    *repository.NotificationDeliveryRepository
 	webhooks      *repository.WebhookRepository
+	botSubs       *repository.TelegramBotSubscriptionRepository
 }
 
 type Options struct {
 	SavedSearches *repository.SavedSearchRepository
 	Deliveries    *repository.NotificationDeliveryRepository
 	Webhooks      *repository.WebhookRepository
+	BotSubs       *repository.TelegramBotSubscriptionRepository
 }
 
 type SavedSearchMatch struct {
@@ -51,7 +53,7 @@ type ResourceEvent struct {
 }
 
 func NewService(opts Options) *Service {
-	return &Service{savedSearches: opts.SavedSearches, deliveries: opts.Deliveries, webhooks: opts.Webhooks}
+	return &Service{savedSearches: opts.SavedSearches, deliveries: opts.Deliveries, webhooks: opts.Webhooks, botSubs: opts.BotSubs}
 }
 
 func (s *Service) MatchResource(ctx context.Context, item resource.Item) ([]model.SavedSearch, error) {
@@ -109,6 +111,40 @@ func (s *Service) EnqueueResourceCreated(ctx context.Context, item resource.Item
 			}
 			deliveries = append(deliveries, webhookDeliveries...)
 		}
+		if search.NotifyTelegram {
+			telegramDeliveries, err := s.enqueueTelegramDeliveries(ctx, search.ID, string(payload))
+			if err != nil {
+				return nil, err
+			}
+			deliveries = append(deliveries, telegramDeliveries...)
+		}
+	}
+	return deliveries, nil
+}
+
+func (s *Service) enqueueTelegramDeliveries(ctx context.Context, savedSearchID int64, payload string) ([]model.NotificationDelivery, error) {
+	if s.botSubs == nil {
+		return nil, nil
+	}
+	subs, err := s.botSubs.FindBySavedSearch(ctx, savedSearchID)
+	if err != nil {
+		return nil, err
+	}
+	deliveries := make([]model.NotificationDelivery, 0, len(subs))
+	for _, sub := range subs {
+		delivery := model.NotificationDelivery{
+			EventType:   model.NotificationEventSavedSearchMatched,
+			TargetType:  model.NotificationTargetTelegram,
+			TargetID:    sub.ID,
+			PayloadJSON: payload,
+			Status:      model.NotificationDeliveryPending,
+		}
+		id, err := s.deliveries.Create(ctx, delivery)
+		if err != nil {
+			return nil, err
+		}
+		delivery.ID = id
+		deliveries = append(deliveries, delivery)
 	}
 	return deliveries, nil
 }

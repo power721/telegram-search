@@ -58,16 +58,22 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 	searches := repository.NewSavedSearchRepository(conn)
 	deliveries := repository.NewNotificationDeliveryRepository(conn)
 	webhooks := repository.NewWebhookRepository(conn)
+	botSubs := repository.NewTelegramBotSubscriptionRepository(conn)
 	id, err := searches.Create(ctx, model.SavedSearch{
-		Name:          "哪吒3",
-		Keyword:       "哪吒3",
-		Filters:       model.SavedSearchFilters{Category: "cloud_drive"},
-		NotifyRSS:     true,
-		NotifyWebhook: true,
-		Enabled:       true,
+		Name:           "哪吒3",
+		Keyword:        "哪吒3",
+		Filters:        model.SavedSearchFilters{Category: "cloud_drive"},
+		NotifyRSS:      true,
+		NotifyWebhook:  true,
+		NotifyTelegram: true,
+		Enabled:        true,
 	})
 	if err != nil {
 		t.Fatalf("create saved search: %v", err)
+	}
+	subID, err := botSubs.Create(ctx, model.TelegramBotSubscription{ChatID: 42, SavedSearchID: id, Enabled: true})
+	if err != nil {
+		t.Fatalf("create bot subscription: %v", err)
 	}
 	resourceWebhookID, err := webhooks.Create(ctx, model.Webhook{
 		Name:    "resource",
@@ -87,7 +93,7 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create match webhook: %v", err)
 	}
-	service := NewService(Options{SavedSearches: searches, Deliveries: deliveries, Webhooks: webhooks})
+	service := NewService(Options{SavedSearches: searches, Deliveries: deliveries, Webhooks: webhooks, BotSubs: botSubs})
 	created, err := service.EnqueueResourceCreated(ctx, resource.Item{
 		ID:                "link:https://pan.quark.cn/s/nezha3",
 		Kind:              "link",
@@ -103,8 +109,8 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("enqueue resource created: %v", err)
 	}
-	if len(created) != 3 {
-		t.Fatalf("deliveries = %+v, want resource webhook, saved search, and match webhook deliveries", created)
+	if len(created) != 4 {
+		t.Fatalf("deliveries = %+v, want resource webhook, saved search, match webhook, and telegram deliveries", created)
 	}
 	items, err := deliveries.List(ctx, repository.NotificationDeliveryListParams{Status: model.NotificationDeliveryPending})
 	if err != nil {
@@ -122,10 +128,14 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 		if item.EventType == model.NotificationEventSavedSearchMatched && item.TargetType == model.NotificationTargetWebhook && item.TargetID != matchWebhookID {
 			t.Fatalf("match webhook target = %d, want %d", item.TargetID, matchWebhookID)
 		}
+		if item.EventType == model.NotificationEventSavedSearchMatched && item.TargetType == model.NotificationTargetTelegram && item.TargetID != subID {
+			t.Fatalf("telegram target = %d, want %d", item.TargetID, subID)
+		}
 	}
 	if !seen[model.NotificationEventResourceCreated+":"+model.NotificationTargetWebhook] ||
 		!seen[model.NotificationEventSavedSearchMatched+":"+model.NotificationTargetSavedSearch] ||
-		!seen[model.NotificationEventSavedSearchMatched+":"+model.NotificationTargetWebhook] {
-		t.Fatalf("stored deliveries = %+v, want resource webhook, saved search, and match webhook", items)
+		!seen[model.NotificationEventSavedSearchMatched+":"+model.NotificationTargetWebhook] ||
+		!seen[model.NotificationEventSavedSearchMatched+":"+model.NotificationTargetTelegram] {
+		t.Fatalf("stored deliveries = %+v, want resource webhook, saved search, match webhook, and telegram", items)
 	}
 }

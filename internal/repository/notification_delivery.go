@@ -94,6 +94,14 @@ LIMIT ? OFFSET ?`, args...)
 }
 
 func (r *NotificationDeliveryRepository) DueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]model.NotificationDelivery, error) {
+	return r.dueDeliveries(ctx, model.NotificationTargetWebhook, now, limit)
+}
+
+func (r *NotificationDeliveryRepository) DueTelegramDeliveries(ctx context.Context, now time.Time, limit int) ([]model.NotificationDelivery, error) {
+	return r.dueDeliveries(ctx, model.NotificationTargetTelegram, now, limit)
+}
+
+func (r *NotificationDeliveryRepository) dueDeliveries(ctx context.Context, targetType string, now time.Time, limit int) ([]model.NotificationDelivery, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -110,9 +118,9 @@ WHERE target_type = ?
     (status = ? AND next_run_at IS NOT NULL AND next_run_at <= ?)
   )
 ORDER BY id
-LIMIT ?`, model.NotificationTargetWebhook, model.NotificationDeliveryPending, now, model.NotificationDeliveryFailed, now, limit)
+LIMIT ?`, targetType, model.NotificationDeliveryPending, now, model.NotificationDeliveryFailed, now, limit)
 	if err != nil {
-		return nil, fmt.Errorf("find due webhook deliveries: %w", err)
+		return nil, fmt.Errorf("find due %s deliveries: %w", targetType, err)
 	}
 	defer rows.Close()
 	var out []model.NotificationDelivery

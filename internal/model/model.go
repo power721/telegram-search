@@ -245,6 +245,17 @@ type NotificationDelivery struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+type TelegramBotSubscription struct {
+	ID            int64     `json:"id"`
+	ChatID        int64     `json:"chat_id"`
+	SavedSearchID int64     `json:"saved_search_id"`
+	Enabled       bool      `json:"enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	SavedSearch   string    `json:"saved_search,omitempty"`
+	Keyword       string    `json:"keyword,omitempty"`
+}
+
 type ChannelIndexedCounts struct {
 	Messages int64 `json:"messages"`
 	Links    int64 `json:"links"`

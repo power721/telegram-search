@@ -366,6 +366,25 @@ CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status_next_run_at ON not
 CREATE INDEX IF NOT EXISTS idx_notification_deliveries_event_type ON notification_deliveries(event_type);
 `,
 	},
+	{
+		version: 8,
+		name:    "telegram_bot_subscriptions",
+		sql: `
+CREATE TABLE IF NOT EXISTS telegram_bot_subscriptions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  saved_search_id INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL,
+  updated_at DATETIME NOT NULL,
+  UNIQUE(chat_id, saved_search_id),
+  FOREIGN KEY(saved_search_id) REFERENCES saved_searches(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_saved_search ON telegram_bot_subscriptions(saved_search_id, enabled);
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_chat ON telegram_bot_subscriptions(chat_id, enabled);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

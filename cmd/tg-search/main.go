@@ -35,6 +35,7 @@ import (
 	taskpkg "tg-search/internal/task"
 	"tg-search/internal/telegram"
 	"tg-search/internal/telegramguard"
+	"tg-search/internal/tgbot"
 	updatepkg "tg-search/internal/update"
 )
 
@@ -96,6 +97,7 @@ func run(configPath string) error {
 	savedSearches := repository.NewSavedSearchRepository(conn)
 	webhooks := repository.NewWebhookRepository(conn)
 	deliveries := repository.NewNotificationDeliveryRepository(conn)
+	botSubscriptions := repository.NewTelegramBotSubscriptionRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	users := repository.NewUserRepository(conn)
@@ -131,6 +133,7 @@ func run(configPath string) error {
 		SavedSearches: savedSearches,
 		Webhooks:      webhooks,
 		Deliveries:    deliveries,
+		BotSubs:       botSubscriptions,
 	})
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
 		DB:            conn,
@@ -214,19 +217,41 @@ func run(configPath string) error {
 	})
 	cleanupScheduler.Start(ctx)
 	logs.App.Info("cleanup scheduler started", zap.Duration("interval", time.Hour))
-	notificationScheduler := scheduler.New(scheduler.Options{
-		Interval: 15 * time.Second,
-		Jobs: []scheduler.Job{
-			notification.NewDispatcher(notification.DispatcherOptions{
-				Deliveries: deliveries,
-				Webhooks:   webhooks,
-				Logger:     logs.App,
+	notificationJobs := []scheduler.Job{
+		notification.NewDispatcher(notification.DispatcherOptions{
+			Deliveries: deliveries,
+			Webhooks:   webhooks,
+			Logger:     logs.App,
+		}),
+	}
+	notificationInterval := 15 * time.Second
+	if cfg.Bot.Enabled {
+		botAPI := tgbot.NewAPI(cfg.Bot.Token)
+		notificationJobs = append(notificationJobs,
+			tgbot.NewBot(tgbot.BotOptions{
+				API:           botAPI,
+				Resources:     resourceService,
+				SavedSearches: savedSearches,
+				Subscriptions: botSubscriptions,
+				Logger:        logs.App,
 			}),
-		},
-		Logger: logs.App,
+			tgbot.NewDeliveryDispatcher(tgbot.DeliveryDispatcherOptions{
+				API:           botAPI,
+				Deliveries:    deliveries,
+				Subscriptions: botSubscriptions,
+				Logger:        logs.App,
+			}),
+		)
+		notificationInterval = cfg.Bot.PollInterval.Std()
+		logs.App.Info("telegram bot integration enabled", zap.Duration("poll_interval", notificationInterval))
+	}
+	notificationScheduler := scheduler.New(scheduler.Options{
+		Interval: notificationInterval,
+		Jobs:     notificationJobs,
+		Logger:   logs.App,
 	})
 	notificationScheduler.Start(ctx)
-	logs.App.Info("notification dispatcher scheduler started", zap.Duration("interval", 15*time.Second))
+	logs.App.Info("notification dispatcher scheduler started", zap.Duration("interval", notificationInterval))
 
 	router := api.NewRouter(api.Dependencies{
 		Logger: logs.App,

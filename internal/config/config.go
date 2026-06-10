@@ -23,6 +23,7 @@ type Config struct {
 	Sync     SyncConfig     `yaml:"sync" json:"sync"`
 	Storage  StorageConfig  `yaml:"storage" json:"storage"`
 	Telegram TelegramConfig `yaml:"telegram" json:"telegram"`
+	Bot      BotConfig      `yaml:"bot" json:"bot"`
 }
 
 type ServerConfig struct {
@@ -65,6 +66,12 @@ type TelegramStreamConfig struct {
 
 type TelegramMediaConfig struct {
 	Concurrency int `yaml:"concurrency" json:"concurrency"`
+}
+
+type BotConfig struct {
+	Enabled      bool     `yaml:"enabled" json:"enabled"`
+	Token        string   `yaml:"token" json:"-"`
+	PollInterval Duration `yaml:"poll_interval" json:"poll_interval"`
 }
 
 func Load(path string) (Config, error) {
@@ -191,6 +198,9 @@ func defaultConfig() Config {
 				Concurrency: 2,
 			},
 		},
+		Bot: BotConfig{
+			PollInterval: Duration(3 * time.Second),
+		},
 	}
 }
 
@@ -282,6 +292,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Telegram.Media.Concurrency == 0 {
 		cfg.Telegram.Media.Concurrency = defaults.Telegram.Media.Concurrency
 	}
+	if cfg.Bot.PollInterval == 0 {
+		cfg.Bot.PollInterval = defaults.Bot.PollInterval
+	}
 }
 
 func validate(cfg Config) error {
@@ -323,6 +336,12 @@ func validate(cfg Config) error {
 	}
 	if cfg.Telegram.Media.Concurrency <= 0 {
 		return errors.New("telegram.media.concurrency must be greater than zero")
+	}
+	if cfg.Bot.Enabled && cfg.Bot.Token == "" {
+		return errors.New("bot.token is required when bot.enabled is true")
+	}
+	if cfg.Bot.PollInterval <= 0 {
+		return errors.New("bot.poll_interval must be greater than zero")
 	}
 	return nil
 }

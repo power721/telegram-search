@@ -111,6 +111,10 @@ server:
   port: 9900
 storage:
   path: /data/tg-search
+bot:
+  enabled: false
+  token: ""
+  poll_interval: 3s
 ```
 
 配置说明：
@@ -120,6 +124,9 @@ storage:
 | `server.host` | HTTP 监听地址。Docker 内通常用 `0.0.0.0`，本地开发可用 `127.0.0.1`。 |
 | `server.port` | HTTP 监听端口，默认 `9900`。 |
 | `storage.path` | 运行时数据目录。 |
+| `bot.enabled` | 是否启用 Telegram Bot 集成，默认关闭。 |
+| `bot.token` | Telegram Bot Token。启用 Bot 时必填。 |
+| `bot.poll_interval` | Bot 轮询命令和投递通知的间隔，默认 `3s`。 |
 
 以下内容在管理界面的「设置」页面维护并保存到数据库：
 
@@ -332,7 +339,20 @@ curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
 
 详见 [公开 API 集成文档](public-api.md)。
 
-## 9. 运维
+## 9. Telegram Bot
+
+启用 Bot 后支持命令：
+
+```text
+/search <keyword>
+/subscribe <keyword>
+/unsubscribe <subscription_id>
+/subscriptions
+```
+
+`/subscribe` 会创建启用 Telegram 通知的保存搜索。后续历史同步或实时监听写入新资源并匹配该保存搜索时，系统会通过 Bot 向订阅 chat 推送消息。
+
+## 10. 运维
 
 ### 健康检查
 

@@ -91,6 +91,12 @@ SELECT id, phone, telegram_user_id, first_name, last_name, username, status, ses
 FROM telegram_accounts WHERE phone = ?`, phone))
 }
 
+func (r *AccountRepository) FindByTelegramUserID(ctx context.Context, telegramUserID int64) (model.Account, error) {
+	return scanAccount(r.db.QueryRowContext(ctx, `
+SELECT id, phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at
+FROM telegram_accounts WHERE telegram_user_id = ?`, telegramUserID))
+}
+
 func (r *AccountRepository) FindAll(ctx context.Context) ([]model.Account, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, phone, telegram_user_id, first_name, last_name, username, status, session_path, last_online_at, last_error, created_at, updated_at

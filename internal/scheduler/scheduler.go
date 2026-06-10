@@ -86,11 +86,25 @@ func (s *Scheduler) runJob(ctx context.Context, job Job) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := job.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			panicked, err := s.runJobSafely(ctx, job)
+			if panicked {
+				continue
+			}
+			if err != nil && !errors.Is(err, context.Canceled) {
 				s.logger.Error("scheduler job failed", zap.String("job", job.Name()), zap.Error(err))
 				continue
 			}
 			s.logger.Debug("scheduler job completed", zap.String("job", job.Name()))
 		}
 	}
+}
+
+func (s *Scheduler) runJobSafely(ctx context.Context, job Job) (panicked bool, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicked = true
+			s.logger.Error("scheduler job panicked", zap.String("job", job.Name()), zap.Any("panic", recovered))
+		}
+	}()
+	return false, job.Run(ctx)
 }

@@ -16,6 +16,7 @@ type Runtime struct {
 	settings      *repository.SettingsRepository
 	defaults      config.BotConfig
 	apiFactory    func(string) BotAPI
+	accounts      *repository.AccountRepository
 	resources     *resource.Service
 	savedSearches *repository.SavedSearchRepository
 	subscriptions *repository.TelegramBotSubscriptionRepository
@@ -36,6 +37,7 @@ type RuntimeOptions struct {
 	Settings      *repository.SettingsRepository
 	Defaults      config.BotConfig
 	APIFactory    func(string) BotAPI
+	Accounts      *repository.AccountRepository
 	Resources     *resource.Service
 	SavedSearches *repository.SavedSearchRepository
 	Subscriptions *repository.TelegramBotSubscriptionRepository
@@ -58,6 +60,7 @@ func NewRuntime(opts RuntimeOptions) *Runtime {
 		settings:      opts.Settings,
 		defaults:      opts.Defaults,
 		apiFactory:    opts.APIFactory,
+		accounts:      opts.Accounts,
 		resources:     opts.Resources,
 		savedSearches: opts.SavedSearches,
 		subscriptions: opts.Subscriptions,
@@ -129,6 +132,7 @@ func (r *Runtime) configure(token string, interval time.Duration) {
 	r.commandsSet = false
 	r.bot = NewBot(BotOptions{
 		API:           api,
+		Accounts:      r.accounts,
 		Resources:     r.resources,
 		SavedSearches: r.savedSearches,
 		Subscriptions: r.subscriptions,

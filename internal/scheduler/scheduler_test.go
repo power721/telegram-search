@@ -54,6 +54,28 @@ func TestSchedulerContinuesAfterJobError(t *testing.T) {
 	}
 }
 
+func TestSchedulerContinuesAfterJobPanic(t *testing.T) {
+	var runs int64
+	job := jobFunc{
+		name: "panic-once",
+		run: func(context.Context) error {
+			run := atomic.AddInt64(&runs, 1)
+			if run == 1 {
+				panic("cleanup exploded")
+			}
+			return nil
+		},
+	}
+	s := New(Options{Interval: time.Millisecond, Jobs: []Job{job}, Logger: zap.NewNop()})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+	waitForSchedulerRuns(t, &runs, 2)
+	if err := s.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop returned error: %v", err)
+	}
+}
+
 func TestCleanupJobRuns(t *testing.T) {
 	job := CleanupJob{Logger: zap.NewNop()}
 	if job.Name() != "cleanup" {

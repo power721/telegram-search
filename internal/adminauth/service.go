@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -18,16 +19,27 @@ import (
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+const DefaultSessionTTL = 24 * time.Hour
+
 type Service struct {
-	users    *repository.UserRepository
-	mu       sync.Mutex
-	sessions map[string]model.User
+	users      *repository.UserRepository
+	mu         sync.Mutex
+	sessions   map[string]sessionEntry
+	sessionTTL time.Duration
+	now        func() time.Time
+}
+
+type sessionEntry struct {
+	user      model.User
+	expiresAt time.Time
 }
 
 func NewService(users *repository.UserRepository) *Service {
 	return &Service{
-		users:    users,
-		sessions: map[string]model.User{},
+		users:      users,
+		sessions:   map[string]sessionEntry{},
+		sessionTTL: DefaultSessionTTL,
+		now:        func() time.Time { return time.Now().UTC() },
 	}
 }
 
@@ -98,27 +110,62 @@ func (s *Service) CreateSession(user model.User) (string, error) {
 	token := hex.EncodeToString(tokenBytes)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.sessions[token] = user
+	s.sweepExpiredLocked()
+	s.sessions[token] = sessionEntry{user: user, expiresAt: s.sessionExpiresAt()}
 	return token, nil
 }
 
 func (s *Service) UpdateSession(token string, user model.User) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.sessions[token]; ok {
-		s.sessions[token] = user
+	entry, ok := s.sessions[token]
+	if !ok {
+		return
 	}
+	if s.expired(entry) {
+		delete(s.sessions, token)
+		return
+	}
+	entry.user = user
+	s.sessions[token] = entry
 }
 
 func (s *Service) UserForSession(token string) (model.User, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	user, ok := s.sessions[token]
-	return user, ok
+	entry, ok := s.sessions[token]
+	if !ok {
+		return model.User{}, false
+	}
+	if s.expired(entry) {
+		delete(s.sessions, token)
+		return model.User{}, false
+	}
+	return entry.user, true
 }
 
 func (s *Service) DeleteSession(token string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, token)
+}
+
+func (s *Service) sessionExpiresAt() time.Time {
+	ttl := s.sessionTTL
+	if ttl <= 0 {
+		ttl = DefaultSessionTTL
+	}
+	return s.now().Add(ttl)
+}
+
+func (s *Service) expired(entry sessionEntry) bool {
+	return !entry.expiresAt.IsZero() && !s.now().Before(entry.expiresAt)
+}
+
+func (s *Service) sweepExpiredLocked() {
+	for token, entry := range s.sessions {
+		if s.expired(entry) {
+			delete(s.sessions, token)
+		}
+	}
 }

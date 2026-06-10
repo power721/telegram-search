@@ -116,7 +116,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.POST("/settings/api-key/regenerate", h.regenerateAPIKey)
 
 	external := router.Group("")
-	external.Use(h.requireAPIKey())
+	external.Use(h.externalSearchAccessLog(), h.requireAPIKey())
 	external.GET("/api/search", h.externalSearch)
 	external.POST("/api/search", h.externalSearch)
 

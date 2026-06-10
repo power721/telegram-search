@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"tg-search/internal/adminauth"
 	"tg-search/internal/apikey"
@@ -1072,6 +1075,48 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid include_image code = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+}
+
+func TestExternalSearchWritesAccessLog(t *testing.T) {
+	core, observed := observer.New(zapcore.DebugLevel)
+	deps := testDeps(t)
+	deps.Logger = zap.New(core)
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&res=results&cloud_types=quark&limit=5&offset=1&include_media_metadata=true", nil)
+	req.Header.Set("X-API-Key", key)
+	req.Header.Set("User-Agent", "tg-search-test")
+	req.RemoteAddr = "203.0.113.10:12345"
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("external search status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	entries := observed.FilterMessage("public search access").All()
+	if len(entries) != 1 {
+		t.Fatalf("access logs = %d, want 1", len(entries))
+	}
+	fields := entries[0].ContextMap()
+	if fields["method"] != http.MethodGet || fields["path"] != "/api/search" || fields["status"] != int64(http.StatusOK) {
+		t.Fatalf("basic log fields = %+v", fields)
+	}
+	if fields["keyword"] != "ubuntu" || fields["result_type"] != "results" || fields["include_media_metadata"] != true {
+		t.Fatalf("search log fields = %+v", fields)
+	}
+	if fields["limit"] != int64(5) || fields["offset"] != int64(1) || fields["total"] != int64(0) || fields["returned"] != int64(0) {
+		t.Fatalf("result log fields = %+v", fields)
+	}
+	if fields["api_key_id"] == nil {
+		t.Fatalf("log fields missing api_key_id: %+v", fields)
+	}
+	if _, ok := fields["api_key"]; ok {
+		t.Fatalf("log fields leaked api_key: %+v", fields)
+	}
+	if _, ok := fields["authorization"]; ok {
+		t.Fatalf("log fields leaked authorization: %+v", fields)
 	}
 }
 

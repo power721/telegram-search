@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"tg-search/internal/resource"
 )
 
 const externalSearchDefaultLimit = 50
 const externalSearchMaxLimit = 3000
+const externalSearchAccessKey = "external_search.access"
 
 type externalSearchRequest struct {
 	Keyword              string   `json:"kw"`
@@ -84,8 +86,66 @@ type externalResourceFilter struct {
 	typ      string
 }
 
+type externalSearchAccess struct {
+	Keyword              string
+	ResultType           string
+	CloudTypes           []string
+	IncludeImage         bool
+	IncludeMediaMetadata bool
+	Limit                int
+	Offset               int
+	Total                int
+	Returned             int
+	Error                string
+}
+
+func (h handlers) externalSearchAccessLog() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+
+		status := c.Writer.Status()
+		fields := []zap.Field{
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.Request.URL.Path),
+			zap.Int("status", status),
+			zap.Duration("duration", time.Since(start)),
+			zap.String("client_ip", c.ClientIP()),
+			zap.String("remote_addr", c.Request.RemoteAddr),
+			zap.String("user_agent", c.Request.UserAgent()),
+		}
+		if keyID, ok := c.Get(apiKeyIDKey); ok {
+			if id, ok := keyID.(int64); ok {
+				fields = append(fields, zap.Int64("api_key_id", id))
+			}
+		}
+		if value, ok := c.Get(externalSearchAccessKey); ok {
+			if access, ok := value.(externalSearchAccess); ok {
+				fields = append(fields,
+					zap.String("keyword", access.Keyword),
+					zap.String("result_type", access.ResultType),
+					zap.Bool("include_image", access.IncludeImage),
+					zap.Bool("include_media_metadata", access.IncludeMediaMetadata),
+					zap.Int("limit", access.Limit),
+					zap.Int("offset", access.Offset),
+					zap.Int("total", access.Total),
+					zap.Int("returned", access.Returned),
+				)
+				if len(access.CloudTypes) > 0 {
+					fields = append(fields, zap.Strings("cloud_types", access.CloudTypes))
+				}
+				if access.Error != "" {
+					fields = append(fields, zap.String("error", access.Error))
+				}
+			}
+		}
+		apiLogger(c).Info("public search access", fields...)
+	}
+}
+
 func (h handlers) externalSearch(c *gin.Context) {
 	if h.deps.Resources == nil {
+		setExternalSearchAccess(c, externalSearchAccess{Error: "resources are unavailable"})
 		c.JSON(http.StatusServiceUnavailable, externalAPIResponse{Code: http.StatusServiceUnavailable, Message: "resources are unavailable"})
 		return
 	}
@@ -95,19 +155,40 @@ func (h handlers) externalSearch(c *gin.Context) {
 	}
 	keyword := strings.TrimSpace(firstNonEmptyString(req.Keyword, req.Query))
 	resultType := normalizeExternalResultType(req.ResultType)
+	access := externalSearchAccess{
+		Keyword:              keyword,
+		ResultType:           resultType,
+		CloudTypes:           normalizeExternalCloudTypes(req.CloudTypes),
+		IncludeImage:         req.IncludeImage,
+		IncludeMediaMetadata: req.includeMediaMetadata(),
+		Limit:                normalizeExternalLimit(req.Limit),
+		Offset:               normalizeExternalOffset(req.Offset),
+	}
 	if resultType == "" {
+		access.ResultType = strings.TrimSpace(req.ResultType)
+		access.Error = "invalid res"
+		setExternalSearchAccess(c, access)
 		c.JSON(http.StatusBadRequest, externalAPIResponse{Code: http.StatusBadRequest, Message: "invalid res"})
 		return
 	}
-	limit := normalizeExternalLimit(req.Limit)
-	offset := normalizeExternalOffset(req.Offset)
+	limit := access.Limit
+	offset := access.Offset
 	items, total, err := h.externalResourceItems(c, keyword, req.CloudTypes, limit, offset, req.IncludeImage)
 	if err != nil {
+		access.Error = err.Error()
+		setExternalSearchAccess(c, access)
 		c.JSON(http.StatusInternalServerError, externalAPIResponse{Code: http.StatusInternalServerError, Message: "search failed: " + err.Error()})
 		return
 	}
 	response := buildExternalSearchResponse(items, total, resultType, req.includeMediaMetadata(), req.IncludeImage)
+	access.Total = total
+	access.Returned = len(items)
+	setExternalSearchAccess(c, access)
 	c.PureJSON(http.StatusOK, externalAPIResponse{Code: 0, Message: "success", Data: response})
+}
+
+func setExternalSearchAccess(c *gin.Context, access externalSearchAccess) {
+	c.Set(externalSearchAccessKey, access)
 }
 
 func (r externalSearchRequest) includeMediaMetadata() bool {

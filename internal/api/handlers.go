@@ -45,6 +45,7 @@ const (
 	setupListenRulesDoneKey = "setup.listen_rules_done"
 )
 const apiLoggerKey = "api.logger"
+const apiKeyIDKey = "api.key_id"
 
 func (h handlers) health(c *gin.Context) {
 	resp := gin.H{
@@ -535,7 +536,7 @@ func (h handlers) requireAPIKey() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		_, ok, err := h.deps.APIKeyService.Verify(c.Request.Context(), key)
+		keyID, ok, err := h.deps.APIKeyService.Verify(c.Request.Context(), key)
 		if err != nil {
 			errorJSON(c, http.StatusInternalServerError, err)
 			c.Abort()
@@ -546,6 +547,7 @@ func (h handlers) requireAPIKey() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+		c.Set(apiKeyIDKey, keyID)
 		c.Next()
 	}
 }

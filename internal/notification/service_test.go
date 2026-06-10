@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"testing"
 	"time"
@@ -102,7 +103,9 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 		Title:             "哪吒3",
 		URL:               "https://pan.quark.cn/s/nezha3",
 		ChannelID:         5,
+		TelegramChannelID: 1001234567890,
 		ChannelTitle:      "电影频道",
+		ChannelUsername:   "movie_channel",
 		TelegramMessageID: 99,
 		Datetime:          time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC),
 	})
@@ -130,6 +133,15 @@ func TestServiceEnqueueResourceCreated(t *testing.T) {
 		}
 		if item.EventType == model.NotificationEventSavedSearchMatched && item.TargetType == model.NotificationTargetTelegram && item.TargetID != subID {
 			t.Fatalf("telegram target = %d, want %d", item.TargetID, subID)
+		}
+		if item.EventType == model.NotificationEventSavedSearchMatched && item.TargetType == model.NotificationTargetTelegram {
+			var match SavedSearchMatch
+			if err := json.Unmarshal([]byte(item.PayloadJSON), &match); err != nil {
+				t.Fatalf("unmarshal telegram payload: %v", err)
+			}
+			if match.SourceChannelUsername != "movie_channel" || match.TelegramChannelID != 1001234567890 || match.TelegramMessageID != 99 {
+				t.Fatalf("telegram payload = %+v, want source link fields", match)
+			}
 		}
 	}
 	if !seen[model.NotificationEventResourceCreated+":"+model.NotificationTargetWebhook] ||

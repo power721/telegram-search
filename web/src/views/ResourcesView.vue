@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useDialog } from 'naive-ui'
+import { useRoute } from 'vue-router'
 import type { ResourceItem } from '@/api/types'
 import AppPagination from '@/components/common/AppPagination.vue'
 import ResourceFilters from '@/components/resources/ResourceFilters.vue'
@@ -12,6 +13,7 @@ const pageSizeOptions = [20, 50, 100]
 const resources = useResourcesStore()
 const channels = useChannelsStore()
 const dialog = useDialog()
+const route = useRoute()
 const keyword = ref('')
 const category = ref('')
 const channelId = ref<string | number>('')
@@ -134,10 +136,32 @@ function resourceLabel(item: ResourceItem) {
   return item.media?.title || item.title || item.file_name || item.url || item.id
 }
 
+function routeChannelId() {
+  const value = Array.isArray(route.query.channel_id) ? route.query.channel_id[0] : route.query.channel_id
+  if (!value) return ''
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : ''
+}
+
+function applyRouteFilters() {
+  channelId.value = routeChannelId()
+}
+
 onMounted(() => {
+  applyRouteFilters()
   void channels.loadChannels()
   void load()
 })
+
+watch(
+  () => route.query.channel_id,
+  () => {
+    applyRouteFilters()
+    selectedResourceIds.value = []
+    offset.value = 0
+    void load()
+  }
+)
 </script>
 
 <template>

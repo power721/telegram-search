@@ -4,9 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiGet, apiPost } from '@/api/client'
 import ResourcesView from './ResourcesView.vue'
 
+const routeState = vi.hoisted(() => ({
+  query: {} as Record<string, string | string[] | undefined>
+}))
 const dialogWarning = vi.fn((options: { onPositiveClick?: () => void }) => {
   options.onPositiveClick?.()
 })
+
+vi.mock('vue-router', () => ({
+  useRoute: () => routeState
+}))
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual<typeof import('naive-ui')>('naive-ui')
@@ -51,6 +58,7 @@ describe('ResourcesView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    routeState.query = {}
     vi.mocked(apiPost).mockResolvedValue({ deleted: 1, missing_ids: [] })
   })
 
@@ -150,6 +158,15 @@ describe('ResourcesView', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/channels')
     expect(apiGet).toHaveBeenCalledWith('/api/resources?channel_id=7&limit=50')
     expect(wrapper.text()).toContain('第 1 / 2 页')
+  })
+
+  it('initializes the channel filter from the route query', async () => {
+    routeState.query = { channel_id: '7' }
+    const wrapper = mountResourcesView()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(apiGet).toHaveBeenCalledWith('/api/resources?channel_id=7&limit=50')
+    expect((wrapper.get('#resource-channel').element as HTMLSelectElement).value).toBe('7')
   })
 
   it('deletes one resource after confirmation', async () => {

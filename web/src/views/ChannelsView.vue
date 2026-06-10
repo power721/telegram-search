@@ -529,7 +529,14 @@ async function useGlobalRule() {
                 {{ listenStateLabel(channel.listen_state) }}
               </span>
             </td>
-            <td>{{ channel.indexed_message_count }}</td>
+            <td>
+              <RouterLink
+                class="indexed-resource-link"
+                :to="{ name: 'resources', query: { channel_id: String(channel.id) } }"
+              >
+                {{ channel.indexed_message_count }}
+              </RouterLink>
+            </td>
             <td :title="channel.web_access_error || undefined">
               <a
                 v-if="webAccessUrl(channel)"
@@ -681,6 +688,16 @@ table {
 }
 
 .channel-username-link:hover {
+  text-decoration: underline;
+}
+
+.indexed-resource-link {
+  color: var(--app-accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.indexed-resource-link:hover {
   text-decoration: underline;
 }
 

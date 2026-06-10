@@ -224,6 +224,11 @@ describe('ChannelsView', () => {
             template:
               '<span class="tooltip"><slot name="trigger" /><span class="tooltip-content" :style="contentStyle"><slot /></span></span>'
           },
+          RouterLink: {
+            props: ['to'],
+            template:
+              '<a v-bind="$attrs" :data-route-name="to.name" :data-channel-id="to.query.channel_id"><slot /></a>'
+          },
           'n-drawer': true,
           'n-drawer-content': true,
           'n-switch': true
@@ -256,6 +261,10 @@ describe('ChannelsView', () => {
     expect(wrapper.text()).toContain('42')
     expect(wrapper.text()).toContain('1200')
     expect(wrapper.text()).toContain('Public movie releases')
+    const indexedLink = channelRow(wrapper, 'Movies').find('.indexed-resource-link')
+    expect(indexedLink.text()).toBe('42')
+    expect(indexedLink.attributes('data-route-name')).toBe('resources')
+    expect(indexedLink.attributes('data-channel-id')).toBe('1')
     const titleCell = channelRow(wrapper, 'Movies').findAll('td').at(0)
     expect(titleCell?.find('.tooltip-content').text()).toBe('Public movie releases')
     expect(titleCell?.find('.tooltip-content').attributes('style')).toContain('overflow-wrap: anywhere')

@@ -124,9 +124,9 @@ bot:
 | `server.host` | HTTP 监听地址。Docker 内通常用 `0.0.0.0`，本地开发可用 `127.0.0.1`。 |
 | `server.port` | HTTP 监听端口，默认 `9900`。 |
 | `storage.path` | 运行时数据目录。 |
-| `bot.enabled` | 是否启用 Telegram Bot 集成，默认关闭。 |
-| `bot.token` | Telegram Bot Token。启用 Bot 时必填。 |
-| `bot.poll_interval` | Bot 轮询命令和投递通知的间隔，默认 `3s`。 |
+| `bot.enabled` | 是否启用 Telegram Bot 集成，默认关闭；数据库设置存在时作为首次默认值。 |
+| `bot.token` | Telegram Bot Token；数据库设置存在时作为首次默认值。 |
+| `bot.poll_interval` | Bot 轮询命令和投递通知的间隔，默认 `3s`；数据库设置存在时作为首次默认值。 |
 
 以下内容在管理界面的「设置」页面维护并保存到数据库：
 
@@ -135,8 +135,9 @@ bot:
 | 账号与安全 | 管理员用户名/密码、API Key、Telegram `app_id` 和 `app_hash`。 |
 | 存储 | SQLite 数据库预算、媒体缓存预算，低于 `100MB` 会被拒绝。 |
 | 运行参数 | 历史同步 worker、批量大小、Telegram 请求间隔、代理、重连/拨号超时、请求限速、视频流式读取和媒体下载并发。 |
+| 通知集成 | 搜索订阅、Webhook 事件推送、Telegram Bot Token 和轮询间隔。 |
 
-服务启动时会先加载配置文件，再应用数据库里的运行时设置。旧版配置文件中的 `sync.*`、`storage.max_*` 和 `telegram.*` 字段仍会被读取，可作为首次启动或尚未保存设置页参数时的默认值；新生成的默认配置不再写入这些字段。
+服务启动时会先加载配置文件，再应用数据库里的运行时设置和 Bot 设置。旧版配置文件中的 `sync.*`、`storage.max_*`、`telegram.*` 和 `bot.*` 字段仍会被读取，可作为首次启动或尚未保存设置页参数时的默认值；新生成的默认配置不再写入运行时字段。
 
 ## 4. 数据目录
 
@@ -341,7 +342,7 @@ curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
 
 ## 9. Telegram Bot
 
-启用 Bot 后支持命令：
+在管理后台「设置 -> 通知集成」配置并启用 Bot，重启服务后支持命令：
 
 ```text
 /search <keyword>

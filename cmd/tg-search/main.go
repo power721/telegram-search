@@ -113,6 +113,12 @@ func run(configPath string) error {
 		logs.App.Error("apply runtime settings failed", zap.Error(err))
 		return err
 	}
+	botSettings, err := settings.LoadTelegramBot(ctx, cfg.Bot)
+	if err != nil {
+		logs.App.Error("load telegram bot settings failed", zap.Error(err))
+		return err
+	}
+	cfg.Bot = botSettings
 	watchFilter := messagefilter.New(messagefilter.NewSettingsRuleStore(watchRules, settings))
 	taskRepository := taskpkg.NewRepository(conn)
 	taskService := taskpkg.NewService(taskRepository)

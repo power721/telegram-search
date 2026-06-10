@@ -107,6 +107,78 @@ func TestTelegramAPISettingsDefaultsWhenNotStored(t *testing.T) {
 	}
 }
 
+func TestTelegramBotSettingsRoundTripAndRedaction(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+
+	settings := config.BotConfig{
+		Enabled:      true,
+		Token:        "bot-secret",
+		PollInterval: config.Duration(5 * time.Second),
+	}
+	if err := repo.SaveTelegramBot(ctx, settings); err != nil {
+		t.Fatalf("save telegram bot: %v", err)
+	}
+
+	raw, ok, err := repo.Get(ctx, "telegram_bot")
+	if err != nil {
+		t.Fatalf("get raw telegram bot: %v", err)
+	}
+	if !ok || !strings.Contains(raw, "bot-secret") {
+		t.Fatalf("raw setting = %q ok=%v, want stored token", raw, ok)
+	}
+
+	loaded, err := repo.LoadTelegramBot(ctx, config.BotConfig{PollInterval: config.Duration(3 * time.Second)})
+	if err != nil {
+		t.Fatalf("load telegram bot: %v", err)
+	}
+	if loaded.Enabled != settings.Enabled || loaded.Token != settings.Token || loaded.PollInterval != settings.PollInterval {
+		t.Fatalf("loaded = %+v, want %+v", loaded, settings)
+	}
+
+	redacted := RedactTelegramBot(loaded)
+	if !redacted.Enabled || !redacted.Configured || !redacted.TokenSet || redacted.PollInterval != "5s" {
+		t.Fatalf("redacted = %+v, want enabled configured 5s", redacted)
+	}
+	redactedJSON, err := json.Marshal(redacted)
+	if err != nil {
+		t.Fatalf("marshal redacted: %v", err)
+	}
+	if strings.Contains(string(redactedJSON), "bot-secret") {
+		t.Fatalf("redacted response leaked bot token: %+v", redacted)
+	}
+}
+
+func TestTelegramBotSettingsDefaultsWhenNotStored(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewSettingsRepository(conn)
+	defaults := config.BotConfig{Enabled: true, Token: "config-token", PollInterval: config.Duration(3 * time.Second)}
+
+	settings, err := repo.LoadTelegramBot(ctx, defaults)
+	if err != nil {
+		t.Fatalf("load telegram bot: %v", err)
+	}
+	if settings.Enabled != defaults.Enabled || settings.Token != defaults.Token || settings.PollInterval != defaults.PollInterval {
+		t.Fatalf("settings = %+v, want defaults %+v", settings, defaults)
+	}
+}
+
 func TestRuntimeSettingsDefaultsMissingStoredFieldsFromConfig(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))

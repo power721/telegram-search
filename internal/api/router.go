@@ -117,6 +117,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	api.GET("/auth/me", h.authMe)
 	api.GET("/settings/telegram-api", h.getTelegramAPISettings)
 	api.PUT("/settings/telegram-api", h.updateTelegramAPISettings)
+	api.GET("/settings/telegram-bot", h.getTelegramBotSettings)
+	api.PUT("/settings/telegram-bot", h.updateTelegramBotSettings)
 	api.GET("/settings/runtime", h.getRuntimeSettings)
 	api.PUT("/settings/runtime", h.updateRuntimeSettings)
 	api.PUT("/settings/admin", h.updateAdminSettings)

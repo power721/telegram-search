@@ -394,6 +394,36 @@ func (h handlers) updateTelegramAPISettings(c *gin.Context) {
 	c.JSON(http.StatusOK, repository.RedactTelegramAPI(settings))
 }
 
+func (h handlers) getTelegramBotSettings(c *gin.Context) {
+	settings, err := h.deps.Settings.LoadTelegramBot(c.Request.Context(), h.deps.RuntimeConfig.Bot)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, repository.RedactTelegramBot(settings))
+}
+
+func (h handlers) updateTelegramBotSettings(c *gin.Context) {
+	existing, err := h.deps.Settings.LoadTelegramBot(c.Request.Context(), h.deps.RuntimeConfig.Bot)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	settings, ok := readTelegramBotSettingsRequest(c, existing)
+	if !ok {
+		return
+	}
+	if settings.Enabled && strings.TrimSpace(settings.Token) == "" {
+		errorText(c, http.StatusBadRequest, "bot token is required when enabled is true")
+		return
+	}
+	if err := h.deps.Settings.SaveTelegramBot(c.Request.Context(), settings); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, repository.RedactTelegramBot(settings))
+}
+
 func (h handlers) getRuntimeSettings(c *gin.Context) {
 	settings, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
 	if err != nil {
@@ -440,6 +470,33 @@ func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.Tel
 		return model.TelegramAPISettings{}, false
 	}
 	return model.TelegramAPISettings{AppID: req.AppID, AppHash: req.AppHash}, true
+}
+
+func readTelegramBotSettingsRequest(c *gin.Context, existing config.BotConfig) (config.BotConfig, bool) {
+	var req struct {
+		Enabled      bool            `json:"enabled"`
+		Token        *string         `json:"token"`
+		PollInterval config.Duration `json:"poll_interval"`
+	}
+	if !bindJSON(c, &req) {
+		return config.BotConfig{}, false
+	}
+	if req.PollInterval <= 0 {
+		errorText(c, http.StatusBadRequest, "poll_interval must be greater than zero")
+		return config.BotConfig{}, false
+	}
+	token := existing.Token
+	if req.Token != nil {
+		trimmed := strings.TrimSpace(*req.Token)
+		if trimmed != "" {
+			token = trimmed
+		}
+	}
+	return config.BotConfig{
+		Enabled:      req.Enabled,
+		Token:        token,
+		PollInterval: req.PollInterval,
+	}, true
 }
 
 func readSetupTelegramAPISettingsRequest(c *gin.Context) (model.TelegramAPISettings, bool) {

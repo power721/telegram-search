@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
 import { onMounted, ref, watch } from 'vue'
-import { apiGet, apiPut } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type {
+  NotificationDeliveriesResponse,
+  NotificationDelivery,
   RuntimeSettings,
+  SavedSearch,
+  SavedSearchesResponse,
   StorageUsage,
   SystemInfoResponse,
   TelegramAPISettingsResponse,
+  TelegramBotSettingsResponse,
+  Webhook,
+  WebhooksResponse,
   VersionInfoResponse
 } from '@/api/types'
 import { useAPIKeyStore } from '@/stores/apiKey'
@@ -26,6 +33,13 @@ const telegramSettings = ref<TelegramAPISettingsResponse | null>(null)
 const telegramAppID = ref('')
 const telegramAppHash = ref('')
 const telegramLoading = ref(false)
+const telegramBotSettings = ref<TelegramBotSettingsResponse | null>(null)
+const telegramBotLoading = ref(false)
+const telegramBotForm = ref({
+  enabled: false,
+  token: '',
+  pollInterval: '3s'
+})
 const versionInfo = ref<VersionInfoResponse | null>(null)
 const versionLoading = ref(false)
 const versionError = ref('')
@@ -33,6 +47,45 @@ const systemInfo = ref<SystemInfoResponse | null>(null)
 const currentRuntimeSettings = ref<RuntimeSettings | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
+const savedSearches = ref<SavedSearch[]>([])
+const savedSearchLoading = ref(false)
+const savedSearchSaving = ref(false)
+const editingSavedSearchID = ref<number | null>(null)
+const savedSearchForm = ref({
+  name: '',
+  keyword: '',
+  type: '',
+  category: '',
+  cloudTypes: '',
+  accountID: '',
+  channelID: '',
+  notifyRSS: true,
+  notifyWebhook: false,
+  notifyTelegram: false,
+  enabled: true
+})
+const webhooks = ref<Webhook[]>([])
+const webhookLoading = ref(false)
+const webhookSaving = ref(false)
+const editingWebhookID = ref<number | null>(null)
+const webhookForm = ref({
+  name: '',
+  url: '',
+  secret: '',
+  enabled: true,
+  events: ['resource.created']
+})
+const deliveries = ref<NotificationDelivery[]>([])
+const deliveryLoading = ref(false)
+const notificationEventOptions = [
+  { value: 'resource.created', label: 'resource.created' },
+  { value: 'resource.updated', label: 'resource.updated' },
+  { value: 'saved_search.matched', label: 'saved_search.matched' },
+  { value: 'task.completed', label: 'task.completed' },
+  { value: 'task.failed', label: 'task.failed' },
+  { value: 'account.offline', label: 'account.offline' },
+  { value: 'channel.sync.completed', label: 'channel.sync.completed' }
+]
 type SizeUnit = 'GB' | 'MB'
 const sizeUnitOptions: Array<{ label: string; value: SizeUnit }> = [
   { label: 'GB', value: 'GB' },
@@ -69,7 +122,11 @@ onMounted(() => {
   })
   loadStorageUsage()
   loadTelegramSettings()
+  loadTelegramBotSettings()
   loadRuntimeSettings()
+  loadSavedSearches()
+  loadWebhooks()
+  loadDeliveries()
   loadVersionInfo(false)
   loadSystemInfo()
   if (!auth.loaded) {
@@ -137,6 +194,53 @@ async function loadTelegramSettings() {
   }
 }
 
+async function loadTelegramBotSettings() {
+  try {
+    telegramBotSettings.value = await apiGet<TelegramBotSettingsResponse>('/api/settings/telegram-bot')
+    telegramBotForm.value.enabled = telegramBotSettings.value.enabled
+    telegramBotForm.value.pollInterval = telegramBotSettings.value.poll_interval || '3s'
+    telegramBotForm.value.token = ''
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载 Telegram Bot')
+  }
+}
+
+async function loadSavedSearches() {
+  savedSearchLoading.value = true
+  try {
+    const data = await apiGet<SavedSearchesResponse>('/api/saved-searches')
+    savedSearches.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载搜索订阅')
+  } finally {
+    savedSearchLoading.value = false
+  }
+}
+
+async function loadWebhooks() {
+  webhookLoading.value = true
+  try {
+    const data = await apiGet<WebhooksResponse>('/api/webhooks')
+    webhooks.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载 Webhook')
+  } finally {
+    webhookLoading.value = false
+  }
+}
+
+async function loadDeliveries() {
+  deliveryLoading.value = true
+  try {
+    const data = await apiGet<NotificationDeliveriesResponse>('/api/notification-deliveries?limit=10&offset=0')
+    deliveries.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载通知记录')
+  } finally {
+    deliveryLoading.value = false
+  }
+}
+
 async function loadRuntimeSettings() {
   try {
     const settings = await apiGet<RuntimeSettings>('/api/settings/runtime')
@@ -192,6 +296,258 @@ async function updateTelegramAPI() {
   } finally {
     telegramLoading.value = false
   }
+}
+
+async function updateTelegramBot() {
+  if (!telegramBotForm.value.pollInterval.trim()) {
+    message.error('请输入轮询间隔')
+    return
+  }
+  telegramBotLoading.value = true
+  try {
+    telegramBotSettings.value = await apiPut<TelegramBotSettingsResponse>('/api/settings/telegram-bot', {
+      enabled: telegramBotForm.value.enabled,
+      token: telegramBotForm.value.token.trim(),
+      poll_interval: telegramBotForm.value.pollInterval.trim()
+    })
+    telegramBotForm.value.enabled = telegramBotSettings.value.enabled
+    telegramBotForm.value.pollInterval = telegramBotSettings.value.poll_interval
+    telegramBotForm.value.token = ''
+    message.success('Telegram Bot 已保存，重启后生效')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法保存 Telegram Bot')
+  } finally {
+    telegramBotLoading.value = false
+  }
+}
+
+async function saveSavedSearch() {
+  const keyword = savedSearchForm.value.keyword.trim()
+  if (!keyword) {
+    message.error('关键词不能为空')
+    return
+  }
+  savedSearchSaving.value = true
+  try {
+    const payload = savedSearchPayload()
+    if (editingSavedSearchID.value) {
+      await apiPut<SavedSearch>(`/api/saved-searches/${editingSavedSearchID.value}`, payload)
+      message.success('搜索订阅已更新')
+    } else {
+      await apiPost<SavedSearch>('/api/saved-searches', payload)
+      message.success('搜索订阅已创建')
+    }
+    resetSavedSearchForm()
+    await loadSavedSearches()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法保存搜索订阅')
+  } finally {
+    savedSearchSaving.value = false
+  }
+}
+
+async function toggleSavedSearch(item: SavedSearch) {
+  await updateSavedSearchItem(item, { enabled: !item.enabled })
+}
+
+async function deleteSavedSearch(id: number) {
+  try {
+    await apiDelete<{ deleted: boolean }>(`/api/saved-searches/${id}`)
+    if (editingSavedSearchID.value === id) resetSavedSearchForm()
+    await loadSavedSearches()
+    message.success('搜索订阅已删除')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法删除搜索订阅')
+  }
+}
+
+async function testSavedSearch(id: number) {
+  try {
+    const data = await apiPost<{ total: number }>(`/api/saved-searches/${id}/test`)
+    message.success(`匹配 ${data.total} 条资源`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法测试搜索订阅')
+  }
+}
+
+function editSavedSearch(item: SavedSearch) {
+  editingSavedSearchID.value = item.id
+  savedSearchForm.value = {
+    name: item.name,
+    keyword: item.keyword,
+    type: item.filters.type ?? '',
+    category: item.filters.category ?? '',
+    cloudTypes: item.filters.cloud_types?.join(', ') ?? '',
+    accountID: item.filters.account_id ? String(item.filters.account_id) : '',
+    channelID: item.filters.channel_id ? String(item.filters.channel_id) : '',
+    notifyRSS: item.notify_rss,
+    notifyWebhook: item.notify_webhook,
+    notifyTelegram: item.notify_telegram,
+    enabled: item.enabled
+  }
+}
+
+function resetSavedSearchForm() {
+  editingSavedSearchID.value = null
+  savedSearchForm.value = {
+    name: '',
+    keyword: '',
+    type: '',
+    category: '',
+    cloudTypes: '',
+    accountID: '',
+    channelID: '',
+    notifyRSS: true,
+    notifyWebhook: false,
+    notifyTelegram: false,
+    enabled: true
+  }
+}
+
+async function updateSavedSearchItem(item: SavedSearch, patch: Partial<SavedSearch>) {
+  try {
+    await apiPut<SavedSearch>(`/api/saved-searches/${item.id}`, {
+      name: patch.name ?? item.name,
+      keyword: patch.keyword ?? item.keyword,
+      filters: patch.filters ?? item.filters,
+      notify_rss: patch.notify_rss ?? item.notify_rss,
+      notify_webhook: patch.notify_webhook ?? item.notify_webhook,
+      notify_telegram: patch.notify_telegram ?? item.notify_telegram,
+      enabled: patch.enabled ?? item.enabled
+    })
+    await loadSavedSearches()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法更新搜索订阅')
+  }
+}
+
+function savedSearchPayload() {
+  const filters: Record<string, unknown> = {}
+  const type = savedSearchForm.value.type.trim()
+  const category = savedSearchForm.value.category.trim()
+  const cloudTypes = splitCSV(savedSearchForm.value.cloudTypes)
+  const accountID = optionalPositiveInteger(savedSearchForm.value.accountID, '账号 ID')
+  const channelID = optionalPositiveInteger(savedSearchForm.value.channelID, '频道 ID')
+  if (type) filters.type = type
+  if (category) filters.category = category
+  if (cloudTypes.length) filters.cloud_types = cloudTypes
+  if (accountID) filters.account_id = accountID
+  if (channelID) filters.channel_id = channelID
+  return {
+    name: savedSearchForm.value.name.trim(),
+    keyword: savedSearchForm.value.keyword.trim(),
+    filters,
+    notify_rss: savedSearchForm.value.notifyRSS,
+    notify_webhook: savedSearchForm.value.notifyWebhook,
+    notify_telegram: savedSearchForm.value.notifyTelegram,
+    enabled: savedSearchForm.value.enabled
+  }
+}
+
+async function saveWebhook() {
+  const url = webhookForm.value.url.trim()
+  if (!url) {
+    message.error('Webhook URL 不能为空')
+    return
+  }
+  if (webhookForm.value.events.length === 0) {
+    message.error('至少选择一个事件')
+    return
+  }
+  webhookSaving.value = true
+  try {
+    const payload = webhookPayload()
+    if (editingWebhookID.value) {
+      await apiPut<Webhook>(`/api/webhooks/${editingWebhookID.value}`, payload)
+      message.success('Webhook 已更新')
+    } else {
+      await apiPost<Webhook>('/api/webhooks', payload)
+      message.success('Webhook 已创建')
+    }
+    resetWebhookForm()
+    await loadWebhooks()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法保存 Webhook')
+  } finally {
+    webhookSaving.value = false
+  }
+}
+
+async function toggleWebhook(item: Webhook) {
+  await updateWebhookItem(item, { enabled: !item.enabled })
+}
+
+async function deleteWebhook(id: number) {
+  try {
+    await apiDelete<{ deleted: boolean }>(`/api/webhooks/${id}`)
+    if (editingWebhookID.value === id) resetWebhookForm()
+    await loadWebhooks()
+    message.success('Webhook 已删除')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法删除 Webhook')
+  }
+}
+
+function editWebhook(item: Webhook) {
+  editingWebhookID.value = item.id
+  webhookForm.value = {
+    name: item.name,
+    url: item.url,
+    secret: '',
+    enabled: item.enabled,
+    events: [...item.events]
+  }
+}
+
+function resetWebhookForm() {
+  editingWebhookID.value = null
+  webhookForm.value = {
+    name: '',
+    url: '',
+    secret: '',
+    enabled: true,
+    events: ['resource.created']
+  }
+}
+
+async function updateWebhookItem(item: Webhook, patch: Partial<Webhook>) {
+  try {
+    await apiPut<Webhook>(`/api/webhooks/${item.id}`, {
+      name: patch.name ?? item.name,
+      url: patch.url ?? item.url,
+      events: patch.events ?? item.events,
+      enabled: patch.enabled ?? item.enabled
+    })
+    await loadWebhooks()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法更新 Webhook')
+  }
+}
+
+function webhookPayload() {
+  const payload: Record<string, unknown> = {
+    name: webhookForm.value.name.trim(),
+    url: webhookForm.value.url.trim(),
+    events: webhookForm.value.events,
+    enabled: webhookForm.value.enabled
+  }
+  const secret = webhookForm.value.secret.trim()
+  if (secret) payload.secret = secret
+  return payload
+}
+
+function toggleWebhookEvent(event: string, checked: boolean) {
+  const set = new Set(webhookForm.value.events)
+  if (checked) {
+    set.add(event)
+  } else {
+    set.delete(event)
+  }
+  webhookForm.value.events = Array.from(set)
+}
+
+function onWebhookEventChange(event: string, domEvent: Event) {
+  toggleWebhookEvent(event, Boolean((domEvent.target as HTMLInputElement | null)?.checked))
 }
 
 async function updateRuntimeSettings() {
@@ -317,6 +673,23 @@ function positiveInteger(value: string) {
     throw new Error('invalid positive integer')
   }
   return parsed
+}
+
+function optionalPositiveInteger(value: string, label: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return 0
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} 必须大于 0`)
+  }
+  return parsed
+}
+
+function splitCSV(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function sizeLimitBytes(value: string, unit: SizeUnit) {
@@ -621,6 +994,248 @@ function versionStatusText() {
         </section>
       </n-tab-pane>
 
+      <n-tab-pane name="notifications" tab="通知集成">
+        <div class="notification-layout">
+          <section class="panel bot-panel">
+            <div class="panel-header">
+              <h2>Telegram Bot</h2>
+              <span class="restart-note">保存后重启生效</span>
+            </div>
+            <n-form class="notification-form bot-form" @submit.prevent="updateTelegramBot">
+              <label class="checkbox-row">
+                <input v-model="telegramBotForm.enabled" data-testid="telegram-bot-enabled-input" type="checkbox" />
+                启用 Bot
+              </label>
+              <div class="notification-grid">
+                <n-form-item label="Bot Token">
+                  <n-input
+                    v-model:value="telegramBotForm.token"
+                    data-testid="telegram-bot-token-input"
+                    type="password"
+                    autocomplete="off"
+                    :placeholder="telegramBotSettings?.token_set ? '已设置，输入新 Token 保存' : '请输入 Bot Token'"
+                  />
+                </n-form-item>
+                <n-form-item label="轮询间隔">
+                  <n-input v-model:value="telegramBotForm.pollInterval" data-testid="telegram-bot-poll-interval-input" placeholder="3s" />
+                </n-form-item>
+              </div>
+              <div class="form-actions">
+                <n-button data-testid="save-telegram-bot" type="primary" :loading="telegramBotLoading" @click="updateTelegramBot">
+                  保存
+                </n-button>
+              </div>
+            </n-form>
+          </section>
+
+          <div class="settings-panel-grid">
+            <section class="panel notification-panel">
+              <div class="panel-header">
+                <h2>搜索订阅</h2>
+                <n-button size="small" secondary @click="resetSavedSearchForm">新建</n-button>
+              </div>
+              <n-form class="notification-form" @submit.prevent="saveSavedSearch">
+                <div class="notification-grid">
+                  <n-form-item label="名称">
+                    <n-input v-model:value="savedSearchForm.name" data-testid="saved-search-name-input" placeholder="默认使用关键词" />
+                  </n-form-item>
+                  <n-form-item label="关键词">
+                    <n-input v-model:value="savedSearchForm.keyword" data-testid="saved-search-keyword-input" placeholder="哪吒3" />
+                  </n-form-item>
+                  <n-form-item label="类型">
+                    <n-input v-model:value="savedSearchForm.type" data-testid="saved-search-type-input" placeholder="movie" />
+                  </n-form-item>
+                  <n-form-item label="分类">
+                    <n-input v-model:value="savedSearchForm.category" data-testid="saved-search-category-input" placeholder="影视" />
+                  </n-form-item>
+                  <n-form-item label="网盘类型">
+                    <n-input v-model:value="savedSearchForm.cloudTypes" data-testid="saved-search-cloud-types-input" placeholder="quark, aliyun" />
+                  </n-form-item>
+                  <n-form-item label="账号 ID">
+                    <n-input v-model:value="savedSearchForm.accountID" data-testid="saved-search-account-id-input" inputmode="numeric" />
+                  </n-form-item>
+                  <n-form-item label="频道 ID">
+                    <n-input v-model:value="savedSearchForm.channelID" data-testid="saved-search-channel-id-input" inputmode="numeric" />
+                  </n-form-item>
+                </div>
+                <div class="checkbox-grid">
+                  <label class="checkbox-row">
+                    <input v-model="savedSearchForm.notifyRSS" type="checkbox" />
+                    RSS
+                  </label>
+                  <label class="checkbox-row">
+                    <input v-model="savedSearchForm.notifyWebhook" type="checkbox" />
+                    Webhook
+                  </label>
+                  <label class="checkbox-row">
+                    <input v-model="savedSearchForm.notifyTelegram" type="checkbox" />
+                    Telegram
+                  </label>
+                  <label class="checkbox-row">
+                    <input v-model="savedSearchForm.enabled" type="checkbox" />
+                    启用
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <n-button data-testid="save-saved-search" type="primary" :loading="savedSearchSaving" @click="saveSavedSearch">
+                    {{ editingSavedSearchID ? '更新' : '创建' }}
+                  </n-button>
+                </div>
+              </n-form>
+
+              <div class="table-wrap">
+                <table class="settings-table">
+                  <thead>
+                    <tr>
+                      <th>名称</th>
+                      <th>关键词</th>
+                      <th>通知</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="savedSearchLoading">
+                      <td colspan="5">加载中</td>
+                    </tr>
+                    <tr v-for="item in savedSearches" :key="item.id">
+                      <td>{{ item.name }}</td>
+                      <td>{{ item.keyword }}</td>
+                      <td>{{ [item.notify_rss ? 'RSS' : '', item.notify_webhook ? 'Webhook' : '', item.notify_telegram ? 'Telegram' : ''].filter(Boolean).join(' / ') || '-' }}</td>
+                      <td>{{ item.enabled ? '启用' : '停用' }}</td>
+                      <td class="table-actions">
+                        <n-button size="tiny" secondary @click="editSavedSearch(item)">编辑</n-button>
+                        <n-button size="tiny" secondary @click="toggleSavedSearch(item)">{{ item.enabled ? '停用' : '启用' }}</n-button>
+                        <n-button size="tiny" secondary @click="testSavedSearch(item.id)">测试</n-button>
+                        <n-button size="tiny" tertiary @click="deleteSavedSearch(item.id)">删除</n-button>
+                      </td>
+                    </tr>
+                    <tr v-if="!savedSearchLoading && savedSearches.length === 0">
+                      <td colspan="5">暂无搜索订阅</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel notification-panel">
+              <div class="panel-header">
+                <h2>Webhook</h2>
+                <n-button size="small" secondary @click="resetWebhookForm">新建</n-button>
+              </div>
+              <n-form class="notification-form" @submit.prevent="saveWebhook">
+                <div class="notification-grid">
+                  <n-form-item label="名称">
+                    <n-input v-model:value="webhookForm.name" data-testid="webhook-name-input" placeholder="默认使用 URL" />
+                  </n-form-item>
+                  <n-form-item label="URL">
+                    <n-input v-model:value="webhookForm.url" data-testid="webhook-url-input" placeholder="https://example.com/hook" />
+                  </n-form-item>
+                  <n-form-item label="Secret">
+                    <n-input
+                      v-model:value="webhookForm.secret"
+                      data-testid="webhook-secret-input"
+                      type="password"
+                      autocomplete="off"
+                      placeholder="留空则不修改"
+                    />
+                  </n-form-item>
+                </div>
+                <div class="event-grid">
+                  <label v-for="option in notificationEventOptions" :key="option.value" class="checkbox-row">
+                    <input
+                      type="checkbox"
+                      :checked="webhookForm.events.includes(option.value)"
+                      @change="onWebhookEventChange(option.value, $event)"
+                    />
+                    {{ option.label }}
+                  </label>
+                </div>
+                <label class="checkbox-row">
+                  <input v-model="webhookForm.enabled" type="checkbox" />
+                  启用
+                </label>
+                <div class="form-actions">
+                  <n-button data-testid="save-webhook" type="primary" :loading="webhookSaving" @click="saveWebhook">
+                    {{ editingWebhookID ? '更新' : '创建' }}
+                  </n-button>
+                </div>
+              </n-form>
+
+              <div class="table-wrap">
+                <table class="settings-table">
+                  <thead>
+                    <tr>
+                      <th>名称</th>
+                      <th>URL</th>
+                      <th>事件</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="webhookLoading">
+                      <td colspan="5">加载中</td>
+                    </tr>
+                    <tr v-for="item in webhooks" :key="item.id">
+                      <td>{{ item.name }}</td>
+                      <td class="url-cell">{{ item.url }}</td>
+                      <td>{{ item.events.join(', ') }}</td>
+                      <td>{{ item.enabled ? '启用' : '停用' }}</td>
+                      <td class="table-actions">
+                        <n-button size="tiny" secondary @click="editWebhook(item)">编辑</n-button>
+                        <n-button size="tiny" secondary @click="toggleWebhook(item)">{{ item.enabled ? '停用' : '启用' }}</n-button>
+                        <n-button size="tiny" tertiary @click="deleteWebhook(item.id)">删除</n-button>
+                      </td>
+                    </tr>
+                    <tr v-if="!webhookLoading && webhooks.length === 0">
+                      <td colspan="5">暂无 Webhook</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel notification-panel">
+            <div class="panel-header">
+              <h2>通知记录</h2>
+              <n-button size="small" secondary :loading="deliveryLoading" @click="loadDeliveries">刷新</n-button>
+            </div>
+            <div class="table-wrap">
+              <table class="settings-table">
+                <thead>
+                  <tr>
+                    <th>事件</th>
+                    <th>目标</th>
+                    <th>状态</th>
+                    <th>重试</th>
+                    <th>时间</th>
+                    <th>错误</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="deliveryLoading">
+                    <td colspan="6">加载中</td>
+                  </tr>
+                  <tr v-for="item in deliveries" :key="item.id">
+                    <td>{{ item.event_type }}</td>
+                    <td>{{ item.target_type }} #{{ item.target_id }}</td>
+                    <td>{{ item.status }}</td>
+                    <td>{{ item.retry_count }}</td>
+                    <td>{{ formatTime(item.created_at) }}</td>
+                    <td class="url-cell">{{ item.last_error || '-' }}</td>
+                  </tr>
+                  <tr v-if="!deliveryLoading && deliveries.length === 0">
+                    <td colspan="6">暂无通知记录</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </n-tab-pane>
+
       <n-tab-pane name="system" tab="系统">
         <div class="settings-panel-grid">
           <section class="panel version-panel">
@@ -732,6 +1347,73 @@ function versionStatusText() {
 .runtime-panel {
   display: grid;
   gap: 16px;
+}
+
+.notification-layout,
+.notification-panel,
+.bot-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.notification-form {
+  display: grid;
+  gap: 12px;
+}
+
+.notification-grid {
+  display: grid;
+  gap: 12px 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bot-form .notification-grid {
+  grid-template-columns: minmax(0, 1fr) 180px;
+}
+
+.checkbox-grid,
+.event-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.settings-table {
+  border-collapse: collapse;
+  color: var(--app-text);
+  font-size: 13px;
+  min-width: 680px;
+  width: 100%;
+}
+
+.settings-table th,
+.settings-table td {
+  border-bottom: 1px solid var(--app-border-subtle);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.settings-table th {
+  color: var(--app-text-muted);
+  font-weight: 600;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.url-cell {
+  max-width: 260px;
+  overflow-wrap: anywhere;
 }
 
 .storage-limit-form {
@@ -847,7 +1529,9 @@ dd {
 
 @media (max-width: 900px) {
   .settings-panel-grid,
-  .runtime-grid {
+  .runtime-grid,
+  .notification-grid,
+  .bot-form .notification-grid {
     grid-template-columns: 1fr;
   }
 }

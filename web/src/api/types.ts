@@ -97,6 +97,13 @@ export interface TelegramAPISettingsResponse {
   app_hash_set: boolean
 }
 
+export interface TelegramBotSettingsResponse {
+  enabled: boolean
+  configured: boolean
+  token_set: boolean
+  poll_interval: string
+}
+
 export interface RuntimeSettings {
   sync: {
     workers: number
@@ -236,6 +243,62 @@ export interface RemoteSearchTask {
   status: string
   source: string
   expires_at: string
+}
+
+export interface SavedSearchFilters {
+  type?: string
+  category?: string
+  cloud_types?: string[]
+  account_id?: number
+  channel_id?: number
+}
+
+export interface SavedSearch {
+  id: number
+  name: string
+  keyword: string
+  filters: SavedSearchFilters
+  notify_rss: boolean
+  notify_webhook: boolean
+  notify_telegram: boolean
+  enabled: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SavedSearchesResponse {
+  items: SavedSearch[]
+}
+
+export interface Webhook {
+  id: number
+  name: string
+  url: string
+  events: string[]
+  enabled: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface WebhooksResponse {
+  items: Webhook[]
+}
+
+export interface NotificationDelivery {
+  id: number
+  event_type: string
+  target_type: string
+  target_id: number
+  status: string
+  retry_count: number
+  last_error: string
+  delivered_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface NotificationDeliveriesResponse {
+  items: NotificationDelivery[]
 }
 
 export interface Task {

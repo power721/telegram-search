@@ -247,6 +247,31 @@ complete
 }
 ```
 
+### `GET /api/settings/telegram-bot`
+
+返回 Telegram Bot 设置状态。响应不会包含 Bot Token。
+
+```json
+{
+  "enabled": true,
+  "configured": true,
+  "token_set": true,
+  "poll_interval": "3s"
+}
+```
+
+### `PUT /api/settings/telegram-bot`
+
+保存 Telegram Bot 设置。`token` 为空时沿用已有 Token；启用 Bot 且没有已保存 Token 时会返回 `400`。保存后重启服务生效。
+
+```json
+{
+  "enabled": true,
+  "token": "123456:telegram_bot_token",
+  "poll_interval": "3s"
+}
+```
+
 ### `GET /api/settings/api-key`
 
 返回当前启用 API Key。需要管理员会话。
@@ -1116,6 +1141,8 @@ POST   /api/auth/logout
 GET    /api/auth/me
 GET    /api/settings/telegram-api
 PUT    /api/settings/telegram-api
+GET    /api/settings/telegram-bot
+PUT    /api/settings/telegram-bot
 GET    /api/settings/runtime
 PUT    /api/settings/runtime
 PUT    /api/settings/admin

@@ -1837,6 +1837,57 @@ func TestTelegramAPISettings(t *testing.T) {
 	}
 }
 
+func TestTelegramBotSettings(t *testing.T) {
+	deps := testDeps(t)
+	deps.RuntimeConfig.Bot.PollInterval = config.Duration(3 * time.Second)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/telegram-bot", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get default telegram bot code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramBotSettingsResponse(t, w.Body.Bytes(), false, false, "3s")
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"poll_interval":"5s"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("put enabled telegram bot without token code = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"token":"bot-secret","poll_interval":"5s"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put telegram bot code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramBotSettingsResponse(t, w.Body.Bytes(), true, true, "5s")
+	if bytes.Contains(w.Body.Bytes(), []byte("bot-secret")) {
+		t.Fatalf("put telegram bot response leaked token: %s", w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"token":"","poll_interval":"10s"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put telegram bot preserving token code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	assertTelegramBotSettingsResponse(t, w.Body.Bytes(), true, true, "10s")
+
+	loaded, err := deps.Settings.LoadTelegramBot(context.Background(), deps.RuntimeConfig.Bot)
+	if err != nil {
+		t.Fatalf("load telegram bot: %v", err)
+	}
+	if loaded.Token != "bot-secret" {
+		t.Fatalf("loaded token = %q, want preserved token", loaded.Token)
+	}
+}
+
 func TestRuntimeSettings(t *testing.T) {
 	deps := testDeps(t)
 	deps.RuntimeConfig.Sync.Workers = 5
@@ -2499,6 +2550,17 @@ func assertTelegramAPISettingsResponse(t *testing.T, data []byte, configured boo
 	}
 	if body.Configured != configured || body.AppID != appID || body.AppHashSet != configured {
 		t.Fatalf("telegram api settings = %+v, want configured=%v app_id=%d", body, configured, appID)
+	}
+}
+
+func assertTelegramBotSettingsResponse(t *testing.T, data []byte, enabled bool, tokenSet bool, pollInterval string) {
+	t.Helper()
+	var body model.TelegramBotSettingsResponse
+	if err := json.Unmarshal(data, &body); err != nil {
+		t.Fatalf("decode telegram bot settings: %v", err)
+	}
+	if body.Enabled != enabled || body.TokenSet != tokenSet || body.Configured != (enabled && tokenSet) || body.PollInterval != pollInterval {
+		t.Fatalf("telegram bot settings = %+v, want enabled=%v token_set=%v poll_interval=%s", body, enabled, tokenSet, pollInterval)
 	}
 }
 

@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiGet, apiPost, apiPut, setAPIKey } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut, setAPIKey } from '@/api/client'
 import SettingsView from './SettingsView.vue'
 
 const messageMocks = vi.hoisted(() => ({
@@ -36,6 +36,54 @@ vi.mock('@/api/client', () => ({
     }
     if (path === '/api/settings/telegram-api') {
       return Promise.resolve({ configured: true, app_id: 123456, app_hash_set: true })
+    }
+    if (path === '/api/settings/telegram-bot') {
+      return Promise.resolve({ enabled: false, configured: false, token_set: false, poll_interval: '3s' })
+    }
+    if (path === '/api/saved-searches') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 10,
+            name: '哪吒3',
+            keyword: '哪吒3',
+            filters: { type: 'movie', cloud_types: ['quark'] },
+            notify_rss: true,
+            notify_webhook: false,
+            notify_telegram: true,
+            enabled: true
+          }
+        ]
+      })
+    }
+    if (path === '/api/webhooks') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 20,
+            name: 'n8n',
+            url: 'https://example.com/hook',
+            events: ['resource.created'],
+            enabled: true
+          }
+        ]
+      })
+    }
+    if (path === '/api/notification-deliveries?limit=10&offset=0') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 30,
+            event_type: 'resource.created',
+            target_type: 'webhook',
+            target_id: 20,
+            status: 'succeeded',
+            retry_count: 0,
+            last_error: '',
+            created_at: '2026-06-10T00:00:00Z'
+          }
+        ]
+      })
     }
     if (path === '/api/settings/runtime') {
       return Promise.resolve({
@@ -101,13 +149,39 @@ vi.mock('@/api/client', () => ({
       created_at: '2026-06-08T00:00:00Z'
     })
   }),
-  apiPost: vi.fn().mockResolvedValue({
-    id: 2,
-    name: 'default',
-    prefix: '87654321',
-    key: '87654321876543218765432187654321',
-    usage_count: 0,
-    created_at: '2026-06-08T01:00:00Z'
+  apiPost: vi.fn((path: string) => {
+    if (path === '/api/saved-searches') {
+      return Promise.resolve({
+        id: 11,
+        name: '流浪地球',
+        keyword: '流浪地球',
+        filters: {},
+        notify_rss: true,
+        notify_webhook: true,
+        notify_telegram: false,
+        enabled: true
+      })
+    }
+    if (path === '/api/webhooks') {
+      return Promise.resolve({
+        id: 21,
+        name: 'Dify',
+        url: 'https://example.com/dify',
+        events: ['resource.created'],
+        enabled: true
+      })
+    }
+    if (path === '/api/saved-searches/10/test') {
+      return Promise.resolve({ items: [], total: 3 })
+    }
+    return Promise.resolve({
+      id: 2,
+      name: 'default',
+      prefix: '87654321',
+      key: '87654321876543218765432187654321',
+      usage_count: 0,
+      created_at: '2026-06-08T01:00:00Z'
+    })
   }),
   apiPut: vi.fn((path: string) => {
     if (path === '/api/settings/telegram-api') {
@@ -144,8 +218,33 @@ vi.mock('@/api/client', () => ({
         }
       })
     }
+    if (path === '/api/settings/telegram-bot') {
+      return Promise.resolve({ enabled: true, configured: true, token_set: true, poll_interval: '5s' })
+    }
+    if (path.startsWith('/api/saved-searches/')) {
+      return Promise.resolve({
+        id: 10,
+        name: '哪吒3',
+        keyword: '哪吒3',
+        filters: { type: 'movie', cloud_types: ['quark'] },
+        notify_rss: true,
+        notify_webhook: false,
+        notify_telegram: true,
+        enabled: false
+      })
+    }
+    if (path.startsWith('/api/webhooks/')) {
+      return Promise.resolve({
+        id: 20,
+        name: 'n8n',
+        url: 'https://example.com/hook',
+        events: ['resource.created'],
+        enabled: false
+      })
+    }
     return Promise.resolve({ id: 1, username: 'root', role: 'admin' })
   }),
+  apiDelete: vi.fn().mockResolvedValue({ deleted: true }),
   setAPIKey: vi.fn()
 }))
 
@@ -333,7 +432,7 @@ describe('SettingsView', () => {
     expect(wrapper.text()).not.toContain('go1.25.0')
   })
 
-  it('groups settings into four tabs', async () => {
+  it('groups settings into five tabs', async () => {
     const wrapper = mount(SettingsView, {
       global: {
         stubs
@@ -342,8 +441,109 @@ describe('SettingsView', () => {
     await flushPromises()
 
     const panes = wrapper.findAll('.n-tab-pane')
-    expect(panes.map((pane) => pane.attributes('data-tab-name'))).toEqual(['security', 'storage', 'runtime', 'system'])
-    expect(panes.map((pane) => pane.find('h2').text())).toEqual(['账号与安全', '存储', '运行参数', '系统'])
+    expect(panes.map((pane) => pane.attributes('data-tab-name'))).toEqual(['security', 'storage', 'runtime', 'notifications', 'system'])
+    expect(panes.map((pane) => pane.find('h2').text())).toEqual(['账号与安全', '存储', '运行参数', '通知集成', '系统'])
+  })
+
+  it('loads and saves telegram bot settings', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/settings/telegram-bot')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="telegram-bot-poll-interval-input"]').element.value).toBe('3s')
+
+    await wrapper.get<HTMLInputElement>('[data-testid="telegram-bot-enabled-input"]').setValue(true)
+    await wrapper.get('[data-testid="telegram-bot-token-input"]').setValue('bot-secret')
+    await wrapper.get('[data-testid="telegram-bot-poll-interval-input"]').setValue('5s')
+    await wrapper.get('[data-testid="save-telegram-bot"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPut).toHaveBeenCalledWith('/api/settings/telegram-bot', {
+      enabled: true,
+      token: 'bot-secret',
+      poll_interval: '5s'
+    })
+    expect(wrapper.get<HTMLInputElement>('[data-testid="telegram-bot-token-input"]').element.value).toBe('')
+  })
+
+  it('creates and manages saved searches from settings', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/saved-searches')
+    expect(wrapper.text()).toContain('哪吒3')
+
+    await wrapper.get('[data-testid="saved-search-name-input"]').setValue('流浪地球')
+    await wrapper.get('[data-testid="saved-search-keyword-input"]').setValue('流浪地球')
+    await wrapper.get('[data-testid="saved-search-type-input"]').setValue('movie')
+    await wrapper.get('[data-testid="saved-search-cloud-types-input"]').setValue('quark, aliyun')
+    await wrapper.get('[data-testid="save-saved-search"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/saved-searches', {
+      name: '流浪地球',
+      keyword: '流浪地球',
+      filters: {
+        type: 'movie',
+        cloud_types: ['quark', 'aliyun']
+      },
+      notify_rss: true,
+      notify_webhook: false,
+      notify_telegram: false,
+      enabled: true
+    })
+
+    const testButton = wrapper.findAll('button').find((button) => button.text() === '测试')
+    expect(testButton).toBeTruthy()
+    await testButton!.trigger('click')
+    await flushPromises()
+    expect(apiPost).toHaveBeenCalledWith('/api/saved-searches/10/test')
+
+    const deleteButton = wrapper.findAll('button').find((button) => button.text() === '删除')
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+    await flushPromises()
+    expect(apiDelete).toHaveBeenCalledWith('/api/saved-searches/10')
+  })
+
+  it('creates and manages webhooks from settings', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(apiGet).toHaveBeenCalledWith('/api/webhooks')
+    expect(wrapper.text()).toContain('https://example.com/hook')
+
+    await wrapper.get('[data-testid="webhook-name-input"]').setValue('Dify')
+    await wrapper.get('[data-testid="webhook-url-input"]').setValue('https://example.com/dify')
+    await wrapper.get('[data-testid="webhook-secret-input"]').setValue('secret')
+    await wrapper.get('[data-testid="save-webhook"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/webhooks', {
+      name: 'Dify',
+      url: 'https://example.com/dify',
+      events: ['resource.created'],
+      enabled: true,
+      secret: 'secret'
+    })
+
+    const deleteButtons = wrapper.findAll('button').filter((button) => button.text() === '删除')
+    expect(deleteButtons.length).toBeGreaterThan(1)
+    await deleteButtons[1].trigger('click')
+    await flushPromises()
+    expect(apiDelete).toHaveBeenCalledWith('/api/webhooks/20')
   })
 
   it('keeps API key and Telegram API panels in the right security column', async () => {
@@ -503,6 +703,18 @@ describe('SettingsView', () => {
       }
       if (path === '/api/settings/telegram-api') {
         return Promise.resolve({ configured: false, app_id: 0, app_hash_set: false })
+      }
+      if (path === '/api/settings/telegram-bot') {
+        return Promise.resolve({ enabled: false, configured: false, token_set: false, poll_interval: '3s' })
+      }
+      if (path === '/api/saved-searches') {
+        return Promise.resolve({ items: [] })
+      }
+      if (path === '/api/webhooks') {
+        return Promise.resolve({ items: [] })
+      }
+      if (path === '/api/notification-deliveries?limit=10&offset=0') {
+        return Promise.resolve({ items: [] })
       }
       if (path === '/api/settings/runtime') {
         return Promise.resolve({

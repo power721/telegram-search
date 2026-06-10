@@ -19,12 +19,19 @@ type SettingsRepository struct {
 
 const (
 	telegramAPISettingKey = "telegram_api"
+	telegramBotSettingKey = "telegram_bot"
 	runtimeSettingKey     = "runtime"
 )
 
 type telegramAPISettingsJSON struct {
 	AppID   int    `json:"app_id"`
 	AppHash string `json:"app_hash"`
+}
+
+type telegramBotSettingsJSON struct {
+	Enabled      bool            `json:"enabled"`
+	Token        string          `json:"token"`
+	PollInterval config.Duration `json:"poll_interval"`
 }
 
 func NewSettingsRepository(db *sql.DB) *SettingsRepository {
@@ -90,6 +97,43 @@ func (r *SettingsRepository) LoadTelegramAPI(ctx context.Context) (model.Telegra
 	return settings, nil
 }
 
+func (r *SettingsRepository) SaveTelegramBot(ctx context.Context, settings config.BotConfig) error {
+	data, err := json.Marshal(telegramBotSettingsJSON{
+		Enabled:      settings.Enabled,
+		Token:        settings.Token,
+		PollInterval: settings.PollInterval,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal telegram bot settings: %w", err)
+	}
+	if err := r.Set(ctx, telegramBotSettingKey, string(data)); err != nil {
+		return fmt.Errorf("save telegram bot settings: %w", err)
+	}
+	return nil
+}
+
+func (r *SettingsRepository) LoadTelegramBot(ctx context.Context, defaults config.BotConfig) (config.BotConfig, error) {
+	raw, ok, err := r.Get(ctx, telegramBotSettingKey)
+	if err != nil {
+		return config.BotConfig{}, fmt.Errorf("load telegram bot settings: %w", err)
+	}
+	settings := defaults
+	if !ok {
+		return settings, nil
+	}
+	var stored telegramBotSettingsJSON
+	stored.Enabled = settings.Enabled
+	stored.Token = settings.Token
+	stored.PollInterval = settings.PollInterval
+	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+		return config.BotConfig{}, fmt.Errorf("decode telegram bot settings: %w", err)
+	}
+	settings.Enabled = stored.Enabled
+	settings.Token = stored.Token
+	settings.PollInterval = stored.PollInterval
+	return settings, nil
+}
+
 func (r *SettingsRepository) SaveRuntimeSettings(ctx context.Context, settings config.RuntimeSettings) error {
 	data, err := json.Marshal(settings)
 	if err != nil {
@@ -124,6 +168,15 @@ func RedactTelegramAPI(settings model.TelegramAPISettings) model.TelegramAPISett
 		Configured: settings.AppID > 0 && settings.AppHash != "",
 		AppID:      settings.AppID,
 		AppHashSet: settings.AppHash != "",
+	}
+}
+
+func RedactTelegramBot(settings config.BotConfig) model.TelegramBotSettingsResponse {
+	return model.TelegramBotSettingsResponse{
+		Enabled:      settings.Enabled,
+		Configured:   settings.Enabled && settings.Token != "",
+		TokenSet:     settings.Token != "",
+		PollInterval: settings.PollInterval.String(),
 	}
 }
 

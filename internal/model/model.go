@@ -94,6 +94,13 @@ type TelegramAPISettingsResponse struct {
 	AppHashSet bool `json:"app_hash_set"`
 }
 
+type TelegramBotSettingsResponse struct {
+	Enabled      bool   `json:"enabled"`
+	Configured   bool   `json:"configured"`
+	TokenSet     bool   `json:"token_set"`
+	PollInterval string `json:"poll_interval"`
+}
+
 type StorageUsage struct {
 	DBBytes         int64 `json:"db_bytes"`
 	IndexBytes      int64 `json:"index_bytes"`

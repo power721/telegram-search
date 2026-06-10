@@ -1194,6 +1194,9 @@ POST   /api/maintenance/sqlite
 POST   /api/maintenance/backup
 GET    /api/search
 POST   /api/search
+GET    /feeds/latest
+GET    /feeds/search
+GET    /feeds/saved/:id
 GET    /v/:fileid
 HEAD   /v/:fileid
 GET    /i/:fileid

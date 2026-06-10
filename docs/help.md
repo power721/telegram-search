@@ -311,6 +311,9 @@ curl -b cookies.txt http://127.0.0.1:9900/api/status
 
 - `GET /api/search`
 - `POST /api/search`
+- `GET /feeds/latest`
+- `GET /feeds/search`
+- `GET /feeds/saved/:id`
 - `GET/HEAD /v/:fileid`
 - `GET/HEAD /i/:fileid`
 

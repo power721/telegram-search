@@ -764,6 +764,65 @@ func TestSavedSearchesAPI(t *testing.T) {
 	}
 }
 
+func TestRSSFeedsRequireAPIKeyAndReturnResources(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "电影频道", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 10, Text: "哪吒3 4K 夸克网盘", RawJSON: "{}", Date: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/nezha3", Note: "哪吒3 4K"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	savedID, err := deps.SavedSearches.Create(ctx, model.SavedSearch{
+		Name:      "哪吒3",
+		Keyword:   "哪吒3",
+		NotifyRSS: true,
+		Enabled:   true,
+	})
+	if err != nil {
+		t.Fatalf("create saved search: %v", err)
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/feeds/search?q=%E5%93%AA%E5%90%923", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("feed without api key code = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/feeds/search?q=%E5%93%AA%E5%90%923", nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("feed search code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if contentType := w.Header().Get("Content-Type"); !strings.Contains(contentType, "application/rss+xml") {
+		t.Fatalf("content type = %q, want rss", contentType)
+	}
+	if body := w.Body.String(); !strings.Contains(body, `<rss version="2.0">`) || !strings.Contains(body, "哪吒3 4K") || !strings.Contains(body, "https://pan.quark.cn/s/nezha3") {
+		t.Fatalf("feed search body missing resource: %s", body)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/feeds/saved/"+strconv.FormatInt(savedID, 10), nil)
+	req.Header.Set("X-API-Key", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("saved feed code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if body := w.Body.String(); !strings.Contains(body, "tg-search saved search") || !strings.Contains(body, "哪吒3 4K") {
+		t.Fatalf("saved feed body missing saved search resource: %s", body)
+	}
+}
+
 func TestWebhooksAndNotificationDeliveriesAPI(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

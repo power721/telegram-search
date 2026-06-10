@@ -9,6 +9,9 @@
 ```text
 GET  /api/search
 POST /api/search
+GET  /feeds/latest
+GET  /feeds/search
+GET  /feeds/saved/:id
 GET  /v/:fileid
 HEAD /v/:fileid
 GET  /i/:fileid
@@ -46,6 +49,8 @@ export TG_SEARCH_API_KEY='0123abcd...'
 curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
   "http://127.0.0.1:9900/api/search?kw=电影"
 ```
+
+RSS Feed 也使用同一套 API Key Header。为了避免泄露本地资源库，`/feeds/*` 不支持把 API Key 放在 query 参数中。
 
 ## 3. 搜索接口
 
@@ -115,7 +120,32 @@ curl "http://127.0.0.1:9900/api/search" \
 
 无论哪种类型，都会返回 `total`。
 
-## 6. 成功响应
+## 6. RSS Feed
+
+RSS Feed 返回已经索引的本地资源，适合接入支持自定义 Header 的 RSS Reader 或自动化系统。
+
+```bash
+curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
+  "http://127.0.0.1:9900/feeds/search?q=哪吒3"
+```
+
+可用路径：
+
+| 路径 | 说明 |
+| --- | --- |
+| `/feeds/latest` | 最新资源。 |
+| `/feeds/search?q=keyword` | 按关键词输出搜索结果。 |
+| `/feeds/saved/:id` | 输出指定保存搜索的当前匹配结果。 |
+
+支持参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `q` / `kw` / `keyword` | 搜索关键词，适用于 `/feeds/search`。 |
+| `cloud_types` | 资源类型过滤，逗号分隔。 |
+| `limit` | 数量，默认 50，最大 100。 |
+
+## 7. 成功响应
 
 公开 API 使用兼容封装：
 
@@ -202,7 +232,7 @@ curl "http://127.0.0.1:9900/api/search" \
 | `images` | 图片代理 URL，仅 `include_image=true` 时返回。 |
 | `media` | 媒体元数据，仅 `include_media_metadata=true` 且有数据时返回。 |
 
-## 7. 资源类型过滤
+## 8. 资源类型过滤
 
 `cloud_types` 为空时默认搜索：
 
@@ -267,7 +297,7 @@ jianguoyun
 /api/search?kw=剧集&cloud_types=quark,aliyun,magnet
 ```
 
-## 8. 媒体 URL
+## 9. 媒体 URL
 
 当结果中有 Telegram 图片或视频时，公开 API 返回的 URL 会自动签名：
 
@@ -294,7 +324,7 @@ curl -I \
   "http://127.0.0.1:9900/v/456?exp=1780912800&sig=..."
 ```
 
-## 9. 错误响应
+## 10. 错误响应
 
 公开 API 错误仍使用 `code/message` 封装，HTTP 状态码表示错误类型：
 
@@ -317,7 +347,7 @@ curl -I \
 | `401` | `invalid api key` | API Key 无效或已被重新生成。 |
 | `503` | `resources are unavailable` | 资源服务不可用。 |
 
-## 10. 集成建议
+## 11. 集成建议
 
 - 后端服务保存 API Key，不要把 API Key 暴露给不可信前端。
 - 用 `res=merge` 获取按类型聚合的链接，适合资源站、机器人和插件。
@@ -326,7 +356,7 @@ curl -I \
 - `limit` 最大为 `3000`，外部系统建议分页拉取。
 - 媒体 URL 过期后不要重试旧 URL，重新搜索获取新签名。
 
-## 11. 最小调用示例
+## 12. 最小调用示例
 
 Node.js：
 

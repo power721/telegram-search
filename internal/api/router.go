@@ -48,6 +48,7 @@ type Dependencies struct {
 	WatchRules       *repository.WatchRuleRepository
 	RemoteSearch     *repository.RemoteSearchTaskRepository
 	SavedSearches    *repository.SavedSearchRepository
+	BotSubscriptions *repository.TelegramBotSubscriptionRepository
 	Webhooks         *repository.WebhookRepository
 	Deliveries       *repository.NotificationDeliveryRepository
 	Files            *repository.FileRepository
@@ -177,6 +178,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.GET("/watch-rules/:id", h.watchRule)
 	adminOnly.PUT("/watch-rules/:id", h.updateWatchRule)
 	adminOnly.DELETE("/watch-rules/:id", h.deleteWatchRule)
+	adminOnly.GET("/telegram-bot/chats", h.telegramBotChats)
 	adminOnly.GET("/saved-searches", h.savedSearches)
 	adminOnly.POST("/saved-searches", h.createSavedSearch)
 	adminOnly.GET("/saved-searches/:id", h.savedSearch)

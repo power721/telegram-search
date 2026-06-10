@@ -214,16 +214,17 @@ type SavedSearchFilters struct {
 }
 
 type SavedSearch struct {
-	ID             int64              `json:"id"`
-	Name           string             `json:"name"`
-	Keyword        string             `json:"keyword"`
-	Filters        SavedSearchFilters `json:"filters"`
-	NotifyRSS      bool               `json:"notify_rss"`
-	NotifyWebhook  bool               `json:"notify_webhook"`
-	NotifyTelegram bool               `json:"notify_telegram"`
-	Enabled        bool               `json:"enabled"`
-	CreatedAt      time.Time          `json:"created_at"`
-	UpdatedAt      time.Time          `json:"updated_at"`
+	ID              int64              `json:"id"`
+	Name            string             `json:"name"`
+	Keyword         string             `json:"keyword"`
+	Filters         SavedSearchFilters `json:"filters"`
+	NotifyRSS       bool               `json:"notify_rss"`
+	NotifyWebhook   bool               `json:"notify_webhook"`
+	NotifyTelegram  bool               `json:"notify_telegram"`
+	TelegramChatIDs []int64            `json:"telegram_chat_ids,omitempty"`
+	Enabled         bool               `json:"enabled"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
 type Webhook struct {
@@ -261,6 +262,18 @@ type TelegramBotSubscription struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 	SavedSearch   string    `json:"saved_search,omitempty"`
 	Keyword       string    `json:"keyword,omitempty"`
+}
+
+type TelegramBotChat struct {
+	ChatID     int64     `json:"chat_id"`
+	Title      string    `json:"title"`
+	Username   string    `json:"username"`
+	FirstName  string    `json:"first_name"`
+	LastName   string    `json:"last_name"`
+	Type       string    `json:"type"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type ChannelIndexedCounts struct {

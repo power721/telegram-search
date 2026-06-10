@@ -845,6 +845,26 @@ GET /api/channels?account_id=1
 
 ## 搜索订阅与通知接口
 
+### `GET /api/telegram-bot/chats`
+
+返回 Telegram Bot 已见过的聊天目标，用于网页端选择搜索订阅接收人。用户或群组需要先给 Bot 发送 `/start` 或任意消息，系统才能记录对应 `chat_id`。
+
+```json
+{
+  "items": [
+    {
+      "chat_id": 42,
+      "title": "",
+      "username": "harold",
+      "first_name": "Harold",
+      "last_name": "Finch",
+      "type": "private",
+      "last_seen_at": "2026-06-10T12:00:00Z"
+    }
+  ]
+}
+```
+
 ### `GET /api/saved-searches`
 
 返回保存的搜索订阅。
@@ -863,7 +883,8 @@ GET /api/channels?account_id=1
   },
   "notify_rss": true,
   "notify_webhook": true,
-  "notify_telegram": false,
+  "notify_telegram": true,
+  "telegram_chat_ids": [42],
   "enabled": true
 }
 ```
@@ -880,9 +901,11 @@ GET /api/channels?account_id=1
 
 管理后台「设置 -> 通知集成」提供账号、频道和资源类型下拉选择，通常不需要手写这些 ID。
 
+`telegram_chat_ids` 是 Telegram Bot 接收人列表，只在 `notify_telegram=true` 时生效。可选 ID 来自 `GET /api/telegram-bot/chats`；取消 Telegram 通知时传空数组会清理该搜索订阅的 Bot 绑定。
+
 ### `GET /api/saved-searches/:id`
 
-返回单个搜索订阅。
+返回单个搜索订阅。响应会包含已绑定的 `telegram_chat_ids`。
 
 ### `PUT /api/saved-searches/:id`
 
@@ -1206,6 +1229,7 @@ GET    /api/resources/:id
 DELETE /api/resources/:id
 POST   /api/resources/bulk-delete
 GET    /api/saved-searches
+GET    /api/telegram-bot/chats
 POST   /api/saved-searches
 GET    /api/saved-searches/:id
 PUT    /api/saved-searches/:id

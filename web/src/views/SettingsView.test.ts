@@ -51,8 +51,17 @@ vi.mock('@/api/client', () => ({
             notify_rss: true,
             notify_webhook: false,
             notify_telegram: true,
+            telegram_chat_ids: [42],
             enabled: true
           }
+        ]
+      })
+    }
+    if (path === '/api/telegram-bot/chats') {
+      return Promise.resolve({
+        items: [
+          { chat_id: 42, title: '', username: 'harold', first_name: 'Harold', last_name: 'Finch', type: 'private', last_seen_at: '2026-06-10T00:00:00Z' },
+          { chat_id: 43, title: '资源群', username: '', first_name: '', last_name: '', type: 'group', last_seen_at: '2026-06-10T00:00:00Z' }
         ]
       })
     }
@@ -175,6 +184,7 @@ vi.mock('@/api/client', () => ({
         notify_rss: true,
         notify_webhook: true,
         notify_telegram: false,
+        telegram_chat_ids: [],
         enabled: true
       })
     }
@@ -246,6 +256,7 @@ vi.mock('@/api/client', () => ({
         notify_rss: true,
         notify_webhook: false,
         notify_telegram: true,
+        telegram_chat_ids: [42],
         enabled: false
       })
     }
@@ -515,6 +526,7 @@ describe('SettingsView', () => {
     expect(apiGet).toHaveBeenCalledWith('/api/saved-searches')
     expect(apiGet).toHaveBeenCalledWith('/api/accounts')
     expect(apiGet).toHaveBeenCalledWith('/api/channels')
+    expect(apiGet).toHaveBeenCalledWith('/api/telegram-bot/chats')
     expect(wrapper.text()).toContain('哪吒3')
     expect(wrapper.get('[data-testid="saved-search-account-select"]').text()).toContain('+10000000000')
     expect(wrapper.get('[data-testid="saved-search-channel-select"]').text()).toContain('电影频道')
@@ -529,6 +541,13 @@ describe('SettingsView', () => {
     await resourceTypeSelect.trigger('change')
     await wrapper.get('[data-testid="saved-search-account-select"]').setValue('1')
     await wrapper.get('[data-testid="saved-search-channel-select"]').setValue('101')
+    await wrapper.get<HTMLInputElement>('[data-testid="saved-search-notify-telegram-input"]').setValue(true)
+    await flushPromises()
+    const telegramChatSelect = wrapper.get<HTMLSelectElement>('[data-testid="saved-search-telegram-chats-select"]')
+    for (const option of Array.from(telegramChatSelect.element.options)) {
+      option.selected = option.value === '42'
+    }
+    await telegramChatSelect.trigger('change')
     await wrapper.get('[data-testid="save-saved-search"]').trigger('click')
     await flushPromises()
 
@@ -543,7 +562,8 @@ describe('SettingsView', () => {
       },
       notify_rss: true,
       notify_webhook: false,
-      notify_telegram: false,
+      notify_telegram: true,
+      telegram_chat_ids: [42],
       enabled: true
     })
 

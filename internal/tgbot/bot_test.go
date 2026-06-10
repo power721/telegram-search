@@ -92,6 +92,13 @@ func TestBotCommands(t *testing.T) {
 	if !strings.Contains(api.sent[2].text, "哪吒3") {
 		t.Fatalf("subscriptions response = %q, want keyword", api.sent[2].text)
 	}
+	chats, err := subs.FindChats(ctx)
+	if err != nil {
+		t.Fatalf("find bot chats: %v", err)
+	}
+	if len(chats) != 1 || chats[0].ChatID != 42 {
+		t.Fatalf("bot chats = %+v, want chat 42", chats)
+	}
 }
 
 func TestDeliveryDispatcherSendsTelegramMatch(t *testing.T) {
@@ -240,8 +247,56 @@ func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
 	if !strings.Contains(api.sent[1].text, fmt.Sprintf("saved search #%d", searchID)) {
 		t.Fatalf("subscribe response = %q, want bound saved search", api.sent[1].text)
 	}
-	if !strings.Contains(api.sent[2].text, "My subscriptions:") || strings.Contains(api.sent[2].text, "Available saved searches:") {
+	if !strings.Contains(api.sent[2].text, "My subscriptions:") ||
+		!strings.Contains(api.sent[2].text, "sub #") ||
+		!strings.Contains(api.sent[2].text, fmt.Sprintf("saved #%d", searchID)) ||
+		strings.Contains(api.sent[2].text, "Available saved searches:") {
 		t.Fatalf("second subscriptions response = %q, want only bound subscription", api.sent[2].text)
+	}
+}
+
+func TestBotUnsubscribeAcceptsSavedSearchIDFallback(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	if _, err := searches.Create(ctx, model.SavedSearch{Name: "翘楚", Keyword: "翘楚", NotifyTelegram: true, Enabled: true}); err != nil {
+		t.Fatalf("create first saved search: %v", err)
+	}
+	searchID, err := searches.Create(ctx, model.SavedSearch{Name: "香港探秘地图", Keyword: "香港探秘地图", NotifyTelegram: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("create second saved search: %v", err)
+	}
+	if searchID != 2 {
+		t.Fatalf("second saved search id = %d, want 2", searchID)
+	}
+	subID, err := subs.Create(ctx, model.TelegramBotSubscription{ChatID: 42, SavedSearchID: searchID, Enabled: true})
+	if err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+	if subID == searchID {
+		t.Fatalf("subscription id unexpectedly equals saved search id: %d", subID)
+	}
+	api := &fakeAPI{updates: []Update{
+		{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: fmt.Sprintf("/unsubscribe %d", searchID)}},
+		{UpdateID: 2, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
+		{UpdateID: 3, Message: &Message{Chat: Chat{ID: 42}, Text: "/unsubscribe 99"}},
+	}}
+	bot := NewBot(BotOptions{API: api, SavedSearches: searches, Subscriptions: subs})
+	if err := bot.Run(ctx); err != nil {
+		t.Fatalf("run bot: %v", err)
+	}
+	if len(api.sent) != 3 {
+		t.Fatalf("sent = %+v, want 3 messages", api.sent)
+	}
+	if !strings.Contains(api.sent[0].text, "Unsubscribed from saved search #2.") {
+		t.Fatalf("unsubscribe response = %q, want saved search fallback", api.sent[0].text)
+	}
+	if !strings.Contains(api.sent[1].text, "Available saved searches:") || strings.Contains(api.sent[1].text, "My subscriptions:") {
+		t.Fatalf("subscriptions response = %q, want available searches only", api.sent[1].text)
+	}
+	if !strings.Contains(api.sent[2].text, "not subscribed to subscription or saved search #99") {
+		t.Fatalf("missing unsubscribe response = %q, want clear miss", api.sent[2].text)
 	}
 }
 

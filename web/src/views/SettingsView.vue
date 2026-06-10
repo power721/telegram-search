@@ -14,6 +14,8 @@ import type {
   TelegramAccount,
   TelegramAccountsResponse,
   TelegramAPISettingsResponse,
+  TelegramBotChat,
+  TelegramBotChatsResponse,
   TelegramBotSettingsResponse,
   TelegramChannel,
   Webhook,
@@ -55,6 +57,8 @@ const savedSearches = ref<SavedSearch[]>([])
 const savedSearchLoading = ref(false)
 const savedSearchSaving = ref(false)
 const editingSavedSearchID = ref<number | null>(null)
+const telegramBotChats = ref<TelegramBotChat[]>([])
+const telegramBotChatsLoading = ref(false)
 const savedSearchForm = ref({
   name: '',
   keyword: '',
@@ -62,6 +66,7 @@ const savedSearchForm = ref({
   resourceTypes: [] as string[],
   accountID: 0,
   channelID: 0,
+  telegramChatIDs: [] as number[],
   notifyRSS: true,
   notifyWebhook: false,
   notifyTelegram: false,
@@ -170,6 +175,10 @@ const channelOptions = computed(() => {
     }))
   ]
 })
+const telegramBotChatOptions = computed(() => telegramBotChats.value.map((chat) => ({
+  label: telegramBotChatLabel(chat),
+  value: chat.chat_id
+})))
 
 onMounted(() => {
   apiKey.load().catch((error) => {
@@ -181,6 +190,7 @@ onMounted(() => {
   loadRuntimeSettings()
   loadAccounts()
   loadChannels()
+  loadTelegramBotChats()
   loadSavedSearches()
   loadWebhooks()
   loadDeliveries()
@@ -282,6 +292,18 @@ async function loadSavedSearches() {
     message.error(error instanceof Error ? error.message : '无法加载搜索订阅')
   } finally {
     savedSearchLoading.value = false
+  }
+}
+
+async function loadTelegramBotChats() {
+  telegramBotChatsLoading.value = true
+  try {
+    const data = await apiGet<TelegramBotChatsResponse>('/api/telegram-bot/chats')
+    telegramBotChats.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载 Telegram 接收人')
+  } finally {
+    telegramBotChatsLoading.value = false
   }
 }
 
@@ -465,6 +487,7 @@ function editSavedSearch(item: SavedSearch) {
     resourceTypes: [...new Set([...(item.filters.cloud_types ?? []), item.filters.type ?? ''].filter(Boolean))],
     accountID: item.filters.account_id ?? 0,
     channelID: item.filters.channel_id ?? 0,
+    telegramChatIDs: item.telegram_chat_ids ?? [],
     notifyRSS: item.notify_rss,
     notifyWebhook: item.notify_webhook,
     notifyTelegram: item.notify_telegram,
@@ -481,6 +504,7 @@ function resetSavedSearchForm() {
     resourceTypes: [],
     accountID: 0,
     channelID: 0,
+    telegramChatIDs: [],
     notifyRSS: true,
     notifyWebhook: false,
     notifyTelegram: false,
@@ -497,6 +521,7 @@ async function updateSavedSearchItem(item: SavedSearch, patch: Partial<SavedSear
       notify_rss: patch.notify_rss ?? item.notify_rss,
       notify_webhook: patch.notify_webhook ?? item.notify_webhook,
       notify_telegram: patch.notify_telegram ?? item.notify_telegram,
+      telegram_chat_ids: item.telegram_chat_ids ?? [],
       enabled: patch.enabled ?? item.enabled
     })
     await loadSavedSearches()
@@ -520,8 +545,15 @@ function savedSearchPayload() {
     notify_rss: savedSearchForm.value.notifyRSS,
     notify_webhook: savedSearchForm.value.notifyWebhook,
     notify_telegram: savedSearchForm.value.notifyTelegram,
+    telegram_chat_ids: savedSearchForm.value.notifyTelegram ? savedSearchForm.value.telegramChatIDs : [],
     enabled: savedSearchForm.value.enabled
   }
+}
+
+function telegramBotChatLabel(chat: TelegramBotChat) {
+  const name = chat.title || (chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' '))
+  const base = name || String(chat.chat_id)
+  return chat.type ? `${base} (${chat.type})` : base
 }
 
 async function saveWebhook() {
@@ -1137,22 +1169,37 @@ function versionStatusText() {
                       :options="channelOptions"
                     />
                   </n-form-item>
+                  <n-form-item v-if="savedSearchForm.notifyTelegram" class="full-row" label="Telegram 接收人">
+                    <n-select
+                      v-model:value="savedSearchForm.telegramChatIDs"
+                      data-testid="saved-search-telegram-chats-select"
+                      multiple
+                      filterable
+                      clearable
+                      :loading="telegramBotChatsLoading"
+                      :options="telegramBotChatOptions"
+                      placeholder="选择已和 Bot 对话的接收人"
+                    />
+                    <p v-if="!telegramBotChatsLoading && telegramBotChats.length === 0" class="form-hint">
+                      先在 Telegram 里给 Bot 发送 /start 后可选择接收人。
+                    </p>
+                  </n-form-item>
                 </div>
                 <div class="checkbox-grid">
                   <label class="checkbox-row">
-                    <input v-model="savedSearchForm.notifyRSS" type="checkbox" />
+                    <input v-model="savedSearchForm.notifyRSS" data-testid="saved-search-notify-rss-input" type="checkbox" />
                     RSS
                   </label>
                   <label class="checkbox-row">
-                    <input v-model="savedSearchForm.notifyWebhook" type="checkbox" />
+                    <input v-model="savedSearchForm.notifyWebhook" data-testid="saved-search-notify-webhook-input" type="checkbox" />
                     Webhook
                   </label>
                   <label class="checkbox-row">
-                    <input v-model="savedSearchForm.notifyTelegram" type="checkbox" />
+                    <input v-model="savedSearchForm.notifyTelegram" data-testid="saved-search-notify-telegram-input" type="checkbox" />
                     Telegram
                   </label>
                   <label class="checkbox-row">
-                    <input v-model="savedSearchForm.enabled" type="checkbox" />
+                    <input v-model="savedSearchForm.enabled" data-testid="saved-search-enabled-input" type="checkbox" />
                     启用
                   </label>
                 </div>
@@ -1445,6 +1492,16 @@ function versionStatusText() {
   display: grid;
   gap: 12px 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.full-row {
+  grid-column: 1 / -1;
+}
+
+.form-hint {
+  color: var(--app-text-muted);
+  font-size: 13px;
+  margin: 6px 0 0;
 }
 
 .bot-form .notification-grid {

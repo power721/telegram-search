@@ -704,6 +704,12 @@ func TestSavedSearchesAPI(t *testing.T) {
 	deps := testDeps(t)
 	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
 	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "电影频道", Type: model.ChannelTypeChannel})
+	if err := deps.BotSubscriptions.UpsertChat(ctx, model.TelegramBotChat{ChatID: 42, Username: "harold", FirstName: "Harold", Type: "private", LastSeenAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("upsert bot chat: %v", err)
+	}
+	if err := deps.BotSubscriptions.UpsertChat(ctx, model.TelegramBotChat{ChatID: 43, Title: "资源群", Type: "group", LastSeenAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("upsert second bot chat: %v", err)
+	}
 	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
 		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 10, Text: "哪吒3 4K 夸克网盘", RawJSON: "{}", Date: time.Now().UTC()},
 	})
@@ -716,7 +722,24 @@ func TestSavedSearchesAPI(t *testing.T) {
 	router := NewRouter(deps)
 
 	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/api/saved-searches", strings.NewReader(`{"keyword":"哪吒3","filters":{"category":"cloud_drive"},"notify_webhook":true}`))
+	req := httptest.NewRequest(http.MethodGet, "/api/telegram-bot/chats", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("telegram bot chats code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var chatsBody struct {
+		Items []model.TelegramBotChat `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &chatsBody); err != nil {
+		t.Fatalf("decode bot chats: %v", err)
+	}
+	if len(chatsBody.Items) != 2 || chatsBody.Items[0].ChatID == 0 {
+		t.Fatalf("bot chats = %+v, want stored chats", chatsBody.Items)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/saved-searches", strings.NewReader(`{"keyword":"哪吒3","filters":{"category":"cloud_drive"},"notify_webhook":true,"notify_telegram":true,"telegram_chat_ids":[42]}`))
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
@@ -726,8 +749,11 @@ func TestSavedSearchesAPI(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode saved search: %v", err)
 	}
-	if created.ID == 0 || created.Name != "哪吒3" || !created.NotifyRSS || !created.NotifyWebhook || !created.Enabled {
+	if created.ID == 0 || created.Name != "哪吒3" || !created.NotifyRSS || !created.NotifyWebhook || !created.NotifyTelegram || !created.Enabled {
 		t.Fatalf("created saved search = %+v, want defaults and webhook enabled", created)
+	}
+	if got := created.TelegramChatIDs; len(got) != 1 || got[0] != 42 {
+		t.Fatalf("created telegram chat ids = %+v, want [42]", got)
 	}
 
 	w = httptest.NewRecorder()
@@ -749,7 +775,7 @@ func TestSavedSearchesAPI(t *testing.T) {
 	}
 
 	w = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPut, "/api/saved-searches/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{"name":"Nezha","keyword":"哪吒3","enabled":false}`))
+	req = httptest.NewRequest(http.MethodPut, "/api/saved-searches/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{"name":"Nezha","keyword":"哪吒3","filters":{"category":"cloud_drive"},"notify_rss":true,"notify_webhook":true,"notify_telegram":true,"telegram_chat_ids":[43],"enabled":false}`))
 	withAdminSession(t, deps, req)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
@@ -761,6 +787,9 @@ func TestSavedSearchesAPI(t *testing.T) {
 	}
 	if updated.Enabled {
 		t.Fatalf("updated saved search enabled = true, want false")
+	}
+	if got := updated.TelegramChatIDs; len(got) != 1 || got[0] != 43 {
+		t.Fatalf("updated telegram chat ids = %+v, want [43]", got)
 	}
 }
 
@@ -4989,6 +5018,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	savedSearches := repository.NewSavedSearchRepository(conn)
 	webhooks := repository.NewWebhookRepository(conn)
 	deliveries := repository.NewNotificationDeliveryRepository(conn)
+	botSubscriptions := repository.NewTelegramBotSubscriptionRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	taskRepository := taskpkg.NewRepository(conn)
@@ -5005,6 +5035,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 		SavedSearches: savedSearches,
 		Webhooks:      webhooks,
 		Deliveries:    deliveries,
+		BotSubs:       botSubscriptions,
 	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
@@ -5015,7 +5046,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, SavedSearches: savedSearches, Webhooks: webhooks, Deliveries: deliveries, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, SavedSearches: savedSearches, BotSubscriptions: botSubscriptions, Webhooks: webhooks, Deliveries: deliveries, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		RuntimeConfig: runtimeConfig,
 		StorageUsage:  storage.NewUsageService(runtimeConfig),

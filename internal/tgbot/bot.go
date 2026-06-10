@@ -53,7 +53,12 @@ type Message struct {
 }
 
 type Chat struct {
-	ID int64 `json:"id"`
+	ID        int64  `json:"id"`
+	Type      string `json:"type"`
+	Title     string `json:"title"`
+	Username  string `json:"username"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
 }
 
 type BotCommand struct {
@@ -207,7 +212,13 @@ func (b *Bot) Run(ctx context.Context) error {
 		if update.UpdateID > b.offset {
 			b.offset = update.UpdateID
 		}
-		if update.Message == nil || strings.TrimSpace(update.Message.Text) == "" {
+		if update.Message == nil {
+			continue
+		}
+		if err := b.rememberChat(ctx, update.Message.Chat); err != nil {
+			b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
+		}
+		if strings.TrimSpace(update.Message.Text) == "" {
 			continue
 		}
 		if err := b.handleMessage(ctx, *update.Message); err != nil {
@@ -215,6 +226,21 @@ func (b *Bot) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (b *Bot) rememberChat(ctx context.Context, chat Chat) error {
+	if b.subscriptions == nil {
+		return nil
+	}
+	return b.subscriptions.UpsertChat(ctx, model.TelegramBotChat{
+		ChatID:     chat.ID,
+		Title:      chat.Title,
+		Username:   chat.Username,
+		FirstName:  chat.FirstName,
+		LastName:   chat.LastName,
+		Type:       chat.Type,
+		LastSeenAt: time.Now().UTC(),
+	})
 }
 
 func (b *Bot) handleMessage(ctx context.Context, msg Message) error {
@@ -301,15 +327,21 @@ func (b *Bot) handleUnsubscribe(ctx context.Context, chatID int64, arg string) e
 	}
 	id, err := strconv.ParseInt(strings.TrimSpace(arg), 10, 64)
 	if err != nil || id <= 0 {
-		return b.api.SendMessage(ctx, chatID, "Usage: /unsubscribe <subscription_id>")
+		return b.api.SendMessage(ctx, chatID, "Usage: /unsubscribe <subscription_id or saved_search_id>")
 	}
 	if err := b.subscriptions.DeleteForChat(ctx, chatID, id); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return b.api.SendMessage(ctx, chatID, "Subscription not found.")
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
 		}
-		return err
+		if err := b.subscriptions.DeleteForChatSavedSearch(ctx, chatID, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return b.api.SendMessage(ctx, chatID, fmt.Sprintf("This chat is not subscribed to subscription or saved search #%d.", id))
+			}
+			return err
+		}
+		return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Unsubscribed from saved search #%d.", id))
 	}
-	return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Unsubscribed #%d.", id))
+	return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Unsubscribed subscription #%d.", id))
 }
 
 func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
@@ -327,7 +359,7 @@ func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
 	}
 	for _, item := range items {
 		subscribedSearches[item.SavedSearchID] = struct{}{}
-		lines = append(lines, fmt.Sprintf("#%d saved #%d %s", item.ID, item.SavedSearchID, firstText(item.SavedSearch, item.Keyword)))
+		lines = append(lines, fmt.Sprintf("sub #%d -> saved #%d %s", item.ID, item.SavedSearchID, firstText(item.SavedSearch, item.Keyword)))
 	}
 	if b.savedSearches != nil {
 		searches, err := b.savedSearches.FindAll(ctx)
@@ -350,7 +382,7 @@ func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
 			}
 			lines = append(lines, "Available saved searches:")
 			for _, search := range available {
-				lines = append(lines, fmt.Sprintf("saved #%d %s - /subscribe %d", search.ID, firstText(search.Name, search.Keyword), search.ID))
+				lines = append(lines, fmt.Sprintf("saved #%d %s - bind with /subscribe %d", search.ID, firstText(search.Name, search.Keyword), search.ID))
 			}
 		}
 	}
@@ -524,7 +556,7 @@ func helpText() string {
 		"tg-search bot commands:",
 		"/search <keyword>",
 		"/subscribe <keyword or saved_search_id>",
-		"/unsubscribe <subscription_id>",
+		"/unsubscribe <subscription_id or saved_search_id>",
 		"/subscriptions",
 	}, "\n")
 }

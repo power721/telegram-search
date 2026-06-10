@@ -291,8 +291,46 @@ running -> reconnecting -> running
 - API Key：查看当前 key、重新生成 key。
 - 管理员账号：修改用户名或密码。
 - 运行时设置：同步、容量、Telegram 代理、限速、流式传输和媒体并发。
+- 通知集成：维护搜索订阅、Webhook、Telegram Bot 和最近通知记录。
 - 版本信息：查看当前版本，可选择检查 GitHub 最新 release。
 - 系统信息：系统名、内核版本、CPU、Go 版本和主机名。
+
+### 通知集成
+
+通知集成位于「设置 -> 通知集成」，包含搜索订阅、Webhook、Telegram Bot 和通知记录。
+
+搜索订阅用于把一次搜索保存成持续匹配规则：
+
+1. 填写名称和关键词，例如 `哪吒3`。
+2. 选择资源大类。常用值包括网盘、磁力、ED2K、HTTP 链接、文件。
+3. 选择资源类型/网盘。常用值包括夸克、阿里云盘、百度网盘、UC、迅雷、磁力、图片、视频、软件等。
+4. 按需选择账号和频道。账号变化后频道列表会自动收窄。
+5. 选择通知方式：RSS、Webhook、Telegram。
+6. 保存后，历史同步或实时监听写入的新资源会自动匹配该订阅。
+
+资源大类和资源类型的区别：
+
+| 字段 | 作用 | 示例 |
+| --- | --- | --- |
+| 资源大类 | 粗粒度过滤资源来源或形态。 | 网盘、磁力、文件 |
+| 资源类型/网盘 | 细粒度过滤具体网盘或文件类型。 | 夸克、阿里云盘、UC、图片、软件 |
+
+Webhook 用于把事件推送到外部系统：
+
+1. 填写名称和 HTTPS URL。
+2. 选择事件，例如 `resource.created` 或 `saved_search.matched`。
+3. 可选填写 Secret。填写后请求会带 `X-TG-Search-Signature`，外部系统可校验 HMAC。
+4. 保存并启用后，n8n、Dify、FastGPT、Home Assistant 等系统即可接收事件。
+
+RSS 可直接订阅：
+
+```text
+/feeds/latest
+/feeds/search?q=哪吒3
+/feeds/saved/:id
+```
+
+公开 RSS 接口需要 API Key。常见方式是在 RSS Reader 里配置请求头 `X-API-Key`，或通过反向代理注入该请求头。
 
 ### API 帮助
 
@@ -342,7 +380,21 @@ curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
 
 ## 9. Telegram Bot
 
-在管理后台「设置 -> 通知集成」配置并启用 Bot，重启服务后支持命令：
+### 创建 Bot
+
+1. 在 Telegram 搜索并打开 `@BotFather`。
+2. 发送 `/newbot`。
+3. 输入 Bot 显示名称，例如 `tg-search`。
+4. 输入 Bot 用户名，必须以 `bot` 结尾，例如 `my_tg_search_bot`。
+5. BotFather 会返回 Token，格式类似 `123456789:AA...`。
+6. 打开 tg-search 管理后台「设置 -> 通知集成」。
+7. 在 Telegram Bot 中填入 Token，勾选启用，保存。
+
+Bot 设置保存后由后台 runtime 自动生效，无需重启服务。轮询间隔默认 `3s`，通常不需要调大；如果服务器资源紧张或 Bot 调用频率很低，可以改成 `5s` 或 `10s`。
+
+### 使用命令
+
+启用后，打开刚创建的 Bot 对话，支持命令：
 
 ```text
 /search <keyword>
@@ -351,7 +403,22 @@ curl -H "X-API-Key: $TG_SEARCH_API_KEY" \
 /subscriptions
 ```
 
+示例：
+
+```text
+/search 流浪地球
+/subscribe 哪吒3
+/subscriptions
+```
+
 `/subscribe` 会创建启用 Telegram 通知的保存搜索。后续历史同步或实时监听写入新资源并匹配该保存搜索时，系统会通过 Bot 向订阅 chat 推送消息。
+
+如果 Bot 没有响应，优先检查：
+
+- 「设置 -> 通知集成」里 Bot 是否启用。
+- Token 是否来自 BotFather 且没有多余空格。
+- 服务器是否能访问 `https://api.telegram.org`。
+- 相关账号/频道是否已经同步或开启监听。
 
 ## 10. 运维
 

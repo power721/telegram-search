@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type {
+  ChannelsResponse,
   NotificationDeliveriesResponse,
   NotificationDelivery,
   RuntimeSettings,
@@ -10,8 +11,11 @@ import type {
   SavedSearchesResponse,
   StorageUsage,
   SystemInfoResponse,
+  TelegramAccount,
+  TelegramAccountsResponse,
   TelegramAPISettingsResponse,
   TelegramBotSettingsResponse,
+  TelegramChannel,
   Webhook,
   WebhooksResponse,
   VersionInfoResponse
@@ -54,16 +58,17 @@ const editingSavedSearchID = ref<number | null>(null)
 const savedSearchForm = ref({
   name: '',
   keyword: '',
-  type: '',
   category: '',
-  cloudTypes: '',
-  accountID: '',
-  channelID: '',
+  resourceTypes: [] as string[],
+  accountID: 0,
+  channelID: 0,
   notifyRSS: true,
   notifyWebhook: false,
   notifyTelegram: false,
   enabled: true
 })
+const accounts = ref<TelegramAccount[]>([])
+const channels = ref<TelegramChannel[]>([])
 const webhooks = ref<Webhook[]>([])
 const webhookLoading = ref(false)
 const webhookSaving = ref(false)
@@ -85,6 +90,35 @@ const notificationEventOptions = [
   { value: 'task.failed', label: 'task.failed' },
   { value: 'account.offline', label: 'account.offline' },
   { value: 'channel.sync.completed', label: 'channel.sync.completed' }
+]
+const savedSearchCategoryOptions = [
+  { label: '全部大类', value: '' },
+  { label: '网盘', value: 'cloud_drive' },
+  { label: '磁力', value: 'magnet' },
+  { label: 'ED2K', value: 'ed2k' },
+  { label: 'HTTP 链接', value: 'http' },
+  { label: '文件', value: 'files' }
+]
+const savedSearchResourceTypeOptions = [
+  { label: '夸克网盘', value: 'quark' },
+  { label: '阿里云盘', value: 'aliyun' },
+  { label: '百度网盘', value: 'baidu' },
+  { label: 'UC 网盘', value: 'uc' },
+  { label: '迅雷云盘', value: 'xunlei' },
+  { label: '天翼云盘', value: 'tianyi' },
+  { label: '115 网盘', value: '115' },
+  { label: '移动云盘', value: 'mobile' },
+  { label: 'PikPak', value: 'pikpak' },
+  { label: '123 网盘', value: '123' },
+  { label: '磁力', value: 'magnet' },
+  { label: 'ED2K', value: 'ed2k' },
+  { label: 'HTTP 链接', value: 'http' },
+  { label: '图片文件', value: 'image' },
+  { label: '视频文件', value: 'video' },
+  { label: '音频文件', value: 'audio' },
+  { label: '文档文件', value: 'document' },
+  { label: '软件文件', value: 'software' },
+  { label: '压缩包', value: 'archive' }
 ]
 type SizeUnit = 'GB' | 'MB'
 const sizeUnitOptions: Array<{ label: string; value: SizeUnit }> = [
@@ -115,6 +149,27 @@ const runtimeForm = ref({
   streamChunkTimeout: '',
   mediaConcurrency: ''
 })
+const accountOptions = computed(() => [
+  { label: '全部账号', value: 0 },
+  ...accounts.value.map((account) => ({
+    label: account.username ? `${account.phone} (@${account.username})` : account.phone,
+    value: account.id
+  }))
+])
+const accountLabelByID = computed(() => new Map(accounts.value.map((account) => [account.id, account.username ? `${account.phone} (@${account.username})` : account.phone])))
+const channelOptions = computed(() => {
+  const accountID = savedSearchForm.value.accountID
+  const visibleChannels = accountID > 0 ? channels.value.filter((channel) => channel.account_id === accountID) : channels.value
+  return [
+    { label: '全部频道', value: 0 },
+    ...visibleChannels.map((channel) => ({
+      label: channel.username
+        ? `${channel.title} (@${channel.username})`
+        : `${channel.title}${accountLabelByID.value.get(channel.account_id) ? ` - ${accountLabelByID.value.get(channel.account_id)}` : ''}`,
+      value: channel.id
+    }))
+  ]
+})
 
 onMounted(() => {
   apiKey.load().catch((error) => {
@@ -124,6 +179,8 @@ onMounted(() => {
   loadTelegramSettings()
   loadTelegramBotSettings()
   loadRuntimeSettings()
+  loadAccounts()
+  loadChannels()
   loadSavedSearches()
   loadWebhooks()
   loadDeliveries()
@@ -142,6 +199,17 @@ watch(
     credentialsUsername.value = username ?? credentialsUsername.value
   },
   { immediate: true }
+)
+
+watch(
+  () => savedSearchForm.value.accountID,
+  (accountID) => {
+    if (accountID <= 0 || savedSearchForm.value.channelID <= 0) return
+    const selected = channels.value.find((channel) => channel.id === savedSearchForm.value.channelID)
+    if (selected && selected.account_id !== accountID) {
+      savedSearchForm.value.channelID = 0
+    }
+  }
 )
 
 async function updateCredentials() {
@@ -214,6 +282,24 @@ async function loadSavedSearches() {
     message.error(error instanceof Error ? error.message : '无法加载搜索订阅')
   } finally {
     savedSearchLoading.value = false
+  }
+}
+
+async function loadAccounts() {
+  try {
+    const data = await apiGet<TelegramAccountsResponse>('/api/accounts')
+    accounts.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载账号列表')
+  }
+}
+
+async function loadChannels() {
+  try {
+    const data = await apiGet<ChannelsResponse>('/api/channels')
+    channels.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载频道列表')
   }
 }
 
@@ -313,7 +399,7 @@ async function updateTelegramBot() {
     telegramBotForm.value.enabled = telegramBotSettings.value.enabled
     telegramBotForm.value.pollInterval = telegramBotSettings.value.poll_interval
     telegramBotForm.value.token = ''
-    message.success('Telegram Bot 已保存，重启后生效')
+    message.success('Telegram Bot 已保存并生效')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '无法保存 Telegram Bot')
   } finally {
@@ -375,11 +461,10 @@ function editSavedSearch(item: SavedSearch) {
   savedSearchForm.value = {
     name: item.name,
     keyword: item.keyword,
-    type: item.filters.type ?? '',
     category: item.filters.category ?? '',
-    cloudTypes: item.filters.cloud_types?.join(', ') ?? '',
-    accountID: item.filters.account_id ? String(item.filters.account_id) : '',
-    channelID: item.filters.channel_id ? String(item.filters.channel_id) : '',
+    resourceTypes: [...new Set([...(item.filters.cloud_types ?? []), item.filters.type ?? ''].filter(Boolean))],
+    accountID: item.filters.account_id ?? 0,
+    channelID: item.filters.channel_id ?? 0,
     notifyRSS: item.notify_rss,
     notifyWebhook: item.notify_webhook,
     notifyTelegram: item.notify_telegram,
@@ -392,11 +477,10 @@ function resetSavedSearchForm() {
   savedSearchForm.value = {
     name: '',
     keyword: '',
-    type: '',
     category: '',
-    cloudTypes: '',
-    accountID: '',
-    channelID: '',
+    resourceTypes: [],
+    accountID: 0,
+    channelID: 0,
     notifyRSS: true,
     notifyWebhook: false,
     notifyTelegram: false,
@@ -423,16 +507,12 @@ async function updateSavedSearchItem(item: SavedSearch, patch: Partial<SavedSear
 
 function savedSearchPayload() {
   const filters: Record<string, unknown> = {}
-  const type = savedSearchForm.value.type.trim()
   const category = savedSearchForm.value.category.trim()
-  const cloudTypes = splitCSV(savedSearchForm.value.cloudTypes)
-  const accountID = optionalPositiveInteger(savedSearchForm.value.accountID, '账号 ID')
-  const channelID = optionalPositiveInteger(savedSearchForm.value.channelID, '频道 ID')
-  if (type) filters.type = type
+  const resourceTypes = savedSearchForm.value.resourceTypes
   if (category) filters.category = category
-  if (cloudTypes.length) filters.cloud_types = cloudTypes
-  if (accountID) filters.account_id = accountID
-  if (channelID) filters.channel_id = channelID
+  if (resourceTypes.length) filters.cloud_types = resourceTypes
+  if (savedSearchForm.value.accountID > 0) filters.account_id = savedSearchForm.value.accountID
+  if (savedSearchForm.value.channelID > 0) filters.channel_id = savedSearchForm.value.channelID
   return {
     name: savedSearchForm.value.name.trim(),
     keyword: savedSearchForm.value.keyword.trim(),
@@ -673,23 +753,6 @@ function positiveInteger(value: string) {
     throw new Error('invalid positive integer')
   }
   return parsed
-}
-
-function optionalPositiveInteger(value: string, label: string) {
-  const trimmed = value.trim()
-  if (!trimmed) return 0
-  const parsed = Number(trimmed)
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${label} 必须大于 0`)
-  }
-  return parsed
-}
-
-function splitCSV(value: string) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
 }
 
 function sizeLimitBytes(value: string, unit: SizeUnit) {
@@ -999,7 +1062,6 @@ function versionStatusText() {
           <section class="panel bot-panel">
             <div class="panel-header">
               <h2>Telegram Bot</h2>
-              <span class="restart-note">保存后重启生效</span>
             </div>
             <n-form class="notification-form bot-form" @submit.prevent="updateTelegramBot">
               <label class="checkbox-row">
@@ -1042,20 +1104,38 @@ function versionStatusText() {
                   <n-form-item label="关键词">
                     <n-input v-model:value="savedSearchForm.keyword" data-testid="saved-search-keyword-input" placeholder="哪吒3" />
                   </n-form-item>
-                  <n-form-item label="类型">
-                    <n-input v-model:value="savedSearchForm.type" data-testid="saved-search-type-input" placeholder="movie" />
+                  <n-form-item label="资源大类">
+                    <n-select
+                      v-model:value="savedSearchForm.category"
+                      data-testid="saved-search-category-select"
+                      :options="savedSearchCategoryOptions"
+                    />
                   </n-form-item>
-                  <n-form-item label="分类">
-                    <n-input v-model:value="savedSearchForm.category" data-testid="saved-search-category-input" placeholder="影视" />
+                  <n-form-item label="资源类型/网盘">
+                    <n-select
+                      v-model:value="savedSearchForm.resourceTypes"
+                      data-testid="saved-search-resource-types-select"
+                      multiple
+                      filterable
+                      clearable
+                      :options="savedSearchResourceTypeOptions"
+                    />
                   </n-form-item>
-                  <n-form-item label="网盘类型">
-                    <n-input v-model:value="savedSearchForm.cloudTypes" data-testid="saved-search-cloud-types-input" placeholder="quark, aliyun" />
+                  <n-form-item label="账号">
+                    <n-select
+                      v-model:value="savedSearchForm.accountID"
+                      data-testid="saved-search-account-select"
+                      filterable
+                      :options="accountOptions"
+                    />
                   </n-form-item>
-                  <n-form-item label="账号 ID">
-                    <n-input v-model:value="savedSearchForm.accountID" data-testid="saved-search-account-id-input" inputmode="numeric" />
-                  </n-form-item>
-                  <n-form-item label="频道 ID">
-                    <n-input v-model:value="savedSearchForm.channelID" data-testid="saved-search-channel-id-input" inputmode="numeric" />
+                  <n-form-item label="频道">
+                    <n-select
+                      v-model:value="savedSearchForm.channelID"
+                      data-testid="saved-search-channel-select"
+                      filterable
+                      :options="channelOptions"
+                    />
                   </n-form-item>
                 </div>
                 <div class="checkbox-grid">

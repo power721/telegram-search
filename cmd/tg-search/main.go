@@ -231,26 +231,6 @@ func run(configPath string) error {
 		}),
 	}
 	notificationInterval := 15 * time.Second
-	if cfg.Bot.Enabled {
-		botAPI := tgbot.NewAPI(cfg.Bot.Token)
-		notificationJobs = append(notificationJobs,
-			tgbot.NewBot(tgbot.BotOptions{
-				API:           botAPI,
-				Resources:     resourceService,
-				SavedSearches: savedSearches,
-				Subscriptions: botSubscriptions,
-				Logger:        logs.App,
-			}),
-			tgbot.NewDeliveryDispatcher(tgbot.DeliveryDispatcherOptions{
-				API:           botAPI,
-				Deliveries:    deliveries,
-				Subscriptions: botSubscriptions,
-				Logger:        logs.App,
-			}),
-		)
-		notificationInterval = cfg.Bot.PollInterval.Std()
-		logs.App.Info("telegram bot integration enabled", zap.Duration("poll_interval", notificationInterval))
-	}
 	notificationScheduler := scheduler.New(scheduler.Options{
 		Interval: notificationInterval,
 		Jobs:     notificationJobs,
@@ -258,6 +238,23 @@ func run(configPath string) error {
 	})
 	notificationScheduler.Start(ctx)
 	logs.App.Info("notification dispatcher scheduler started", zap.Duration("interval", notificationInterval))
+	botScheduler := scheduler.New(scheduler.Options{
+		Interval: time.Second,
+		Jobs: []scheduler.Job{
+			tgbot.NewRuntime(tgbot.RuntimeOptions{
+				Settings:      settings,
+				Defaults:      cfg.Bot,
+				Resources:     resourceService,
+				SavedSearches: savedSearches,
+				Subscriptions: botSubscriptions,
+				Deliveries:    deliveries,
+				Logger:        logs.App,
+			}),
+		},
+		Logger: logs.App,
+	})
+	botScheduler.Start(ctx)
+	logs.App.Info("telegram bot runtime scheduler started", zap.Duration("interval", time.Second))
 
 	router := api.NewRouter(api.Dependencies{
 		Logger: logs.App,
@@ -309,6 +306,10 @@ func run(configPath string) error {
 	}
 	if err := notificationScheduler.Stop(shutdownCtx); err != nil {
 		logs.App.Error("notification scheduler stop failed", zap.Error(err))
+		return err
+	}
+	if err := botScheduler.Stop(shutdownCtx); err != nil {
+		logs.App.Error("telegram bot scheduler stop failed", zap.Error(err))
 		return err
 	}
 	if err := taskWorker.Stop(shutdownCtx); err != nil {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/model"
 	"tg-search/internal/repository"
@@ -25,7 +26,13 @@ type sentMessage struct {
 }
 
 func (f *fakeAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
-	return f.updates, nil
+	out := []Update{}
+	for _, update := range f.updates {
+		if update.UpdateID >= offset {
+			out = append(out, update)
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeAPI) SendMessage(ctx context.Context, chatID int64, text string) error {
@@ -123,6 +130,64 @@ func TestDeliveryDispatcherSendsTelegramMatch(t *testing.T) {
 	}
 	if stored.Status != model.NotificationDeliverySucceeded || stored.DeliveredAt == nil {
 		t.Fatalf("delivery = %+v, want succeeded", stored)
+	}
+}
+
+func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	settings := repository.NewSettingsRepository(conn)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	deliveries := repository.NewNotificationDeliveryRepository(conn)
+	firstAPI := &fakeAPI{updates: []Update{{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/help"}}}}
+	secondAPI := &fakeAPI{updates: []Update{{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/help"}}}}
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	runtime := NewRuntime(RuntimeOptions{
+		Settings: settings,
+		Defaults: config.BotConfig{PollInterval: config.Duration(3 * time.Second)},
+		APIFactory: func(token string) BotAPI {
+			if token == "second-token" {
+				return secondAPI
+			}
+			return firstAPI
+		},
+		SavedSearches: searches,
+		Subscriptions: subs,
+		Deliveries:    deliveries,
+		Now:           func() time.Time { return now },
+	})
+
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatalf("run disabled runtime: %v", err)
+	}
+	if len(firstAPI.sent) != 0 {
+		t.Fatalf("disabled runtime sent = %+v, want none", firstAPI.sent)
+	}
+	if err := settings.SaveTelegramBot(ctx, config.BotConfig{Enabled: true, Token: "first-token", PollInterval: config.Duration(5 * time.Second)}); err != nil {
+		t.Fatalf("save first bot settings: %v", err)
+	}
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatalf("run enabled runtime: %v", err)
+	}
+	if len(firstAPI.sent) != 1 || !strings.Contains(firstAPI.sent[0].text, "/search <keyword>") {
+		t.Fatalf("first token sent = %+v, want help message", firstAPI.sent)
+	}
+	now = now.Add(time.Second)
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatalf("run before interval: %v", err)
+	}
+	if len(firstAPI.sent) != 1 {
+		t.Fatalf("sent before interval = %+v, want unchanged", firstAPI.sent)
+	}
+	if err := settings.SaveTelegramBot(ctx, config.BotConfig{Enabled: true, Token: "second-token", PollInterval: config.Duration(5 * time.Second)}); err != nil {
+		t.Fatalf("save second bot settings: %v", err)
+	}
+	if err := runtime.Run(ctx); err != nil {
+		t.Fatalf("run after token change: %v", err)
+	}
+	if len(secondAPI.sent) != 1 {
+		t.Fatalf("second token sent = %+v, want one message", secondAPI.sent)
 	}
 }
 

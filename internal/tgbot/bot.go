@@ -23,10 +23,11 @@ import (
 )
 
 const (
-	defaultBaseURL    = "https://api.telegram.org"
-	defaultBatchSize  = 50
-	defaultMaxTries   = 5
-	defaultRetryDelay = 30 * time.Second
+	defaultBaseURL      = "https://api.telegram.org"
+	defaultBatchSize    = 50
+	defaultMaxTries     = 5
+	defaultRetryDelay   = 30 * time.Second
+	defaultPollInterval = 3 * time.Second
 )
 
 type BotAPI interface {

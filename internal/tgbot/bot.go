@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -33,6 +34,7 @@ const (
 type BotAPI interface {
 	GetUpdates(context.Context, int64) ([]Update, error)
 	SendMessage(context.Context, int64, string) error
+	SendHTMLMessage(context.Context, int64, string) error
 	SetCommands(context.Context, []BotCommand) error
 }
 
@@ -94,11 +96,23 @@ func (a *API) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
 }
 
 func (a *API) SendMessage(ctx context.Context, chatID int64, text string) error {
-	body, err := json.Marshal(map[string]any{
+	return a.sendMessage(ctx, chatID, text, "")
+}
+
+func (a *API) SendHTMLMessage(ctx context.Context, chatID int64, text string) error {
+	return a.sendMessage(ctx, chatID, text, "HTML")
+}
+
+func (a *API) sendMessage(ctx context.Context, chatID int64, text string, parseMode string) error {
+	payload := map[string]any{
 		"chat_id":                  chatID,
 		"text":                     text,
 		"disable_web_page_preview": true,
-	})
+	}
+	if parseMode != "" {
+		payload["parse_mode"] = parseMode
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -483,7 +497,7 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, delivery model.Notific
 			return d.deliveries.MarkSucceeded(ctx, delivery.ID, d.now())
 		}
 	}
-	if err := d.api.SendMessage(ctx, sub.ChatID, formatMatchMessage(match)); err != nil {
+	if err := d.api.SendHTMLMessage(ctx, sub.ChatID, formatMatchMessage(match)); err != nil {
 		return d.markRetryableFailure(ctx, delivery, err.Error())
 	}
 	if match.ResourceID != "" {
@@ -587,23 +601,54 @@ func formatSearchResults(keyword string, items []resource.Item) string {
 
 func formatMatchMessage(match notification.SavedSearchMatch) string {
 	lines := []string{
-		"发现新资源",
-		firstText(match.ResourceTitle, match.ResourceURL, match.ResourceID),
+		html.EscapeString("发现新资源"),
+		html.EscapeString(firstText(match.ResourceTitle, match.ResourceURL, match.ResourceID)),
 	}
 	meta := []string{}
 	if match.ResourceType != "" {
-		meta = append(meta, match.ResourceType)
+		meta = append(meta, html.EscapeString(match.ResourceType))
 	}
 	if match.SourceChannelName != "" {
-		meta = append(meta, "来源: "+match.SourceChannelName)
+		source := html.EscapeString(match.SourceChannelName)
+		if link := telegramMessageLink(match); link != "" {
+			source = fmt.Sprintf(`<a href="%s">%s</a>`, html.EscapeString(link), source)
+		}
+		meta = append(meta, "来源: "+source)
 	}
 	if len(meta) > 0 {
 		lines = append(lines, strings.Join(meta, " | "))
 	}
 	if match.ResourceURL != "" {
-		lines = append(lines, match.ResourceURL)
+		lines = append(lines, html.EscapeString(match.ResourceURL))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func telegramMessageLink(match notification.SavedSearchMatch) string {
+	if match.TelegramMessageID <= 0 {
+		return ""
+	}
+	username := strings.TrimPrefix(strings.TrimSpace(match.SourceChannelUsername), "@")
+	if username != "" {
+		return "https://t.me/" + url.PathEscape(username) + "/" + strconv.FormatInt(match.TelegramMessageID, 10)
+	}
+	channelID := normalizedPrivateChannelID(match.TelegramChannelID)
+	if channelID == "" {
+		return ""
+	}
+	return "https://t.me/c/" + channelID + "/" + strconv.FormatInt(match.TelegramMessageID, 10)
+}
+
+func normalizedPrivateChannelID(value int64) string {
+	if value == 0 {
+		return ""
+	}
+	raw := strconv.FormatInt(value, 10)
+	raw = strings.TrimPrefix(raw, "-")
+	if strings.HasPrefix(raw, "100") && len(raw) > 10 {
+		return raw[3:]
+	}
+	return raw
 }
 
 func firstText(values ...string) string {

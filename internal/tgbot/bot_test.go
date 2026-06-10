@@ -12,6 +12,7 @@ import (
 	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/model"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 )
@@ -19,6 +20,7 @@ import (
 type fakeAPI struct {
 	updates  []Update
 	sent     []sentMessage
+	sentHTML []sentMessage
 	commands []BotCommand
 }
 
@@ -39,6 +41,11 @@ func (f *fakeAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error
 
 func (f *fakeAPI) SendMessage(ctx context.Context, chatID int64, text string) error {
 	f.sent = append(f.sent, sentMessage{chatID: chatID, text: text})
+	return nil
+}
+
+func (f *fakeAPI) SendHTMLMessage(ctx context.Context, chatID int64, text string) error {
+	f.sentHTML = append(f.sentHTML, sentMessage{chatID: chatID, text: text})
 	return nil
 }
 
@@ -115,7 +122,7 @@ func TestDeliveryDispatcherSendsTelegramMatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create subscription: %v", err)
 	}
-	payload := `{"saved_search_id":1,"saved_search_name":"哪吒3","keyword":"哪吒3","resource_id":"link:x","resource_title":"哪吒3 4K","resource_type":"quark","resource_category":"cloud_drive","resource_url":"https://pan.quark.cn/s/nezha3","source_channel_id":1,"source_channel_name":"电影频道","telegram_message_id":9,"datetime":"2026-06-10T12:00:00Z"}`
+	payload := `{"saved_search_id":1,"saved_search_name":"哪吒3","keyword":"哪吒3","resource_id":"link:x","resource_title":"哪吒3 4K","resource_type":"quark","resource_category":"cloud_drive","resource_url":"https://pan.quark.cn/s/nezha3","source_channel_id":1,"source_channel_name":"电影频道","source_channel_username":"movie_channel","telegram_channel_id":1001234567890,"telegram_message_id":9,"datetime":"2026-06-10T12:00:00Z"}`
 	deliveryID, err := deliveries.Create(ctx, model.NotificationDelivery{
 		EventType:   model.NotificationEventSavedSearchMatched,
 		TargetType:  model.NotificationTargetTelegram,
@@ -135,8 +142,14 @@ func TestDeliveryDispatcherSendsTelegramMatch(t *testing.T) {
 	if err := dispatcher.Run(ctx); err != nil {
 		t.Fatalf("run dispatcher: %v", err)
 	}
-	if len(api.sent) != 1 || api.sent[0].chatID != 42 || !strings.Contains(api.sent[0].text, "哪吒3 4K") {
-		t.Fatalf("sent = %+v, want match message", api.sent)
+	if len(api.sent) != 0 {
+		t.Fatalf("plain sent = %+v, want none", api.sent)
+	}
+	if len(api.sentHTML) != 1 || api.sentHTML[0].chatID != 42 || !strings.Contains(api.sentHTML[0].text, "哪吒3 4K") {
+		t.Fatalf("html sent = %+v, want match message", api.sentHTML)
+	}
+	if !strings.Contains(api.sentHTML[0].text, `来源: <a href="https://t.me/movie_channel/9">电影频道</a>`) {
+		t.Fatalf("html sent = %q, want linked source channel", api.sentHTML[0].text)
 	}
 	stored, err := deliveries.FindByID(ctx, deliveryID)
 	if err != nil {
@@ -198,8 +211,8 @@ func TestDeliveryDispatcherSkipsDuplicateResourceForSameChat(t *testing.T) {
 	if err := dispatcher.Run(ctx); err != nil {
 		t.Fatalf("run dispatcher: %v", err)
 	}
-	if len(api.sent) != 1 || !strings.Contains(api.sent[0].text, "香港探秘地图") {
-		t.Fatalf("sent = %+v, want one resource message", api.sent)
+	if len(api.sentHTML) != 1 || !strings.Contains(api.sentHTML[0].text, "香港探秘地图") {
+		t.Fatalf("html sent = %+v, want one resource message", api.sentHTML)
 	}
 	for _, id := range []int64{firstDeliveryID, secondDeliveryID} {
 		stored, err := deliveries.FindByID(ctx, id)
@@ -209,6 +222,22 @@ func TestDeliveryDispatcherSkipsDuplicateResourceForSameChat(t *testing.T) {
 		if stored.Status != model.NotificationDeliverySucceeded || stored.DeliveredAt == nil {
 			t.Fatalf("delivery %d = %+v, want succeeded", id, stored)
 		}
+	}
+}
+
+func TestFormatMatchMessageLinksPrivateTelegramMessage(t *testing.T) {
+	message := formatMatchMessage(notification.SavedSearchMatch{
+		ResourceTitle:     "翘楚 & 4K",
+		ResourceType:      "baidu",
+		SourceChannelName: "盘链资源频道",
+		TelegramChannelID: 1001234567890,
+		TelegramMessageID: 42,
+	})
+	if !strings.Contains(message, `翘楚 &amp; 4K`) {
+		t.Fatalf("message = %q, want escaped title", message)
+	}
+	if !strings.Contains(message, `来源: <a href="https://t.me/c/1234567890/42">盘链资源频道</a>`) {
+		t.Fatalf("message = %q, want private message source link", message)
 	}
 }
 

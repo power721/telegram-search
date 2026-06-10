@@ -26,30 +26,34 @@ type Options struct {
 }
 
 type SavedSearchMatch struct {
-	SavedSearchID     int64     `json:"saved_search_id"`
-	SavedSearchName   string    `json:"saved_search_name"`
-	Keyword           string    `json:"keyword"`
-	ResourceID        string    `json:"resource_id"`
-	ResourceTitle     string    `json:"resource_title"`
-	ResourceType      string    `json:"resource_type"`
-	ResourceCategory  string    `json:"resource_category"`
-	ResourceURL       string    `json:"resource_url,omitempty"`
-	SourceChannelID   int64     `json:"source_channel_id"`
-	SourceChannelName string    `json:"source_channel_name"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
-	Datetime          time.Time `json:"datetime"`
+	SavedSearchID         int64     `json:"saved_search_id"`
+	SavedSearchName       string    `json:"saved_search_name"`
+	Keyword               string    `json:"keyword"`
+	ResourceID            string    `json:"resource_id"`
+	ResourceTitle         string    `json:"resource_title"`
+	ResourceType          string    `json:"resource_type"`
+	ResourceCategory      string    `json:"resource_category"`
+	ResourceURL           string    `json:"resource_url,omitempty"`
+	SourceChannelID       int64     `json:"source_channel_id"`
+	SourceChannelName     string    `json:"source_channel_name"`
+	SourceChannelUsername string    `json:"source_channel_username,omitempty"`
+	TelegramChannelID     int64     `json:"telegram_channel_id,omitempty"`
+	TelegramMessageID     int64     `json:"telegram_message_id"`
+	Datetime              time.Time `json:"datetime"`
 }
 
 type ResourceEvent struct {
-	ResourceID        string    `json:"resource_id"`
-	ResourceTitle     string    `json:"resource_title"`
-	ResourceType      string    `json:"resource_type"`
-	ResourceCategory  string    `json:"resource_category"`
-	ResourceURL       string    `json:"resource_url,omitempty"`
-	SourceChannelID   int64     `json:"source_channel_id"`
-	SourceChannelName string    `json:"source_channel_name"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
-	Datetime          time.Time `json:"datetime"`
+	ResourceID            string    `json:"resource_id"`
+	ResourceTitle         string    `json:"resource_title"`
+	ResourceType          string    `json:"resource_type"`
+	ResourceCategory      string    `json:"resource_category"`
+	ResourceURL           string    `json:"resource_url,omitempty"`
+	SourceChannelID       int64     `json:"source_channel_id"`
+	SourceChannelName     string    `json:"source_channel_name"`
+	SourceChannelUsername string    `json:"source_channel_username,omitempty"`
+	TelegramChannelID     int64     `json:"telegram_channel_id,omitempty"`
+	TelegramMessageID     int64     `json:"telegram_message_id"`
+	Datetime              time.Time `json:"datetime"`
 }
 
 func NewService(opts Options) *Service {
@@ -240,32 +244,36 @@ func filtersMatch(filters model.SavedSearchFilters, item resource.Item) bool {
 
 func matchPayload(search model.SavedSearch, item resource.Item) SavedSearchMatch {
 	return SavedSearchMatch{
-		SavedSearchID:     search.ID,
-		SavedSearchName:   search.Name,
-		Keyword:           search.Keyword,
-		ResourceID:        item.ID,
-		ResourceTitle:     item.Title,
-		ResourceType:      item.Type,
-		ResourceCategory:  item.Category,
-		ResourceURL:       item.URL,
-		SourceChannelID:   item.ChannelID,
-		SourceChannelName: item.ChannelTitle,
-		TelegramMessageID: item.TelegramMessageID,
-		Datetime:          item.Datetime,
+		SavedSearchID:         search.ID,
+		SavedSearchName:       search.Name,
+		Keyword:               search.Keyword,
+		ResourceID:            item.ID,
+		ResourceTitle:         item.Title,
+		ResourceType:          item.Type,
+		ResourceCategory:      item.Category,
+		ResourceURL:           item.URL,
+		SourceChannelID:       item.ChannelID,
+		SourceChannelName:     item.ChannelTitle,
+		SourceChannelUsername: item.ChannelUsername,
+		TelegramChannelID:     item.TelegramChannelID,
+		TelegramMessageID:     item.TelegramMessageID,
+		Datetime:              item.Datetime,
 	}
 }
 
 func resourcePayload(item resource.Item) ResourceEvent {
 	return ResourceEvent{
-		ResourceID:        item.ID,
-		ResourceTitle:     item.Title,
-		ResourceType:      item.Type,
-		ResourceCategory:  item.Category,
-		ResourceURL:       item.URL,
-		SourceChannelID:   item.ChannelID,
-		SourceChannelName: item.ChannelTitle,
-		TelegramMessageID: item.TelegramMessageID,
-		Datetime:          item.Datetime,
+		ResourceID:            item.ID,
+		ResourceTitle:         item.Title,
+		ResourceType:          item.Type,
+		ResourceCategory:      item.Category,
+		ResourceURL:           item.URL,
+		SourceChannelID:       item.ChannelID,
+		SourceChannelName:     item.ChannelTitle,
+		SourceChannelUsername: item.ChannelUsername,
+		TelegramChannelID:     item.TelegramChannelID,
+		TelegramMessageID:     item.TelegramMessageID,
+		Datetime:              item.Datetime,
 	}
 }
 

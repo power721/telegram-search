@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 
+const wideContentStorageKey = 'tg-search:wide-content'
 const route = useRoute()
 
 const navItems = [
@@ -18,6 +19,11 @@ const navItems = [
 
 const activeName = computed(() => String(route.name ?? 'home'))
 const activeItem = computed(() => navItems.find((item) => item.name === activeName.value) ?? navItems[0])
+const isWideContent = ref(localStorage.getItem(wideContentStorageKey) === 'true')
+
+watch(isWideContent, (enabled) => {
+  localStorage.setItem(wideContentStorageKey, String(enabled))
+})
 </script>
 
 <template>
@@ -53,12 +59,20 @@ const activeItem = computed(() => navItems.find((item) => item.name === activeNa
           <h1>{{ activeItem.label }}</h1>
         </div>
         <div class="toolbar-actions">
+          <label class="wide-mode-toggle">
+            <span>宽屏</span>
+            <n-switch
+              v-model:value="isWideContent"
+              size="small"
+              aria-label="切换宽屏模式"
+            />
+          </label>
           <span class="toolbar-chip">SQLite FTS5</span>
           <span class="toolbar-chip">私有索引</span>
         </div>
       </header>
       <main class="app-main">
-        <div class="content-frame">
+        <div class="content-frame" :class="{ 'is-wide': isWideContent }">
           <RouterView />
         </div>
       </main>
@@ -216,6 +230,17 @@ const activeItem = computed(() => navItems.find((item) => item.name === activeNa
   padding: 0 8px;
 }
 
+.wide-mode-toggle {
+  align-items: center;
+  color: var(--app-text-muted);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 6px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .app-main {
   min-width: 0;
   padding: 20px 24px 32px;
@@ -226,6 +251,10 @@ const activeItem = computed(() => navItems.find((item) => item.name === activeNa
   max-width: var(--app-content-max);
   min-width: 0;
   width: 100%;
+}
+
+.content-frame.is-wide {
+  max-width: none;
 }
 
 @media (max-width: 860px) {
@@ -260,7 +289,7 @@ const activeItem = computed(() => navItems.find((item) => item.name === activeNa
     padding: 0 16px;
   }
 
-  .toolbar-actions {
+  .toolbar-chip {
     display: none;
   }
 

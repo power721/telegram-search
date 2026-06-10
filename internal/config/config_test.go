@@ -376,12 +376,7 @@ func TestLoadGeneratesDefaultConfigAtExplicitMissingPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read generated config: %v", err)
 	}
-	if strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
-		t.Fatalf("generated config contains Telegram API credentials:\n%s", string(generated))
-	}
-	if !strings.Contains(string(generated), "reconnect_timeout: 5m0s") || !strings.Contains(string(generated), "dial_timeout: 10s") {
-		t.Fatalf("generated config contains unreadable telegram durations:\n%s", string(generated))
-	}
+	assertGeneratedConfigIsStartupOnly(t, generated, "127.0.0.1", "data")
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
 	}
@@ -435,14 +430,44 @@ func TestLoadGeneratesLocalDefaultConfigWhenNoConfigExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read local config: %v", err)
 	}
-	if strings.Contains(string(generated), "api_hash") || strings.Contains(string(generated), "api_id") {
-		t.Fatalf("local generated config contains Telegram API credentials:\n%s", string(generated))
-	}
-	if !strings.Contains(string(generated), "reconnect_timeout: 5m0s") || !strings.Contains(string(generated), "dial_timeout: 10s") {
-		t.Fatalf("local generated config contains unreadable telegram durations:\n%s", string(generated))
-	}
+	assertGeneratedConfigIsStartupOnly(t, generated, "127.0.0.1", "data")
 	if err := EnsureRuntimeDirs(cfg); err != nil {
 		t.Fatalf("EnsureRuntimeDirs with generated config returned error: %v", err)
+	}
+}
+
+func assertGeneratedConfigIsStartupOnly(t *testing.T, generated []byte, wantHost string, wantStoragePath string) {
+	t.Helper()
+	text := string(generated)
+	for _, required := range []string{
+		"server:",
+		"host: " + wantHost,
+		"port: 9900",
+		"storage:",
+		"path: " + wantStoragePath,
+	} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("generated config missing %q:\n%s", required, text)
+		}
+	}
+	for _, forbidden := range []string{
+		"api_hash",
+		"api_id",
+		"sync:",
+		"max_db_size",
+		"max_media_cache",
+		"telegram:",
+		"proxy:",
+		"reconnect_timeout",
+		"dial_timeout",
+		"rate_limit",
+		"stream:",
+		"media:",
+		"concurrency",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("generated config contains settings-managed field %q:\n%s", forbidden, text)
+		}
 	}
 }
 

@@ -4,8 +4,8 @@ This guide verifies the packaged `tg-search` service, embedded admin console, se
 
 ## Prerequisites
 
-- A local `config.yaml` or `/data/tg-search/config.yaml`.
-- Valid Telegram API credentials in config.
+- A local `config.yaml` or `/data/tg-search/config.yaml` when overriding the startup host, port, or data path. The packaged image includes a minimal default.
+- Valid Telegram API credentials entered through the setup flow or Settings page.
 - Writable storage path.
 - `curl` for script checks.
 - `sqlite3` for local backup scripts.
@@ -22,7 +22,6 @@ Or run the packaged service:
 
 ```bash
 mkdir -p data
-cp config.yaml data/config.yaml
 docker compose pull
 docker compose up -d
 ```
@@ -55,7 +54,6 @@ Start from empty data:
 ```bash
 rm -rf data
 mkdir -p data
-cp config.yaml data/config.yaml
 docker compose up -d
 ```
 

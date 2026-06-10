@@ -349,35 +349,17 @@ GET /api/status
 
 # 8. 配置文件
 
-config.yaml
+`config.yaml` 只保留启动期参数：
 
-telegram:
-
-  api_id:
-
-  api_hash:
-
-  media:
-
-    concurrency: 2
-
+```yaml
 server:
-
   host: 127.0.0.1
-
   port: 9900
-
-sync:
-
-  workers: 5
-
-  history_batch_size: 100
-
-  telegram_request_interval: 2s
-
 storage:
+  path: /data/tg-search
+```
 
-  path: /data/tg-provider
+Telegram API、API Key、管理员账号、存储限额、同步参数、Telegram 网络/限速和媒体并发在管理界面的「设置」页面维护。
 
 ---
 

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useDialog } from 'naive-ui'
 import type { ListenRulesPayload, TelegramChannel, WatchRule } from '@/api/types'
 import WebAccessBadge from '@/components/channels/WebAccessBadge.vue'
 import { useChannelsStore } from '@/stores/channels'
 
 const channels = useChannelsStore()
+const dialog = useDialog()
 const showSyncModal = ref(false)
 const showRuleModal = ref(false)
 const syncTarget = ref<TelegramChannel | null>(null)
@@ -304,14 +306,23 @@ async function toggleListening(channel: TelegramChannel) {
 }
 
 async function clearChannel(channel: TelegramChannel) {
-  const confirmed = window.confirm(`清空「${channel.title}」？这会取消监听，并删除这个频道的所有消息和资源。`)
-  if (!confirmed) return
   setLoadingChannel(clearingChannelIds, channel.id, true)
   try {
     await channels.clearChannel(channel.id)
   } finally {
     setLoadingChannel(clearingChannelIds, channel.id, false)
   }
+}
+
+function confirmClearChannel(channel: TelegramChannel) {
+  dialog.warning({
+    title: '清空频道',
+    content: `清空「${channel.title}」？这会取消监听，并删除这个频道的所有消息和资源。`,
+    positiveText: '清空',
+    positiveButtonProps: { type: 'error' },
+    negativeText: '取消',
+    onPositiveClick: () => clearChannel(channel)
+  })
 }
 
 function terms(value: string) {
@@ -562,7 +573,7 @@ async function useGlobalRule() {
               <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
                 {{ isListeningEnabled(channel) ? '取消监听' : '监听' }}
               </n-button>
-              <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="clearChannel(channel)">
+              <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="confirmClearChannel(channel)">
                 清空
               </n-button>
               <n-button size="small" :loading="ruleLoading && ruleTarget?.id === channel.id" @click="openChannelRules(channel)">

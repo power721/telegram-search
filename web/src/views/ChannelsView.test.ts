@@ -4,6 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import ChannelsView from './ChannelsView.vue'
 
+const dialogWarning = vi.fn((options: { onPositiveClick?: () => void | Promise<void> }) => {
+  void options.onPositiveClick?.()
+})
+
+vi.mock('naive-ui', async () => {
+  const actual = await vi.importActual<typeof import('naive-ui')>('naive-ui')
+  return {
+    ...actual,
+    useDialog: () => ({ warning: dialogWarning })
+  }
+})
+
 vi.mock('@/api/client', () => ({
   apiGet: vi.fn().mockResolvedValue({
     items: [
@@ -163,6 +175,9 @@ describe('ChannelsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    dialogWarning.mockImplementation((options: { onPositiveClick?: () => void | Promise<void> }) => {
+      void options.onPositiveClick?.()
+    })
   })
 
   afterEach(() => {
@@ -421,7 +436,6 @@ describe('ChannelsView', () => {
   })
 
   it('clears a channel after confirmation', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => true))
     const wrapper = mountChannelsView()
     await flushPromises()
 
@@ -431,13 +445,21 @@ describe('ChannelsView', () => {
       ?.trigger('click')
     await flushPromises()
 
-    expect(window.confirm).toHaveBeenCalledWith('清空「Movies」？这会取消监听，并删除这个频道的所有消息和资源。')
+    expect(dialogWarning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '清空频道',
+        content: '清空「Movies」？这会取消监听，并删除这个频道的所有消息和资源。',
+        positiveText: '清空',
+        positiveButtonProps: expect.objectContaining({ type: 'error' }),
+        negativeText: '取消'
+      })
+    )
     expect(apiPost).toHaveBeenCalledWith('/api/channels/1/clear')
     expect(channelRow(wrapper, 'Movies').text()).toContain('0')
   })
 
   it('does not clear a channel when confirmation is cancelled', async () => {
-    vi.stubGlobal('confirm', vi.fn(() => false))
+    dialogWarning.mockImplementationOnce(() => undefined)
     const wrapper = mountChannelsView()
     await flushPromises()
 
@@ -447,6 +469,12 @@ describe('ChannelsView', () => {
       ?.trigger('click')
     await flushPromises()
 
+    expect(dialogWarning).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '清空频道',
+        positiveText: '清空'
+      })
+    )
     expect(apiPost).not.toHaveBeenCalledWith('/api/channels/1/clear')
   })
 

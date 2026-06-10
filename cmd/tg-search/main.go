@@ -24,6 +24,7 @@ import (
 	"tg-search/internal/medialimit"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/retry"
@@ -92,6 +93,9 @@ func run(configPath string) error {
 	cursors := repository.NewSyncCursorRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
+	savedSearches := repository.NewSavedSearchRepository(conn)
+	webhooks := repository.NewWebhookRepository(conn)
+	deliveries := repository.NewNotificationDeliveryRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	users := repository.NewUserRepository(conn)
@@ -123,17 +127,23 @@ func run(configPath string) error {
 	mediaLimiter := medialimit.New(cfg.Telegram.Media.Concurrency)
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
+	notificationService := notification.NewService(notification.Options{
+		SavedSearches: savedSearches,
+		Webhooks:      webhooks,
+		Deliveries:    deliveries,
+	})
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
-		DB:        conn,
-		Channels:  channels,
-		Messages:  messages,
-		Links:     links,
-		Files:     files,
-		Resources: resourceService,
-		Cursors:   cursors,
-		Tasks:     taskService,
-		Extractor: link.NewExtractor(),
-		Filter:    watchFilter,
+		DB:            conn,
+		Channels:      channels,
+		Messages:      messages,
+		Links:         links,
+		Files:         files,
+		Resources:     resourceService,
+		Notifications: notificationService,
+		Cursors:       cursors,
+		Tasks:         taskService,
+		Extractor:     link.NewExtractor(),
+		Filter:        watchFilter,
 	})
 	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
 		Accounts:    accounts,
@@ -156,8 +166,9 @@ func run(configPath string) error {
 	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, Cursors: cursors,
-		Resources: resourceService,
-		Telegram:  tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
+		Resources:     resourceService,
+		Notifications: notificationService,
+		Telegram:      tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
 		Filter:           watchFilter,
 		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
 		Workers:          cfg.Sync.Workers,
@@ -207,9 +218,9 @@ func run(configPath string) error {
 	router := api.NewRouter(api.Dependencies{
 		Logger: logs.App,
 		Users:  users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, RuntimeConfig: cfg, StorageUsage: storageUsage, ImageCache: imageCache,
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, SavedSearches: savedSearches, Webhooks: webhooks, Deliveries: deliveries, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
-		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
+		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, Notifications: notificationService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Tasks: taskService, TaskRepository: taskRepository, Events: eventBroker,
 		Telegram: tgClient, MediaLimiter: mediaLimiter, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})

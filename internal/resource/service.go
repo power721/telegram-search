@@ -51,6 +51,7 @@ type Item struct {
 	MediaCategory     string    `json:"-"`
 	MediaTags         string    `json:"-"`
 	Datetime          time.Time `json:"datetime"`
+	AccountID         int64     `json:"account_id"`
 	ChannelID         int64     `json:"channel_id"`
 	TelegramChannelID int64     `json:"telegram_channel_id"`
 	ChannelTitle      string    `json:"channel_title"`
@@ -186,6 +187,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				MediaCategory:     link.MediaCategory,
 				MediaTags:         link.MediaTags,
 				Datetime:          link.MessageDate,
+				AccountID:         link.AccountID,
 				ChannelID:         link.ChannelID,
 				TelegramChannelID: link.TelegramChannelID,
 				ChannelTitle:      link.ChannelTitle,
@@ -225,6 +227,7 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 				SizeBytes:         file.SizeBytes,
 				Title:             file.FileName,
 				Datetime:          file.MessageDate,
+				AccountID:         file.AccountID,
 				ChannelID:         file.ChannelID,
 				TelegramChannelID: file.TelegramChannelID,
 				ChannelTitle:      file.ChannelTitle,

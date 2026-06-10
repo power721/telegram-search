@@ -16,6 +16,7 @@ import (
 	"tg-search/internal/config"
 	"tg-search/internal/history"
 	"tg-search/internal/medialimit"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/scheduler"
@@ -46,6 +47,9 @@ type Dependencies struct {
 	Links            *repository.LinkRepository
 	WatchRules       *repository.WatchRuleRepository
 	RemoteSearch     *repository.RemoteSearchTaskRepository
+	SavedSearches    *repository.SavedSearchRepository
+	Webhooks         *repository.WebhookRepository
+	Deliveries       *repository.NotificationDeliveryRepository
 	Files            *repository.FileRepository
 	RemoteSearchExec *search.RemoteService
 	Maintenance      *repository.MaintenanceRepository
@@ -56,6 +60,7 @@ type Dependencies struct {
 	Search           *search.Service
 	History          *history.Service
 	Resources        *resource.Service
+	Notifications    *notification.Service
 	ChannelSync      *channel.Service
 	ChannelWebAccess *channel.WebAccessService
 	Tasks            *taskpkg.Service
@@ -166,6 +171,18 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.GET("/watch-rules/:id", h.watchRule)
 	adminOnly.PUT("/watch-rules/:id", h.updateWatchRule)
 	adminOnly.DELETE("/watch-rules/:id", h.deleteWatchRule)
+	adminOnly.GET("/saved-searches", h.savedSearches)
+	adminOnly.POST("/saved-searches", h.createSavedSearch)
+	adminOnly.GET("/saved-searches/:id", h.savedSearch)
+	adminOnly.PUT("/saved-searches/:id", h.updateSavedSearch)
+	adminOnly.DELETE("/saved-searches/:id", h.deleteSavedSearch)
+	adminOnly.POST("/saved-searches/:id/test", h.testSavedSearch)
+	adminOnly.GET("/webhooks", h.webhooks)
+	adminOnly.POST("/webhooks", h.createWebhook)
+	adminOnly.GET("/webhooks/:id", h.webhook)
+	adminOnly.PUT("/webhooks/:id", h.updateWebhook)
+	adminOnly.DELETE("/webhooks/:id", h.deleteWebhook)
+	adminOnly.GET("/notification-deliveries", h.notificationDeliveries)
 	adminSearch := adminOnly.Group("/admin/search")
 	adminSearch.GET("/global", h.searchGlobal)
 	adminSearch.GET("/messages", h.searchMessages)

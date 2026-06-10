@@ -36,6 +36,7 @@ import (
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
 	"tg-search/internal/model"
+	"tg-search/internal/notification"
 	"tg-search/internal/repository"
 	"tg-search/internal/resource"
 	"tg-search/internal/retry"
@@ -695,6 +696,127 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithKeyword(t *testing.T) {
 	}
 	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
 		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
+	}
+}
+
+func TestSavedSearchesAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "电影频道", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 10, Text: "哪吒3 4K 夸克网盘", RawJSON: "{}", Date: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", URL: "https://pan.quark.cn/s/nezha3", Note: "哪吒3 4K"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/saved-searches", strings.NewReader(`{"keyword":"哪吒3","filters":{"category":"cloud_drive"},"notify_webhook":true}`))
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create saved search code = %d body=%s, want 201", w.Code, w.Body.String())
+	}
+	var created model.SavedSearch
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode saved search: %v", err)
+	}
+	if created.ID == 0 || created.Name != "哪吒3" || !created.NotifyRSS || !created.NotifyWebhook || !created.Enabled {
+		t.Fatalf("created saved search = %+v, want defaults and webhook enabled", created)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/saved-searches/"+strconv.FormatInt(created.ID, 10)+"/test", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("test saved search code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var testBody struct {
+		Items []resource.Item `json:"items"`
+		Total int             `json:"total"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &testBody); err != nil {
+		t.Fatalf("decode test response: %v", err)
+	}
+	if testBody.Total != 1 || len(testBody.Items) != 1 || testBody.Items[0].Type != "quark" {
+		t.Fatalf("test matches = %+v, want one quark resource", testBody)
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/saved-searches/"+strconv.FormatInt(created.ID, 10), strings.NewReader(`{"name":"Nezha","keyword":"哪吒3","enabled":false}`))
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("update saved search code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var updated model.SavedSearch
+	if err := json.Unmarshal(w.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated saved search: %v", err)
+	}
+	if updated.Enabled {
+		t.Fatalf("updated saved search enabled = true, want false")
+	}
+}
+
+func TestWebhooksAndNotificationDeliveriesAPI(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/webhooks", strings.NewReader(`{"name":"n8n","url":"https://example.com/hook","events":["resource.created"],"secret":"topsecret"}`))
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create webhook code = %d body=%s, want 201", w.Code, w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "topsecret") {
+		t.Fatalf("webhook response leaked secret: %s", w.Body.String())
+	}
+	var hook model.Webhook
+	if err := json.Unmarshal(w.Body.Bytes(), &hook); err != nil {
+		t.Fatalf("decode webhook: %v", err)
+	}
+	if hook.ID == 0 || hook.URL != "https://example.com/hook" || len(hook.Events) != 1 {
+		t.Fatalf("webhook = %+v, want created hook", hook)
+	}
+	stored, err := deps.Webhooks.FindByID(ctx, hook.ID)
+	if err != nil {
+		t.Fatalf("find webhook: %v", err)
+	}
+	if stored.Secret != "topsecret" {
+		t.Fatalf("stored secret = %q, want topsecret", stored.Secret)
+	}
+
+	if _, err := deps.Deliveries.Create(ctx, model.NotificationDelivery{
+		EventType:   model.NotificationEventResourceCreated,
+		TargetType:  model.NotificationTargetWebhook,
+		TargetID:    hook.ID,
+		PayloadJSON: `{"title":"哪吒3"}`,
+	}); err != nil {
+		t.Fatalf("create delivery: %v", err)
+	}
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/notification-deliveries?status=pending", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("deliveries code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []model.NotificationDelivery `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode deliveries: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].TargetID != hook.ID {
+		t.Fatalf("deliveries = %+v, want one webhook delivery", body.Items)
 	}
 }
 
@@ -4567,6 +4689,9 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	resourceStats := repository.NewResourceStatsRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
+	savedSearches := repository.NewSavedSearchRepository(conn)
+	webhooks := repository.NewWebhookRepository(conn)
+	deliveries := repository.NewNotificationDeliveryRepository(conn)
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	taskRepository := taskpkg.NewRepository(conn)
@@ -4579,20 +4704,25 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	watchFilter := messagefilter.New(messagefilter.NewSettingsRuleStore(watchRules, settings))
 	searchService := search.NewService(messages, links, files, channels)
 	resourceService := resource.NewService(links, files, resourceStats)
+	notificationService := notification.NewService(notification.Options{
+		SavedSearches: savedSearches,
+		Webhooks:      webhooks,
+		Deliveries:    deliveries,
+	})
 	historyService := history.NewService(history.Options{
 		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
-		Resources: resourceService,
-		Telegram:  client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
+		Resources: resourceService, Notifications: notificationService,
+		Telegram: client, Sessions: sessions, Extractor: link.NewExtractor(), Filter: watchFilter, HistoryBatchSize: 100,
 	})
 	channelService := channel.NewService(channels, client, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
 		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
-		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, Maintenance: maintenance, Status: status,
+		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, SavedSearches: savedSearches, Webhooks: webhooks, Deliveries: deliveries, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		RuntimeConfig: runtimeConfig,
 		StorageUsage:  storage.NewUsageService(runtimeConfig),
-		Search:        searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
+		Search:        searchService, History: historyService, Resources: resourceService, Notifications: notificationService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService,
 		Tasks: taskService, TaskRepository: taskRepository, Events: taskpkg.NewEventBroker(),
 		Telegram: client, Sessions: sessions, CodeStore: telegram.NewCodeStore(), QRLogins: NewQRLoginStore(2 * time.Minute),
 	}, conn

@@ -56,6 +56,22 @@ vi.mock('@/api/client', () => ({
         ]
       })
     }
+    if (path === '/api/accounts') {
+      return Promise.resolve({
+        items: [
+          { id: 1, phone: '+10000000000', username: 'primary', status: 'ONLINE', last_error: '' },
+          { id: 2, phone: '+10000000001', username: '', status: 'ONLINE', last_error: '' }
+        ]
+      })
+    }
+    if (path === '/api/channels') {
+      return Promise.resolve({
+        items: [
+          { id: 101, account_id: 1, title: '电影频道', username: 'movies', type: 'channel', member_count: 100, description: '', avatar_state: 'ok', sync_state: 'metadata_only', listen_state: 'enabled', history_sync_enabled: false, sync_profile: 'Normal', listen_enabled: true, remote_search_allowed: false, last_message_id: 0, indexed_message_count: 10, web_access_error: '' },
+          { id: 102, account_id: 2, title: '软件频道', username: 'software', type: 'channel', member_count: 80, description: '', avatar_state: 'ok', sync_state: 'metadata_only', listen_state: 'enabled', history_sync_enabled: false, sync_profile: 'Normal', listen_enabled: true, remote_search_allowed: false, last_message_id: 0, indexed_message_count: 8, web_access_error: '' }
+        ]
+      })
+    }
     if (path === '/api/webhooks') {
       return Promise.resolve({
         items: [
@@ -266,19 +282,37 @@ const stubs = {
     `
   },
   'n-select': {
-    props: ['value', 'options'],
+    props: ['value', 'options', 'multiple'],
     emits: ['update:value'],
     template: `
       <select
         :data-testid="$attrs['data-testid']"
-        :value="value"
-        @change="$emit('update:value', $event.target.value)"
+        :multiple="multiple"
+        :value="selectValue(value)"
+        @change="$emit('update:value', selectedValue($event.target))"
       >
         <option v-for="option in options" :key="option.value" :value="option.value">
           {{ option.label }}
         </option>
       </select>
-    `
+    `,
+    methods: {
+      selectValue(value: unknown): string | string[] {
+        return Array.isArray(value) ? value.map((item) => String(item)) : String(value ?? '')
+      },
+      selectedValue(this: { options: Array<{ value: unknown }> }, target: HTMLSelectElement): unknown {
+        const optionValue = (value: string) => {
+          const option = this.options.find((item: { value: unknown }) => String(item.value) === value)
+          return option ? option.value : value
+        }
+        if (target.multiple) {
+          return Array.from(target.options)
+            .filter((option) => option.selected)
+            .map((option) => optionValue(option.value))
+        }
+        return optionValue(target.value)
+      }
+    }
   },
   'n-button': {
     emits: ['click'],
@@ -479,12 +513,22 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(apiGet).toHaveBeenCalledWith('/api/saved-searches')
+    expect(apiGet).toHaveBeenCalledWith('/api/accounts')
+    expect(apiGet).toHaveBeenCalledWith('/api/channels')
     expect(wrapper.text()).toContain('哪吒3')
+    expect(wrapper.get('[data-testid="saved-search-account-select"]').text()).toContain('+10000000000')
+    expect(wrapper.get('[data-testid="saved-search-channel-select"]').text()).toContain('电影频道')
 
     await wrapper.get('[data-testid="saved-search-name-input"]').setValue('流浪地球')
     await wrapper.get('[data-testid="saved-search-keyword-input"]').setValue('流浪地球')
-    await wrapper.get('[data-testid="saved-search-type-input"]').setValue('movie')
-    await wrapper.get('[data-testid="saved-search-cloud-types-input"]').setValue('quark, aliyun')
+    await wrapper.get('[data-testid="saved-search-category-select"]').setValue('cloud_drive')
+    const resourceTypeSelect = wrapper.get<HTMLSelectElement>('[data-testid="saved-search-resource-types-select"]')
+    for (const option of Array.from(resourceTypeSelect.element.options)) {
+      option.selected = ['quark', 'aliyun'].includes(option.value)
+    }
+    await resourceTypeSelect.trigger('change')
+    await wrapper.get('[data-testid="saved-search-account-select"]').setValue('1')
+    await wrapper.get('[data-testid="saved-search-channel-select"]').setValue('101')
     await wrapper.get('[data-testid="save-saved-search"]').trigger('click')
     await flushPromises()
 
@@ -492,8 +536,10 @@ describe('SettingsView', () => {
       name: '流浪地球',
       keyword: '流浪地球',
       filters: {
-        type: 'movie',
-        cloud_types: ['quark', 'aliyun']
+        category: 'cloud_drive',
+        cloud_types: ['quark', 'aliyun'],
+        account_id: 1,
+        channel_id: 101
       },
       notify_rss: true,
       notify_webhook: false,
@@ -708,6 +754,12 @@ describe('SettingsView', () => {
         return Promise.resolve({ enabled: false, configured: false, token_set: false, poll_interval: '3s' })
       }
       if (path === '/api/saved-searches') {
+        return Promise.resolve({ items: [] })
+      }
+      if (path === '/api/accounts') {
+        return Promise.resolve({ items: [] })
+      }
+      if (path === '/api/channels') {
         return Promise.resolve({ items: [] })
       }
       if (path === '/api/webhooks') {

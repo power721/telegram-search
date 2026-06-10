@@ -262,7 +262,7 @@ complete
 
 ### `PUT /api/settings/telegram-bot`
 
-保存 Telegram Bot 设置。`token` 为空时沿用已有 Token；启用 Bot 且没有已保存 Token 时会返回 `400`。保存后重启服务生效。
+保存 Telegram Bot 设置。`token` 为空时沿用已有 Token；启用 Bot 且没有已保存 Token 时会返回 `400`。保存后由后台 Bot runtime 自动生效，无需重启服务。
 
 ```json
 {
@@ -866,6 +866,18 @@ GET /api/channels?account_id=1
   "enabled": true
 }
 ```
+
+过滤字段说明：
+
+| 字段 | 说明 |
+| --- | --- |
+| `filters.category` | 资源大类，例如 `cloud_drive`、`magnet`、`ed2k`、`http`、`files`。 |
+| `filters.cloud_types` | 具体资源类型集合，会匹配资源的 `type` 或 `category`，例如 `quark`、`aliyun`、`uc`、`magnet`、`image`、`software`。 |
+| `filters.type` | 兼容字段，匹配资源 `type` 或 `kind`；新集成优先使用 `cloud_types`。 |
+| `filters.account_id` | 限定 Telegram 账号 ID。 |
+| `filters.channel_id` | 限定频道 ID。 |
+
+管理后台「设置 -> 通知集成」提供账号、频道和资源类型下拉选择，通常不需要手写这些 ID。
 
 ### `GET /api/saved-searches/:id`
 

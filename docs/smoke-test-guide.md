@@ -23,6 +23,7 @@ Or run the packaged service:
 ```bash
 mkdir -p data
 cp config.yaml data/config.yaml
+docker compose pull
 docker compose up -d
 ```
 

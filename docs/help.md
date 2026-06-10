@@ -71,12 +71,19 @@ docker run -d \
 
 ### 2.3 Docker Compose 安装
 
-仓库内的 `compose.yaml` 会构建/运行 `haroldli/tg-search:latest`，并把 `./data` 映射为 `/data/tg-search`。
+仓库内的 `compose.yaml` 会拉取并运行远程镜像 `haroldli/tg-search:latest`，不会在本地构建镜像，并把 `./data` 映射为 `/data/tg-search`。
 
 ```bash
 mkdir -p data
 docker compose up -d
 docker compose logs -f tg-search
+```
+
+升级远程镜像：
+
+```bash
+docker compose pull
+docker compose up -d
 ```
 
 停止：

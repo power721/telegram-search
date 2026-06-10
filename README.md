@@ -41,6 +41,13 @@ mkdir -p data
 docker compose up -d
 ```
 
+仓库内的 `compose.yaml` 使用远程镜像 `haroldli/tg-search:latest`，不会在本地构建镜像。需要提前刷新镜像时可以执行：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
 启动后打开：
 
 ```text

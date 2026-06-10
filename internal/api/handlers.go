@@ -584,7 +584,7 @@ func (h handlers) authLogin(c *gin.Context) {
 		return
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
-	c.SetCookie(adminSessionCookie, token, 86400, "/", "", false, true)
+	c.SetCookie(adminSessionCookie, token, int(adminauth.DefaultSessionTTL/time.Second), "/", "", false, true)
 	user.PasswordHash = ""
 	c.JSON(http.StatusOK, user)
 }

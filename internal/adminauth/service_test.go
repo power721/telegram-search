@@ -4,6 +4,7 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"tg-search/internal/db"
 	"tg-search/internal/model"
@@ -50,5 +51,30 @@ func TestServiceCreatesAdminAndAuthenticates(t *testing.T) {
 	}
 	if _, err := service.UpdateCredentials(ctx, user.ID, "root", "wrong", "anothersecret"); err != ErrInvalidCredentials {
 		t.Fatalf("update with wrong password error = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestServiceExpiresSessionsServerSide(t *testing.T) {
+	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
+	service := NewService(nil)
+	service.sessionTTL = time.Minute
+	service.now = func() time.Time { return now }
+
+	token, err := service.CreateSession(model.User{ID: 1, Username: "admin", Role: model.UserRoleAdmin})
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	if user, ok := service.UserForSession(token); !ok || user.Username != "admin" {
+		t.Fatalf("session lookup = %+v ok=%v, want admin", user, ok)
+	}
+
+	now = now.Add(time.Minute)
+	if user, ok := service.UserForSession(token); ok {
+		t.Fatalf("expired session lookup = %+v ok=true, want false", user)
+	}
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	if len(service.sessions) != 0 {
+		t.Fatalf("sessions after expired lookup = %d, want 0", len(service.sessions))
 	}
 }

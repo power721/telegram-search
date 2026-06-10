@@ -68,6 +68,11 @@ describe('SetupChannelSelectionView', () => {
     const wrapper = mount(SetupChannelSelectionView, {
       global: {
         stubs: {
+          'n-input': {
+            props: ['value'],
+            emits: ['update:value'],
+            template: `<input :value="value" @input="$emit('update:value', $event.target.value)" />`
+          },
           'n-checkbox': {
             emits: ['update:checked'],
             template: `<label><input type="checkbox" @change="$emit('update:checked', true)" /><slot /></label>`
@@ -103,6 +108,33 @@ describe('SetupChannelSelectionView', () => {
     expect(push).toHaveBeenCalledWith('/')
   })
 
+  it('filters first-run channels by title and username', async () => {
+    const wrapper = mount(SetupChannelSelectionView, {
+      global: {
+        stubs: {
+          'n-input': {
+            props: ['value'],
+            emits: ['update:value'],
+            template: `<input :value="value" @input="$emit('update:value', $event.target.value)" />`
+          },
+          'n-checkbox': true,
+          'n-button': { emits: ['click'], template: `<button @click="$emit('click')"><slot /></button>` }
+        }
+      }
+    })
+    await flushPromises()
+
+    await wrapper.find('.setup-channel-search').setValue('movies')
+    expect(wrapper.text()).toContain('匹配 1 个')
+    expect(wrapper.text()).toContain('Channel 1')
+    expect(wrapper.text()).not.toContain('Channel 2')
+
+    await wrapper.find('.setup-channel-search').setValue('Channel 60')
+    expect(wrapper.text()).toContain('匹配 1 个')
+    expect(wrapper.text()).toContain('Channel 60')
+    expect(wrapper.text()).not.toContain('Channel 1')
+  })
+
   it('explains an empty first-run channel list and refreshes automatically', async () => {
     vi.useFakeTimers()
     vi.mocked(apiGet)
@@ -131,6 +163,11 @@ describe('SetupChannelSelectionView', () => {
     const wrapper = mount(SetupChannelSelectionView, {
       global: {
         stubs: {
+          'n-input': {
+            props: ['value'],
+            emits: ['update:value'],
+            template: `<input :value="value" @input="$emit('update:value', $event.target.value)" />`
+          },
           'n-checkbox': {
             emits: ['update:checked'],
             template: `<label><input type="checkbox" @change="$emit('update:checked', true)" /><slot /></label>`

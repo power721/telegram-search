@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { TelegramChannel } from '@/api/types'
 import AppPagination from '@/components/common/AppPagination.vue'
@@ -14,18 +14,33 @@ const setup = useSetupStore()
 
 const selected = reactive<Record<number, boolean>>({})
 const page = ref(1)
+const searchQuery = ref('')
 const pageSize = 50
 const emptyRefreshAttempts = ref(0)
 const maxEmptyRefreshAttempts = 10
 let emptyRefreshTimer: number | undefined
 
-const visibleChannels = computed(() => {
-  const start = (page.value - 1) * pageSize
-  return channels.items.slice(start, start + pageSize)
+const filteredChannels = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return channels.items
+  return channels.items.filter((channel) => {
+    const haystack = `${channel.title} ${channel.username}`.toLowerCase()
+    return haystack.includes(query)
+  })
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(channels.items.length / pageSize)))
+const visibleChannels = computed(() => {
+  const start = (page.value - 1) * pageSize
+  return filteredChannels.value.slice(start, start + pageSize)
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredChannels.value.length / pageSize)))
 const selectedCount = computed(() => channels.items.filter((channel) => selected[channel.id]).length)
+const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
+
+watch(searchQuery, () => {
+  page.value = 1
+})
 
 onMounted(async () => {
   await loadChannels()
@@ -128,8 +143,20 @@ async function finish() {
       </div>
       <div class="summary">
         <span>{{ channels.items.length }} 个频道</span>
+        <span v-if="hasSearchQuery">匹配 {{ filteredChannels.length }} 个</span>
         <span>已选择 {{ selectedCount }} 个</span>
         <span>第 {{ page }} / {{ totalPages }} 页</span>
+      </div>
+
+      <div class="setup-channel-toolbar">
+        <label class="filter-label" for="setup-channel-search">搜索</label>
+        <n-input
+          id="setup-channel-search"
+          v-model:value="searchQuery"
+          class="setup-channel-search"
+          clearable
+          placeholder="搜索频道标题或用户名"
+        />
       </div>
 
       <div class="table-panel">
@@ -180,6 +207,14 @@ async function finish() {
                 </div>
               </td>
             </tr>
+            <tr v-else-if="!channels.loading && filteredChannels.length === 0">
+              <td colspan="6">
+                <div class="empty-state">
+                  <strong>没有匹配的频道</strong>
+                  <span>请尝试搜索其他频道标题或用户名。</span>
+                </div>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -189,7 +224,7 @@ async function finish() {
         :page="page"
         :page-size="pageSize"
         :show-page-size="false"
-        :total="channels.items.length"
+        :total="filteredChannels.length"
         @update:page="changePage"
       />
 
@@ -218,6 +253,18 @@ h1 {
   font-size: 14px;
   gap: 16px;
   margin: 16px 0 12px;
+}
+
+.setup-channel-toolbar {
+  align-items: center;
+  background: var(--app-surface);
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(220px, 420px);
+  margin-bottom: 12px;
+  padding: 10px;
 }
 
 table {
@@ -270,5 +317,11 @@ td:nth-child(5) {
 
 .loading-stack .short {
   width: 58%;
+}
+
+@media (max-width: 640px) {
+  .setup-channel-toolbar {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

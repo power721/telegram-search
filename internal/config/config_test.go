@@ -43,10 +43,10 @@ server:
 	if cfg.Storage.Path != "/data/tg-search" {
 		t.Fatalf("storage path = %q, want /data/tg-search", cfg.Storage.Path)
 	}
-	if cfg.Storage.MaxDBSize != Size(10*1000*1000*1000) {
+	if cfg.Storage.MaxDBSize != Size(10*1024*1024*1024) {
 		t.Fatalf("max db size = %d, want 10GB", cfg.Storage.MaxDBSize)
 	}
-	if cfg.Storage.MaxMediaCache != Size(20*1000*1000*1000) {
+	if cfg.Storage.MaxMediaCache != Size(20*1024*1024*1024) {
 		t.Fatalf("max media cache = %d, want 20GB", cfg.Storage.MaxMediaCache)
 	}
 }
@@ -172,8 +172,8 @@ func TestApplyRuntimeSettingsOverridesOperationalConfig(t *testing.T) {
 			TelegramRequestInterval: Duration(1500 * time.Millisecond),
 		},
 		Storage: RuntimeStorageSettings{
-			MaxDBSize:     Size(30 * 1000 * 1000 * 1000),
-			MaxMediaCache: Size(40 * 1000 * 1000 * 1000),
+			MaxDBSize:     Size(30 * sizeGB),
+			MaxMediaCache: Size(40 * sizeGB),
 		},
 		Telegram: RuntimeTelegramSettings{
 			Proxy:            "socks5://127.0.0.1:1080",
@@ -206,7 +206,7 @@ func TestApplyRuntimeSettingsOverridesOperationalConfig(t *testing.T) {
 	if got.Sync.Workers != 8 || got.Sync.HistoryBatchSize != 250 || time.Duration(got.Sync.TelegramRequestInterval) != 1500*time.Millisecond {
 		t.Fatalf("sync config = %+v", got.Sync)
 	}
-	if got.Storage.MaxDBSize != Size(30*1000*1000*1000) || got.Storage.MaxMediaCache != Size(40*1000*1000*1000) {
+	if got.Storage.MaxDBSize != Size(30*sizeGB) || got.Storage.MaxMediaCache != Size(40*sizeGB) {
 		t.Fatalf("storage limits = %+v", got.Storage)
 	}
 	if got.Telegram.Proxy != "socks5://127.0.0.1:1080" {
@@ -239,6 +239,27 @@ func TestRuntimeSettingsFromConfigExcludesStartupOnlyFields(t *testing.T) {
 	}
 	if settings.Telegram.Media.Concurrency != cfg.Telegram.Media.Concurrency {
 		t.Fatalf("settings media concurrency = %d, want %d", settings.Telegram.Media.Concurrency, cfg.Telegram.Media.Concurrency)
+	}
+}
+
+func TestApplyRuntimeSettingsRejectsStorageLimitsBelowMinimum(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = 9900
+	cfg.Storage.Path = "data"
+
+	settings := RuntimeSettingsFromConfig(cfg)
+	settings.Storage.MaxDBSize = Size(99 * 1024 * 1024)
+
+	if _, err := ApplyRuntimeSettings(cfg, settings); err == nil {
+		t.Fatal("ApplyRuntimeSettings returned nil error for max_db_size below 100MB")
+	}
+
+	settings = RuntimeSettingsFromConfig(cfg)
+	settings.Storage.MaxMediaCache = Size(99 * 1024 * 1024)
+
+	if _, err := ApplyRuntimeSettings(cfg, settings); err == nil {
+		t.Fatal("ApplyRuntimeSettings returned nil error for max_media_cache below 100MB")
 	}
 }
 

@@ -32,17 +32,16 @@ const versionError = ref('')
 const systemInfo = ref<SystemInfoResponse | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
-type SizeUnit = 'GB' | 'MB' | 'B'
+type SizeUnit = 'GB' | 'MB'
 const sizeUnitOptions: Array<{ label: string; value: SizeUnit }> = [
   { label: 'GB', value: 'GB' },
-  { label: 'MB', value: 'MB' },
-  { label: 'B', value: 'B' }
+  { label: 'MB', value: 'MB' }
 ]
 const sizeUnitMultipliers: Record<SizeUnit, number> = {
-  GB: 1_000_000_000,
-  MB: 1_000_000,
-  B: 1
+  GB: 1024 * 1024 * 1024,
+  MB: 1024 * 1024
 }
+const minStorageLimitBytes = 100 * 1024 * 1024
 const runtimeForm = ref({
   workers: '',
   historyBatchSize: '',
@@ -238,9 +237,9 @@ function formatCount(value = 0) {
 }
 
 function formatBytes(value = 0) {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} GB`
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB`
+  if (value >= sizeUnitMultipliers.GB) return `${(value / sizeUnitMultipliers.GB).toFixed(1)} GB`
+  if (value >= sizeUnitMultipliers.MB) return `${(value / sizeUnitMultipliers.MB).toFixed(1)} MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${value} B`
 }
 
@@ -248,10 +247,7 @@ function splitSizeForInput(bytes: number) {
   if (bytes > 0 && bytes % sizeUnitMultipliers.GB === 0) {
     return { value: String(bytes / sizeUnitMultipliers.GB), unit: 'GB' as SizeUnit }
   }
-  if (bytes > 0 && bytes % sizeUnitMultipliers.MB === 0) {
-    return { value: String(bytes / sizeUnitMultipliers.MB), unit: 'MB' as SizeUnit }
-  }
-  return { value: String(bytes), unit: 'B' as SizeUnit }
+  return { value: String(Math.ceil(bytes / sizeUnitMultipliers.MB)), unit: 'MB' as SizeUnit }
 }
 
 function fillRuntimeForm(settings: RuntimeSettings) {
@@ -319,7 +315,11 @@ function positiveInteger(value: string) {
 }
 
 function sizeLimitBytes(value: string, unit: SizeUnit) {
-  return positiveInteger(value) * sizeUnitMultipliers[unit]
+  const bytes = positiveInteger(value) * sizeUnitMultipliers[unit]
+  if (bytes < minStorageLimitBytes) {
+    throw new Error('storage limit must be at least 100MB')
+  }
+  return bytes
 }
 
 function versionStatusText() {

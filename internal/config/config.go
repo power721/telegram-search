@@ -171,8 +171,8 @@ func defaultConfig() Config {
 		},
 		Storage: StorageConfig{
 			Path:          "/data/tg-search",
-			MaxDBSize:     Size(10 * 1000 * 1000 * 1000),
-			MaxMediaCache: Size(20 * 1000 * 1000 * 1000),
+			MaxDBSize:     Size(10 * sizeGB),
+			MaxMediaCache: Size(20 * sizeGB),
 		},
 		Telegram: TelegramConfig{
 			ReconnectTimeout: Duration(5 * time.Minute),
@@ -302,6 +302,12 @@ func validate(cfg Config) error {
 	}
 	if cfg.Storage.Path == "" {
 		return errors.New("storage.path is required")
+	}
+	if cfg.Storage.MaxDBSize < minStorageLimitSize {
+		return errors.New("storage.max_db_size must be at least 100MB")
+	}
+	if cfg.Storage.MaxMediaCache < minStorageLimitSize {
+		return errors.New("storage.max_media_cache must be at least 100MB")
 	}
 	if cfg.Telegram.ReconnectTimeout <= 0 {
 		return errors.New("telegram.reconnect_timeout must be greater than zero")

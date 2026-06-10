@@ -8,6 +8,13 @@ import (
 
 type Size int64
 
+const (
+	sizeKB              int64 = 1024
+	sizeMB              int64 = sizeKB * 1024
+	sizeGB              int64 = sizeMB * 1024
+	minStorageLimitSize       = Size(100 * sizeMB)
+)
+
 func ParseSize(input string) (Size, error) {
 	value := strings.TrimSpace(input)
 	if value == "" {
@@ -19,9 +26,9 @@ func ParseSize(input string) (Size, error) {
 		text string
 		mul  int64
 	}{
-		{"GB", 1000 * 1000 * 1000},
-		{"MB", 1000 * 1000},
-		{"KB", 1000},
+		{"GB", sizeGB},
+		{"MB", sizeMB},
+		{"KB", sizeKB},
 		{"B", 1},
 	} {
 		if strings.HasSuffix(upper, suffix.text) {

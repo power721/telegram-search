@@ -23,8 +23,8 @@ vi.mock('@/api/client', () => ({
         index_bytes: 200,
         media_cache_bytes: 300,
         total_bytes: 600,
-        max_db_bytes: 15_000_000_000,
-        max_media_bytes: 25_000_000_000,
+        max_db_bytes: 15 * 1024 * 1024 * 1024,
+        max_media_bytes: 25 * 1024 * 1024 * 1024,
         db_over_quota: false,
         media_over_quota: false
       })
@@ -40,8 +40,8 @@ vi.mock('@/api/client', () => ({
           telegram_request_interval: '2s'
         },
         storage: {
-          max_db_size: 15_000_000_000,
-          max_media_cache: 25_000_000_000
+          max_db_size: 15 * 1024 * 1024 * 1024,
+          max_media_cache: 25 * 1024 * 1024 * 1024
         },
         telegram: {
           proxy: '',
@@ -116,8 +116,8 @@ vi.mock('@/api/client', () => ({
           telegram_request_interval: '1500ms'
         },
         storage: {
-          max_db_size: 30_000_000_000,
-          max_media_cache: 40_000_000_000
+          max_db_size: 30 * 1024 * 1024 * 1024,
+          max_media_cache: 40 * 1024 * 1024 * 1024
         },
         telegram: {
           proxy: 'socks5://127.0.0.1:1080',
@@ -370,6 +370,7 @@ describe('SettingsView', () => {
     expect(wrapper.get<HTMLSelectElement>('[data-testid="runtime-max-db-size-unit"]').element.value).toBe('GB')
     expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-max-media-cache-input"]').element.value).toBe('25')
     expect(wrapper.get<HTMLSelectElement>('[data-testid="runtime-max-media-cache-unit"]').element.value).toBe('GB')
+    expect(wrapper.find('[data-testid="runtime-max-db-size-unit"] option[value="B"]').exists()).toBe(false)
     expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-rate-enabled-input"]').element.checked).toBe(true)
 
     await wrapper.get('[data-testid="runtime-workers-input"]').setValue('8')
@@ -399,8 +400,8 @@ describe('SettingsView', () => {
         telegram_request_interval: '1500ms'
       },
       storage: {
-        max_db_size: 512_000_000,
-        max_media_cache: 2_000_000_000
+        max_db_size: 512 * 1024 * 1024,
+        max_media_cache: 2 * 1024 * 1024 * 1024
       },
       telegram: {
         proxy: 'socks5://127.0.0.1:1080',
@@ -421,6 +422,23 @@ describe('SettingsView', () => {
         }
       }
     })
+  })
+
+  it('rejects storage limits below 100 MB before saving runtime settings', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+    vi.mocked(apiPut).mockClear()
+
+    await wrapper.get('[data-testid="runtime-max-db-size-input"]').setValue('99')
+    await wrapper.get('[data-testid="runtime-max-db-size-unit"]').setValue('MB')
+    await wrapper.get('[data-testid="save-runtime-storage"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPut).not.toHaveBeenCalled()
   })
 
   it('updates Telegram API credentials from the settings page', async () => {
@@ -456,8 +474,8 @@ describe('SettingsView', () => {
           index_bytes: 200,
           media_cache_bytes: 300,
           total_bytes: 600,
-          max_db_bytes: 15_000_000_000,
-          max_media_bytes: 25_000_000_000,
+          max_db_bytes: 15 * 1024 * 1024 * 1024,
+          max_media_bytes: 25 * 1024 * 1024 * 1024,
           db_over_quota: false,
           media_over_quota: false
         })
@@ -473,8 +491,8 @@ describe('SettingsView', () => {
             telegram_request_interval: '2s'
           },
           storage: {
-            max_db_size: 15_000_000_000,
-            max_media_cache: 25_000_000_000
+            max_db_size: 15 * 1024 * 1024 * 1024,
+            max_media_cache: 25 * 1024 * 1024 * 1024
           },
           telegram: {
             proxy: '',

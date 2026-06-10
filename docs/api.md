@@ -735,7 +735,7 @@ Deletes the in-memory session and clears the browser cookie.
 
 Returns local storage usage and quota state.
 
-`storage.max_db_size` controls the SQLite database budget. `storage.max_media_cache` controls cached media-derived files such as thumbnails. Phase 1 reports usage, warns through quota flags, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded.
+`storage.max_db_size` controls the SQLite database budget. `storage.max_media_cache` controls cached media-derived files such as thumbnails. Human-readable MB/GB settings use 1024-based units, and each limit must be at least 100MB. Phase 1 reports usage, warns through quota flags, and blocks new `Deep` or `Full` history sync requests when the DB quota is exceeded.
 
 ```json
 {
@@ -743,8 +743,8 @@ Returns local storage usage and quota state.
   "index_bytes": 1100000000,
   "media_cache_bytes": 0,
   "total_bytes": 4300000000,
-  "max_db_bytes": 10000000000,
-  "max_media_bytes": 20000000000,
+  "max_db_bytes": 10737418240,
+  "max_media_bytes": 21474836480,
   "db_over_quota": false,
   "media_over_quota": false
 }

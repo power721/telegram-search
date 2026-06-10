@@ -1616,8 +1616,8 @@ func TestRuntimeSettings(t *testing.T) {
 	deps.RuntimeConfig.Sync.Workers = 5
 	deps.RuntimeConfig.Sync.HistoryBatchSize = 100
 	deps.RuntimeConfig.Sync.TelegramRequestInterval = config.Duration(2 * time.Second)
-	deps.RuntimeConfig.Storage.MaxDBSize = config.Size(10 * 1000 * 1000 * 1000)
-	deps.RuntimeConfig.Storage.MaxMediaCache = config.Size(20 * 1000 * 1000 * 1000)
+	deps.RuntimeConfig.Storage.MaxDBSize = config.Size(10 * 1024 * 1024 * 1024)
+	deps.RuntimeConfig.Storage.MaxMediaCache = config.Size(20 * 1024 * 1024 * 1024)
 	deps.RuntimeConfig.Telegram.Proxy = ""
 	deps.RuntimeConfig.Telegram.ReconnectTimeout = config.Duration(5 * time.Minute)
 	deps.RuntimeConfig.Telegram.DialTimeout = config.Duration(10 * time.Second)
@@ -1639,7 +1639,7 @@ func TestRuntimeSettings(t *testing.T) {
 	if got.Sync.Workers != 5 || got.Sync.HistoryBatchSize != 100 || got.Sync.TelegramRequestInterval != config.Duration(2*time.Second) {
 		t.Fatalf("default runtime sync settings = %+v", got.Sync)
 	}
-	if got.Storage.MaxDBSize != config.Size(10*1000*1000*1000) || got.Storage.MaxMediaCache != config.Size(20*1000*1000*1000) {
+	if got.Storage.MaxDBSize != config.Size(10*1024*1024*1024) || got.Storage.MaxMediaCache != config.Size(20*1024*1024*1024) {
 		t.Fatalf("default runtime storage settings = %+v", got.Storage)
 	}
 

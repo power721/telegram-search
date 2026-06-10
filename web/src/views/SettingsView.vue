@@ -33,12 +33,24 @@ const systemInfo = ref<SystemInfoResponse | null>(null)
 const currentRuntimeSettings = ref<RuntimeSettings | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
+type SizeUnit = 'GB' | 'MB'
+const sizeUnitOptions: Array<{ label: string; value: SizeUnit }> = [
+  { label: 'GB', value: 'GB' },
+  { label: 'MB', value: 'MB' }
+]
+const sizeUnitMultipliers: Record<SizeUnit, number> = {
+  GB: 1024 * 1024 * 1024,
+  MB: 1024 * 1024
+}
+const minStorageLimitBytes = 100 * 1024 * 1024
 const runtimeForm = ref({
   workers: '',
   historyBatchSize: '',
   telegramRequestInterval: '',
   maxDBSize: '',
+  maxDBSizeUnit: 'GB' as SizeUnit,
   maxMediaCache: '',
+  maxMediaCacheUnit: 'GB' as SizeUnit,
   proxy: '',
   reconnectTimeout: '',
   dialTimeout: '',
@@ -229,20 +241,31 @@ function formatCount(value = 0) {
 }
 
 function formatBytes(value = 0) {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} GB`
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB`
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB`
+  if (value >= sizeUnitMultipliers.GB) return `${(value / sizeUnitMultipliers.GB).toFixed(1)} GB`
+  if (value >= sizeUnitMultipliers.MB) return `${(value / sizeUnitMultipliers.MB).toFixed(1)} MB`
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${value} B`
+}
+
+function splitSizeForInput(bytes: number) {
+  if (bytes > 0 && bytes % sizeUnitMultipliers.GB === 0) {
+    return { value: String(bytes / sizeUnitMultipliers.GB), unit: 'GB' as SizeUnit }
+  }
+  return { value: String(Math.ceil(bytes / sizeUnitMultipliers.MB)), unit: 'MB' as SizeUnit }
 }
 
 function fillRuntimeForm(settings: RuntimeSettings) {
   currentRuntimeSettings.value = settings
+  const maxDBSize = splitSizeForInput(settings.storage.max_db_size)
+  const maxMediaCache = splitSizeForInput(settings.storage.max_media_cache)
   runtimeForm.value = {
     workers: String(settings.sync.workers),
     historyBatchSize: String(settings.sync.history_batch_size),
     telegramRequestInterval: settings.sync.telegram_request_interval,
-    maxDBSize: String(settings.storage.max_db_size),
-    maxMediaCache: String(settings.storage.max_media_cache),
+    maxDBSize: maxDBSize.value,
+    maxDBSizeUnit: maxDBSize.unit,
+    maxMediaCache: maxMediaCache.value,
+    maxMediaCacheUnit: maxMediaCache.unit,
     proxy: settings.telegram.proxy,
     reconnectTimeout: settings.telegram.reconnect_timeout,
     dialTimeout: settings.telegram.dial_timeout,
@@ -264,8 +287,8 @@ function runtimePayload(): RuntimeSettings {
       telegram_request_interval: runtimeForm.value.telegramRequestInterval.trim()
     },
     storage: {
-      max_db_size: positiveInteger(runtimeForm.value.maxDBSize),
-      max_media_cache: positiveInteger(runtimeForm.value.maxMediaCache)
+      max_db_size: sizeLimitBytes(runtimeForm.value.maxDBSize, runtimeForm.value.maxDBSizeUnit),
+      max_media_cache: sizeLimitBytes(runtimeForm.value.maxMediaCache, runtimeForm.value.maxMediaCacheUnit)
     },
     telegram: {
       proxy: runtimeForm.value.proxy.trim(),
@@ -294,6 +317,14 @@ function positiveInteger(value: string) {
     throw new Error('invalid positive integer')
   }
   return parsed
+}
+
+function sizeLimitBytes(value: string, unit: SizeUnit) {
+  const bytes = positiveInteger(value) * sizeUnitMultipliers[unit]
+  if (bytes < minStorageLimitBytes) {
+    throw new Error('storage limit must be at least 100MB')
+  }
+  return bytes
 }
 
 function versionStatusText() {
@@ -463,21 +494,35 @@ function versionStatusText() {
             </div>
           </dl>
           <n-form class="runtime-form storage-limit-form" @submit.prevent="updateRuntimeSettings">
-            <n-form-item label="数据库容量上限（字节）">
-              <n-input
-                v-model:value="runtimeForm.maxDBSize"
-                data-testid="runtime-max-db-size-input"
-                inputmode="numeric"
-                placeholder="10000000000"
-              />
+            <n-form-item label="数据库容量上限">
+              <div class="size-limit-row">
+                <n-input
+                  v-model:value="runtimeForm.maxDBSize"
+                  data-testid="runtime-max-db-size-input"
+                  inputmode="numeric"
+                  placeholder="10"
+                />
+                <n-select
+                  v-model:value="runtimeForm.maxDBSizeUnit"
+                  data-testid="runtime-max-db-size-unit"
+                  :options="sizeUnitOptions"
+                />
+              </div>
             </n-form-item>
-            <n-form-item label="媒体缓存上限（字节）">
-              <n-input
-                v-model:value="runtimeForm.maxMediaCache"
-                data-testid="runtime-max-media-cache-input"
-                inputmode="numeric"
-                placeholder="20000000000"
-              />
+            <n-form-item label="媒体缓存上限">
+              <div class="size-limit-row">
+                <n-input
+                  v-model:value="runtimeForm.maxMediaCache"
+                  data-testid="runtime-max-media-cache-input"
+                  inputmode="numeric"
+                  placeholder="20"
+                />
+                <n-select
+                  v-model:value="runtimeForm.maxMediaCacheUnit"
+                  data-testid="runtime-max-media-cache-unit"
+                  :options="sizeUnitOptions"
+                />
+              </div>
             </n-form-item>
             <div class="form-actions">
               <n-button data-testid="save-runtime-storage" type="primary" :loading="runtimeLoading" @click="updateRuntimeSettings">
@@ -693,6 +738,13 @@ function versionStatusText() {
   margin-top: 16px;
 }
 
+.size-limit-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  width: 100%;
+}
+
 .runtime-section {
   border-top: 1px solid var(--app-border);
   display: grid;
@@ -802,6 +854,10 @@ dd {
 
 @media (max-width: 520px) {
   .api-key-field {
+    grid-template-columns: 1fr;
+  }
+
+  .size-limit-row {
     grid-template-columns: 1fr;
   }
 }

@@ -7,9 +7,9 @@ func TestParseSize(t *testing.T) {
 		input string
 		want  Size
 	}{
-		{"10GB", Size(10 * 1000 * 1000 * 1000)},
-		{"20gb", Size(20 * 1000 * 1000 * 1000)},
-		{"512MB", Size(512 * 1000 * 1000)},
+		{"10GB", Size(10 * 1024 * 1024 * 1024)},
+		{"20gb", Size(20 * 1024 * 1024 * 1024)},
+		{"512MB", Size(512 * 1024 * 1024)},
 		{"1024", Size(1024)},
 	}
 	for _, tt := range tests {

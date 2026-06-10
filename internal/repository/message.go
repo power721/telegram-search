@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"tg-search/internal/model"
 )
@@ -181,7 +182,7 @@ WHERE ` + strings.Join(where, " AND ")
 
 func messageSearchWhere(params SearchParams) ([]string, []any) {
 	where := []string{`telegram_messages_fts MATCH ?`, `m.deleted = 0`}
-	args := []any{params.Query}
+	args := []any{fts5Query(params.Query)}
 	if params.AccountID > 0 {
 		where = append(where, `m.account_id = ?`)
 		args = append(args, params.AccountID)
@@ -207,6 +208,24 @@ func messageSearchWhere(params SearchParams) ([]string, []any) {
 		args = append(args, *params.BeforeDate, *params.BeforeDate, params.BeforeID)
 	}
 	return where, args
+}
+
+func fts5Query(query string) string {
+	tokens := strings.FieldsFunc(query, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	quoted := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		quoted = append(quoted, `"`+strings.ReplaceAll(token, `"`, `""`)+`"`)
+	}
+	if len(quoted) == 0 {
+		return `"__tg_search_no_match__"`
+	}
+	return strings.Join(quoted, " ")
 }
 
 func (r *MessageRepository) Latest(ctx context.Context, params LatestParams) ([]model.SearchResult, error) {

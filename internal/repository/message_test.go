@@ -140,6 +140,51 @@ WHERE message_id = ?`, stored[0].ID).Scan(&contentRows, &text, &rawJSON); err !=
 	}
 }
 
+func TestMessageSearchEscapesFTSSpecialCharacters(t *testing.T) {
+	ctx := context.Background()
+	conn := openRepositoryTestDB(t)
+
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2001, Title: "VIP", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	if _, err := messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 10,
+		Text: "alpha beta foo special", RawJSON: `{}`, Date: time.Now().UTC(),
+	}}); err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+
+	for _, query := range []string{`alpha & beta`, `foo"`, `alpha OR beta`, `NEAR(alpha beta)`, `*`} {
+		t.Run(query, func(t *testing.T) {
+			_, err := messages.Search(ctx, SearchParams{Query: query, Limit: 10})
+			if err != nil {
+				t.Fatalf("search %q returned error: %v", query, err)
+			}
+			_, err = messages.CountSearch(ctx, SearchParams{Query: query})
+			if err != nil {
+				t.Fatalf("count search %q returned error: %v", query, err)
+			}
+		})
+	}
+
+	results, err := messages.Search(ctx, SearchParams{Query: `alpha & beta`, Limit: 10})
+	if err != nil {
+		t.Fatalf("search with ampersand: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("ampersand query results = %+v, want one match", results)
+	}
+}
+
 func openRepositoryTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

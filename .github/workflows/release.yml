@@ -137,7 +137,35 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: true
           fail_on_unmatched_files: true
+          body_path: RELEASE_NOTES.md
           files: |
             dist/tg-search-linux-amd64
             dist/tg-search-linux-arm64
             dist/checksums.txt
+
+      - name: Read release notes
+        id: release_notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASE_BODY="$(gh release view "$GITHUB_REF_NAME" --json body --jq .body || true)"
+          {
+            echo "body<<EOF"
+            printf '%s\n' "$RELEASE_BODY"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: send telegram message
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.CHANNEL_ID }}
+          token: ${{ secrets.BOT_TOKEN }}
+          message: |
+            tg-search 发布新版本
+            版本: ${{ github.ref_name }}
+            仓库: ${{ github.repository }}
+            发布人: ${{ github.actor }}
+            Release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+            更新内容:
+            ${{ steps.release_notes.outputs.body }}

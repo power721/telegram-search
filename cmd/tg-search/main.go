@@ -113,6 +113,7 @@ func run(configPath string) error {
 	eventBroker := taskpkg.NewEventBroker()
 	adminAuth := adminauth.NewService(users)
 	storageUsage := storage.NewUsageService(cfg)
+	imageCache := storage.NewMediaCache(cfg)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
 	telegramCredentials := repository.NewTelegramCredentialsProvider(settings)
 	telegramRuntime := telegram.RuntimeConfigFromConfig(cfg.Telegram)
@@ -196,7 +197,7 @@ func run(configPath string) error {
 	cleanupScheduler := scheduler.New(scheduler.Options{
 		Interval: time.Hour,
 		Jobs: []scheduler.Job{
-			scheduler.CleanupJob{Logger: logs.App},
+			scheduler.CleanupJob{Logger: logs.App, MediaCache: imageCache},
 		},
 		Logger: logs.App,
 	})
@@ -205,7 +206,7 @@ func run(configPath string) error {
 
 	router := api.NewRouter(api.Dependencies{
 		Logger: logs.App,
-		Users:  users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, RuntimeConfig: cfg, StorageUsage: storageUsage,
+		Users:  users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminAuth, RuntimeConfig: cfg, StorageUsage: storageUsage, ImageCache: imageCache,
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, RemoteSearchExec: remoteSearchService, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,

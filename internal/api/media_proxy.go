@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 
 	"tg-search/internal/model"
 	"tg-search/internal/retry"
+	"tg-search/internal/storage"
 	"tg-search/internal/telegram"
 )
 
@@ -124,10 +126,22 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	if !ok {
 		return
 	}
+	cacheKey := storage.MediaCacheKey(media.file)
+	if entry, hit := h.mediaImageCacheGet(c.Request.Context(), cacheKey); hit {
+		h.serveImageData(c, media, http.DetectContentType(entry.Data), entry.Data)
+		return
+	}
 	var image telegram.ImageFile
 	err := h.runMediaDownload(c.Request.Context(), func() error {
+		if entry, hit := h.mediaImageCacheGet(c.Request.Context(), cacheKey); hit {
+			image = telegram.ImageFile{Data: entry.Data, MIMEType: http.DetectContentType(entry.Data)}
+			return nil
+		}
 		var err error
 		image, err = h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
+		if err == nil {
+			h.mediaImageCacheSet(c.Request.Context(), cacheKey, image.Data)
+		}
 		return err
 	})
 	if err != nil {
@@ -139,15 +153,43 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	if mime == "" {
 		mime = http.DetectContentType(image.Data)
 	}
+	h.serveImageData(c, media, mime, image.Data)
+}
+
+func (h handlers) serveImageData(c *gin.Context, media mediaRequest, mime string, data []byte) {
+	if mime == "" {
+		mime = http.DetectContentType(data)
+	}
 	c.Header("Content-Type", mime)
-	c.Header("Content-Length", strconv.Itoa(len(image.Data)))
+	c.Header("Content-Length", strconv.Itoa(len(data)))
 	c.Header("Cache-Control", "public, max-age=86400")
-	setMediaMetadataHeaders(c, media.file, int64(len(image.Data)))
+	setMediaMetadataHeaders(c, media.file, int64(len(data)))
 	if c.Request.Method == http.MethodHead {
 		c.Status(http.StatusOK)
 		return
 	}
-	c.Data(http.StatusOK, mime, image.Data)
+	c.Data(http.StatusOK, mime, data)
+}
+
+func (h handlers) mediaImageCacheGet(ctx context.Context, key string) (storage.MediaCacheEntry, bool) {
+	if h.deps.ImageCache == nil {
+		return storage.MediaCacheEntry{}, false
+	}
+	entry, hit, err := h.deps.ImageCache.Get(ctx, key)
+	if err != nil {
+		h.deps.Logger.Warn("read image proxy cache failed", zap.Error(err))
+		return storage.MediaCacheEntry{}, false
+	}
+	return entry, hit
+}
+
+func (h handlers) mediaImageCacheSet(ctx context.Context, key string, data []byte) {
+	if h.deps.ImageCache == nil {
+		return
+	}
+	if err := h.deps.ImageCache.Set(ctx, key, data); err != nil {
+		h.deps.Logger.Warn("write image proxy cache failed", zap.Error(err))
+	}
 }
 
 func setMediaMetadataHeaders(c *gin.Context, file model.FileResult, size int64) {

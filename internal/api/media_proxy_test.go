@@ -383,6 +383,47 @@ func TestServeTelegramImage(t *testing.T) {
 	}
 }
 
+func TestServeTelegramImageUsesLocalCache(t *testing.T) {
+	deps := testDeps(t)
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	accountID, _ := deps.Accounts.Save(context.Background(), model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(context.Background(), model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	stored, _ := deps.Messages.SaveBatch(context.Background(), []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, err := deps.Files.SaveBatch(context.Background(), stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	fake := &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}}
+	deps.Telegram = fake
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	for i := 0; i < 2; i++ {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/888", time.Now().Add(time.Hour)), nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("request %d status = %d body=%s, want 200", i+1, w.Code, w.Body.String())
+		}
+		if !bytes.Equal(w.Body.Bytes(), png) {
+			t.Fatalf("request %d body = %x, want cached png", i+1, w.Body.Bytes())
+		}
+	}
+	if got := fake.downloadImageCalls(); got != 1 {
+		t.Fatalf("image download calls = %d, want 1", got)
+	}
+}
+
 func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
 	deps := testDeps(t)
 	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
@@ -612,6 +653,7 @@ type mediaProxyClient struct {
 	image       telegram.ImageFile
 	videoErr    error
 	imageErr    error
+	imageCalls  int
 	data        []byte
 	session     telegram.AccountSession
 	channel     telegram.MediaChannelRef
@@ -662,6 +704,9 @@ func (f *mediaProxyClient) DownloadMessageImage(ctx context.Context, session tel
 		return telegram.ImageFile{}, err
 	}
 	defer f.leave()
+	f.mu.Lock()
+	f.imageCalls++
+	f.mu.Unlock()
 	f.session = session
 	f.channel = channel
 	f.msgID = messageID
@@ -669,6 +714,12 @@ func (f *mediaProxyClient) DownloadMessageImage(ctx context.Context, session tel
 		return telegram.ImageFile{}, f.imageErr
 	}
 	return f.image, nil
+}
+
+func (f *mediaProxyClient) downloadImageCalls() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.imageCalls
 }
 
 func (f *mediaProxyClient) enter(ctx context.Context) error {

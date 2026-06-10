@@ -39,6 +39,7 @@ type Dependencies struct {
 	AdminAuth        *adminauth.Service
 	RuntimeConfig    config.Config
 	StorageUsage     *storage.UsageService
+	ImageCache       *storage.MediaCache
 	Accounts         *repository.AccountRepository
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
@@ -93,6 +94,9 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	}
 	if h.deps.QRLogins == nil {
 		h.deps.QRLogins = NewQRLoginStore(2 * time.Minute)
+	}
+	if h.deps.ImageCache == nil && h.deps.RuntimeConfig.Storage.Path != "" {
+		h.deps.ImageCache = storage.NewMediaCache(h.deps.RuntimeConfig)
 	}
 	api := router.Group("/api")
 	api.GET("/health", h.health)

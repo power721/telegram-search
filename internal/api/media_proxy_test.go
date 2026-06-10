@@ -433,6 +433,75 @@ func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
 	}
 }
 
+func TestUpdateRuntimeSettingsAppliesMediaConcurrencyImmediately(t *testing.T) {
+	deps := testDeps(t)
+	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
+	ctx := context.Background()
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 100,
+		AccessHash:        200,
+		Title:             "NewQuark",
+		Username:          "NewQuark",
+		Type:              model.ChannelTypeChannel,
+	})
+	stored, _ := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 12345,
+		MessageType: "photo", MediaSummary: "photo", Text: "poster", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	_, err := deps.Files.SaveBatch(ctx, stored[0].ID, []model.File{{TelegramFileID: 888, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", SizeBytes: int64(len(png))}})
+	if err != nil {
+		t.Fatalf("save file: %v", err)
+	}
+	fake := &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}, delay: 20 * time.Millisecond}
+	deps.Telegram = fake
+	deps.MediaLimiter = medialimit.New(1)
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/settings/runtime", strings.NewReader(`{
+		"sync":{"workers":8,"history_batch_size":250,"telegram_request_interval":"1500ms"},
+		"storage":{"max_db_size":30000000000,"max_media_cache":40000000000},
+		"telegram":{
+			"proxy":"",
+			"reconnect_timeout":"6m",
+			"dial_timeout":"15s",
+			"rate_limit":{"enabled":true,"rate_per_second":12,"burst":6},
+			"stream":{"concurrency":4,"buffers":8,"chunk_timeout":"30s"},
+			"media":{"concurrency":2}
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put runtime settings status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, signedMediaPath(t, key, "/i/888", time.Now().Add(time.Hour)), nil)
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusOK {
+				t.Errorf("status = %d body=%s, want 200", w.Code, w.Body.String())
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if got := fake.maxActive(); got != 2 {
+		t.Fatalf("max active media downloads = %d, want 2", got)
+	}
+}
+
 func TestServeTelegramImageHead(t *testing.T) {
 	deps := testDeps(t)
 	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}

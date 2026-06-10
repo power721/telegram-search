@@ -415,6 +415,9 @@ func (h handlers) updateRuntimeSettings(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	if h.deps.MediaLimiter != nil {
+		h.deps.MediaLimiter.Update(settings.Telegram.Media.Concurrency)
+	}
 	c.JSON(http.StatusOK, settings)
 }
 

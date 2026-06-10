@@ -4,11 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiGet, apiPost, apiPut, setAPIKey } from '@/api/client'
 import SettingsView from './SettingsView.vue'
 
+const messageMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn()
+}))
+
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual<typeof import('naive-ui')>('naive-ui')
   return {
     ...actual,
-    useMessage: () => ({ error: vi.fn(), success: vi.fn() })
+    useMessage: () => messageMocks
   }
 })
 
@@ -401,6 +406,22 @@ describe('SettingsView', () => {
         }
       }
     })
+    expect(messageMocks.success).toHaveBeenCalledWith('媒体下载并发已立即生效，其余运行参数重启后生效')
+  })
+
+  it('keeps restart-only success text when media concurrency is unchanged', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    await wrapper.get('[data-testid="runtime-workers-input"]').setValue('8')
+    await wrapper.get('[data-testid="save-runtime-settings"]').trigger('click')
+    await flushPromises()
+
+    expect(messageMocks.success).toHaveBeenCalledWith('运行参数已保存，重启后生效')
   })
 
   it('updates Telegram API credentials from the settings page', async () => {

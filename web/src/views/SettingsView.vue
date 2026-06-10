@@ -30,6 +30,7 @@ const versionInfo = ref<VersionInfoResponse | null>(null)
 const versionLoading = ref(false)
 const versionError = ref('')
 const systemInfo = ref<SystemInfoResponse | null>(null)
+const currentRuntimeSettings = ref<RuntimeSettings | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
 const runtimeForm = ref({
@@ -191,10 +192,13 @@ async function updateRuntimeSettings() {
   }
   runtimeLoading.value = true
   try {
+    const mediaConcurrencyChanged =
+      Boolean(currentRuntimeSettings.value) &&
+      currentRuntimeSettings.value?.telegram.media.concurrency !== payload.telegram.media.concurrency
     const saved = await apiPut<RuntimeSettings>('/api/settings/runtime', payload)
     fillRuntimeForm(saved)
     await loadStorageUsage()
-    message.success('运行参数已保存，重启后生效')
+    message.success(mediaConcurrencyChanged ? '媒体下载并发已立即生效，其余运行参数重启后生效' : '运行参数已保存，重启后生效')
   } catch (error) {
     message.error(error instanceof Error ? error.message : '无法保存运行参数')
   } finally {
@@ -232,6 +236,7 @@ function formatBytes(value = 0) {
 }
 
 function fillRuntimeForm(settings: RuntimeSettings) {
+  currentRuntimeSettings.value = settings
   runtimeForm.value = {
     workers: String(settings.sync.workers),
     historyBatchSize: String(settings.sync.history_batch_size),
@@ -487,7 +492,7 @@ function versionStatusText() {
         <section class="panel runtime-panel">
           <div class="panel-header">
             <h2>运行参数</h2>
-            <span class="restart-note">保存后重启生效</span>
+            <span class="restart-note">除媒体下载并发外，保存后重启生效</span>
           </div>
           <n-form class="runtime-form" @submit.prevent="updateRuntimeSettings">
             <div class="runtime-section">
@@ -556,7 +561,7 @@ function versionStatusText() {
                 <n-form-item label="分片超时">
                   <n-input v-model:value="runtimeForm.streamChunkTimeout" data-testid="runtime-stream-timeout-input" />
                 </n-form-item>
-                <n-form-item label="媒体下载并发">
+                <n-form-item label="媒体下载并发（立即生效）">
                   <n-input v-model:value="runtimeForm.mediaConcurrency" data-testid="runtime-media-concurrency-input" inputmode="numeric" />
                 </n-form-item>
               </div>

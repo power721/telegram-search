@@ -4323,6 +4323,20 @@ func TestChannelControlAPIUpdatesProfileAndToggles(t *testing.T) {
 	if stored.SyncState != "pending" || stored.ListenState != "enabled" {
 		t.Fatalf("stored states = sync:%q listen:%q, want pending/enabled", stored.SyncState, stored.ListenState)
 	}
+	tasks, err := deps.TaskRepository.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeHistorySync})
+	if err != nil {
+		t.Fatalf("list history sync tasks: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("history sync tasks len = %d, want 1", len(tasks))
+	}
+	var payload taskpkg.HistorySyncPayload
+	if err := json.Unmarshal([]byte(tasks[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode history sync payload: %v", err)
+	}
+	if payload.ChannelID != channelID || payload.MaxMessages != 100 || len(payload.ChannelIDs) != 0 {
+		t.Fatalf("history sync payload = %+v, want channel_id %d max_messages 100", payload, channelID)
+	}
 }
 
 func TestBatchChannelControlAPIUpdatesSelectedChannels(t *testing.T) {
@@ -4379,6 +4393,56 @@ func TestBatchChannelControlAPIUpdatesSelectedChannels(t *testing.T) {
 		if stored.SyncState != "pending" || stored.ListenState != "enabled" {
 			t.Fatalf("stored channel %d states = sync:%q listen:%q, want pending/enabled", id, stored.SyncState, stored.ListenState)
 		}
+	}
+	tasks, err := deps.TaskRepository.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeHistorySync})
+	if err != nil {
+		t.Fatalf("list history sync tasks: %v", err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("history sync tasks len = %d, want 1", len(tasks))
+	}
+	var payload taskpkg.HistorySyncPayload
+	if err := json.Unmarshal([]byte(tasks[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode history sync payload: %v", err)
+	}
+	if !reflect.DeepEqual(payload.ChannelIDs, []int64{channel1, channel2}) || payload.MaxMessages != 100 || payload.ChannelID != 0 {
+		t.Fatalf("history sync payload = %+v, want channel_ids [%d %d] max_messages 100", payload, channel1, channel2)
+	}
+}
+
+func TestChannelControlAPIDoesNotQueueHistorySyncWhenListenAlreadyEnabled(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:         accountID,
+		TelegramChannelID: 63,
+		Title:             "Already Listening",
+		Type:              model.ChannelTypeChannel,
+		ListenEnabled:     true,
+		ListenState:       "enabled",
+	})
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPatch, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/control", bytes.NewBufferString(`{
+		"history_sync_enabled": false,
+		"sync_profile": "Normal",
+		"listen_enabled": true,
+		"remote_search_allowed": false
+	}`))
+	withAdminSession(t, deps, req)
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	tasks, err := deps.TaskRepository.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeHistorySync})
+	if err != nil {
+		t.Fatalf("list history sync tasks: %v", err)
+	}
+	if len(tasks) != 0 {
+		t.Fatalf("history sync tasks len = %d, want 0", len(tasks))
 	}
 }
 

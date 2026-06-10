@@ -46,6 +46,7 @@ const (
 )
 const apiLoggerKey = "api.logger"
 const apiKeyIDKey = "api.key_id"
+const listenHistorySyncMaxMessages = 100
 
 func (h handlers) health(c *gin.Context) {
 	resp := gin.H{
@@ -1437,6 +1438,11 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 	if !ok {
 		return
 	}
+	before, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusNotFound, err)
+		return
+	}
 	if err := h.deps.Channels.UpdateControl(c.Request.Context(), id, control); err != nil {
 		errorJSON(c, http.StatusNotFound, err)
 		return
@@ -1445,6 +1451,15 @@ func (h handlers) updateChannelControl(c *gin.Context) {
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
+	}
+	if h.shouldEnqueueListenHistorySync(before, item) {
+		if _, err := h.enqueueHistorySyncTaskPayload(c.Request.Context(), taskpkg.HistorySyncPayload{
+			ChannelID:   item.ID,
+			MaxMessages: listenHistorySyncMaxMessages,
+		}); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	c.JSON(http.StatusOK, localizeChannel(item))
 }
@@ -1471,6 +1486,20 @@ func (h handlers) updateChannelsControl(c *gin.Context) {
 	if !ok {
 		return
 	}
+	beforeByID := map[int64]model.Channel{}
+	seenBefore := map[int64]struct{}{}
+	for _, id := range req.ChannelIDs {
+		if _, ok := seenBefore[id]; ok {
+			continue
+		}
+		seenBefore[id] = struct{}{}
+		item, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+		if err != nil {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		beforeByID[id] = item
+	}
 	if err := h.deps.Channels.UpdateControls(c.Request.Context(), req.ChannelIDs, control); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			errorJSON(c, http.StatusNotFound, err)
@@ -1493,7 +1522,33 @@ func (h handlers) updateChannelsControl(c *gin.Context) {
 		}
 		items = append(items, item)
 	}
+	listenSyncChannelIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		if h.shouldEnqueueListenHistorySync(beforeByID[item.ID], item) {
+			listenSyncChannelIDs = append(listenSyncChannelIDs, item.ID)
+		}
+	}
+	if len(listenSyncChannelIDs) > 0 {
+		if _, err := h.enqueueHistorySyncTaskPayload(c.Request.Context(), taskpkg.HistorySyncPayload{
+			ChannelIDs:  listenSyncChannelIDs,
+			MaxMessages: listenHistorySyncMaxMessages,
+		}); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"items": localizeChannels(items)})
+}
+
+func (h handlers) shouldEnqueueListenHistorySync(before model.Channel, after model.Channel) bool {
+	if h.deps.Tasks == nil {
+		return false
+	}
+	return !channelListenEnabled(before) && channelListenEnabled(after)
+}
+
+func channelListenEnabled(channel model.Channel) bool {
+	return channel.ListenEnabled || channel.ListenState == "enabled"
 }
 
 func (h handlers) validateChannelControl(c *gin.Context, control model.ChannelControl) (model.ChannelControl, bool) {
@@ -1738,19 +1793,27 @@ func (h handlers) syncChannels(c *gin.Context) {
 }
 
 func (h handlers) enqueueHistorySyncTask(c *gin.Context, payload taskpkg.HistorySyncPayload) {
-	task, err := h.deps.Tasks.Enqueue(c.Request.Context(), model.TaskTypeHistorySync, payload)
+	task, err := h.enqueueHistorySyncTaskPayload(c.Request.Context(), payload)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	localized := localizeTask(task)
-	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: localized})
 	c.JSON(http.StatusAccepted, gin.H{
 		"task_id": task.ID,
 		"job_id":  strconv.FormatInt(task.ID, 10),
 		"status":  task.Status,
 		"task":    localized,
 	})
+}
+
+func (h handlers) enqueueHistorySyncTaskPayload(ctx context.Context, payload taskpkg.HistorySyncPayload) (model.Task, error) {
+	task, err := h.deps.Tasks.Enqueue(ctx, model.TaskTypeHistorySync, payload)
+	if err != nil {
+		return model.Task{}, err
+	}
+	h.publishEvent(taskpkg.Event{Type: taskpkg.EventTaskUpdated, Payload: localizeTask(task)})
+	return task, nil
 }
 
 func (h handlers) checkChannelWebAccess(c *gin.Context) {

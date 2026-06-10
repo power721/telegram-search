@@ -32,12 +32,25 @@ const versionError = ref('')
 const systemInfo = ref<SystemInfoResponse | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
+type SizeUnit = 'GB' | 'MB' | 'B'
+const sizeUnitOptions: Array<{ label: string; value: SizeUnit }> = [
+  { label: 'GB', value: 'GB' },
+  { label: 'MB', value: 'MB' },
+  { label: 'B', value: 'B' }
+]
+const sizeUnitMultipliers: Record<SizeUnit, number> = {
+  GB: 1_000_000_000,
+  MB: 1_000_000,
+  B: 1
+}
 const runtimeForm = ref({
   workers: '',
   historyBatchSize: '',
   telegramRequestInterval: '',
   maxDBSize: '',
+  maxDBSizeUnit: 'GB' as SizeUnit,
   maxMediaCache: '',
+  maxMediaCacheUnit: 'GB' as SizeUnit,
   proxy: '',
   reconnectTimeout: '',
   dialTimeout: '',
@@ -231,13 +244,27 @@ function formatBytes(value = 0) {
   return `${value} B`
 }
 
+function splitSizeForInput(bytes: number) {
+  if (bytes > 0 && bytes % sizeUnitMultipliers.GB === 0) {
+    return { value: String(bytes / sizeUnitMultipliers.GB), unit: 'GB' as SizeUnit }
+  }
+  if (bytes > 0 && bytes % sizeUnitMultipliers.MB === 0) {
+    return { value: String(bytes / sizeUnitMultipliers.MB), unit: 'MB' as SizeUnit }
+  }
+  return { value: String(bytes), unit: 'B' as SizeUnit }
+}
+
 function fillRuntimeForm(settings: RuntimeSettings) {
+  const maxDBSize = splitSizeForInput(settings.storage.max_db_size)
+  const maxMediaCache = splitSizeForInput(settings.storage.max_media_cache)
   runtimeForm.value = {
     workers: String(settings.sync.workers),
     historyBatchSize: String(settings.sync.history_batch_size),
     telegramRequestInterval: settings.sync.telegram_request_interval,
-    maxDBSize: String(settings.storage.max_db_size),
-    maxMediaCache: String(settings.storage.max_media_cache),
+    maxDBSize: maxDBSize.value,
+    maxDBSizeUnit: maxDBSize.unit,
+    maxMediaCache: maxMediaCache.value,
+    maxMediaCacheUnit: maxMediaCache.unit,
     proxy: settings.telegram.proxy,
     reconnectTimeout: settings.telegram.reconnect_timeout,
     dialTimeout: settings.telegram.dial_timeout,
@@ -259,8 +286,8 @@ function runtimePayload(): RuntimeSettings {
       telegram_request_interval: runtimeForm.value.telegramRequestInterval.trim()
     },
     storage: {
-      max_db_size: positiveInteger(runtimeForm.value.maxDBSize),
-      max_media_cache: positiveInteger(runtimeForm.value.maxMediaCache)
+      max_db_size: sizeLimitBytes(runtimeForm.value.maxDBSize, runtimeForm.value.maxDBSizeUnit),
+      max_media_cache: sizeLimitBytes(runtimeForm.value.maxMediaCache, runtimeForm.value.maxMediaCacheUnit)
     },
     telegram: {
       proxy: runtimeForm.value.proxy.trim(),
@@ -289,6 +316,10 @@ function positiveInteger(value: string) {
     throw new Error('invalid positive integer')
   }
   return parsed
+}
+
+function sizeLimitBytes(value: string, unit: SizeUnit) {
+  return positiveInteger(value) * sizeUnitMultipliers[unit]
 }
 
 function versionStatusText() {
@@ -458,21 +489,35 @@ function versionStatusText() {
             </div>
           </dl>
           <n-form class="runtime-form storage-limit-form" @submit.prevent="updateRuntimeSettings">
-            <n-form-item label="数据库容量上限（字节）">
-              <n-input
-                v-model:value="runtimeForm.maxDBSize"
-                data-testid="runtime-max-db-size-input"
-                inputmode="numeric"
-                placeholder="10000000000"
-              />
+            <n-form-item label="数据库容量上限">
+              <div class="size-limit-row">
+                <n-input
+                  v-model:value="runtimeForm.maxDBSize"
+                  data-testid="runtime-max-db-size-input"
+                  inputmode="numeric"
+                  placeholder="10"
+                />
+                <n-select
+                  v-model:value="runtimeForm.maxDBSizeUnit"
+                  data-testid="runtime-max-db-size-unit"
+                  :options="sizeUnitOptions"
+                />
+              </div>
             </n-form-item>
-            <n-form-item label="媒体缓存上限（字节）">
-              <n-input
-                v-model:value="runtimeForm.maxMediaCache"
-                data-testid="runtime-max-media-cache-input"
-                inputmode="numeric"
-                placeholder="20000000000"
-              />
+            <n-form-item label="媒体缓存上限">
+              <div class="size-limit-row">
+                <n-input
+                  v-model:value="runtimeForm.maxMediaCache"
+                  data-testid="runtime-max-media-cache-input"
+                  inputmode="numeric"
+                  placeholder="20"
+                />
+                <n-select
+                  v-model:value="runtimeForm.maxMediaCacheUnit"
+                  data-testid="runtime-max-media-cache-unit"
+                  :options="sizeUnitOptions"
+                />
+              </div>
             </n-form-item>
             <div class="form-actions">
               <n-button data-testid="save-runtime-storage" type="primary" :loading="runtimeLoading" @click="updateRuntimeSettings">
@@ -688,6 +733,13 @@ function versionStatusText() {
   margin-top: 16px;
 }
 
+.size-limit-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 92px;
+  width: 100%;
+}
+
 .runtime-section {
   border-top: 1px solid var(--app-border);
   display: grid;
@@ -797,6 +849,10 @@ dd {
 
 @media (max-width: 520px) {
   .api-key-field {
+    grid-template-columns: 1fr;
+  }
+
+  .size-limit-row {
     grid-template-columns: 1fr;
   }
 }

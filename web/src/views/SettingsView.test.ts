@@ -161,6 +161,21 @@ const stubs = {
       />
     `
   },
+  'n-select': {
+    props: ['value', 'options'],
+    emits: ['update:value'],
+    template: `
+      <select
+        :data-testid="$attrs['data-testid']"
+        :value="value"
+        @change="$emit('update:value', $event.target.value)"
+      >
+        <option v-for="option in options" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
+    `
+  },
   'n-button': {
     emits: ['click'],
     template: `<button :data-testid="$attrs['data-testid']" @click="$emit('click')"><slot /></button>`
@@ -351,14 +366,19 @@ describe('SettingsView', () => {
 
     expect(apiGet).toHaveBeenCalledWith('/api/settings/runtime')
     expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-workers-input"]').element.value).toBe('5')
-    expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-max-db-size-input"]').element.value).toBe('15000000000')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-max-db-size-input"]').element.value).toBe('15')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="runtime-max-db-size-unit"]').element.value).toBe('GB')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-max-media-cache-input"]').element.value).toBe('25')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="runtime-max-media-cache-unit"]').element.value).toBe('GB')
     expect(wrapper.get<HTMLInputElement>('[data-testid="runtime-rate-enabled-input"]').element.checked).toBe(true)
 
     await wrapper.get('[data-testid="runtime-workers-input"]').setValue('8')
     await wrapper.get('[data-testid="runtime-history-batch-size-input"]').setValue('250')
     await wrapper.get('[data-testid="runtime-request-interval-input"]').setValue('1500ms')
-    await wrapper.get('[data-testid="runtime-max-db-size-input"]').setValue('30000000000')
-    await wrapper.get('[data-testid="runtime-max-media-cache-input"]').setValue('40000000000')
+    await wrapper.get('[data-testid="runtime-max-db-size-input"]').setValue('512')
+    await wrapper.get('[data-testid="runtime-max-db-size-unit"]').setValue('MB')
+    await wrapper.get('[data-testid="runtime-max-media-cache-input"]').setValue('2')
+    await wrapper.get('[data-testid="runtime-max-media-cache-unit"]').setValue('GB')
     await wrapper.get('[data-testid="runtime-proxy-input"]').setValue('socks5://127.0.0.1:1080')
     await wrapper.get('[data-testid="runtime-reconnect-timeout-input"]').setValue('6m')
     await wrapper.get('[data-testid="runtime-dial-timeout-input"]').setValue('15s')
@@ -379,8 +399,8 @@ describe('SettingsView', () => {
         telegram_request_interval: '1500ms'
       },
       storage: {
-        max_db_size: 30_000_000_000,
-        max_media_cache: 40_000_000_000
+        max_db_size: 512_000_000,
+        max_media_cache: 2_000_000_000
       },
       telegram: {
         proxy: 'socks5://127.0.0.1:1080',

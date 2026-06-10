@@ -244,6 +244,7 @@ func run(configPath string) error {
 			tgbot.NewRuntime(tgbot.RuntimeOptions{
 				Settings:      settings,
 				Defaults:      cfg.Bot,
+				Accounts:      accounts,
 				Resources:     resourceService,
 				SavedSearches: savedSearches,
 				Subscriptions: botSubscriptions,

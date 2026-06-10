@@ -51,7 +51,16 @@ type Update struct {
 
 type Message struct {
 	Chat Chat   `json:"chat"`
+	From *User  `json:"from,omitempty"`
 	Text string `json:"text"`
+}
+
+type User struct {
+	ID        int64  `json:"id"`
+	IsBot     bool   `json:"is_bot"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	Username  string `json:"username"`
 }
 
 type Chat struct {
@@ -188,6 +197,7 @@ func (a *API) do(req *http.Request, out any) error {
 
 type Bot struct {
 	api           BotAPI
+	accounts      *repository.AccountRepository
 	resources     *resource.Service
 	savedSearches *repository.SavedSearchRepository
 	subscriptions *repository.TelegramBotSubscriptionRepository
@@ -197,6 +207,7 @@ type Bot struct {
 
 type BotOptions struct {
 	API           BotAPI
+	Accounts      *repository.AccountRepository
 	Resources     *resource.Service
 	SavedSearches *repository.SavedSearchRepository
 	Subscriptions *repository.TelegramBotSubscriptionRepository
@@ -207,7 +218,7 @@ func NewBot(opts BotOptions) *Bot {
 	if opts.Logger == nil {
 		opts.Logger = zap.NewNop()
 	}
-	return &Bot{api: opts.API, resources: opts.Resources, savedSearches: opts.SavedSearches, subscriptions: opts.Subscriptions, logger: opts.Logger}
+	return &Bot{api: opts.API, accounts: opts.Accounts, resources: opts.Resources, savedSearches: opts.SavedSearches, subscriptions: opts.Subscriptions, logger: opts.Logger}
 }
 
 func (b *Bot) Name() string {
@@ -229,17 +240,56 @@ func (b *Bot) Run(ctx context.Context) error {
 		if update.Message == nil {
 			continue
 		}
-		if err := b.rememberChat(ctx, update.Message.Chat); err != nil {
-			b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
-		}
 		if strings.TrimSpace(update.Message.Text) == "" {
 			continue
+		}
+		allowed, err := b.authorizeMessage(ctx, *update.Message)
+		if err != nil {
+			b.logger.Warn("telegram bot authorization failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
+			continue
+		}
+		if !allowed {
+			if err := b.api.SendMessage(ctx, update.Message.Chat.ID, "This Telegram account is not authorized to use this bot."); err != nil {
+				b.logger.Warn("telegram bot authorization response failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
+			}
+			continue
+		}
+		if err := b.rememberChat(ctx, update.Message.Chat); err != nil {
+			b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
 		}
 		if err := b.handleMessage(ctx, *update.Message); err != nil {
 			b.logger.Warn("telegram bot command failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
 		}
 	}
 	return nil
+}
+
+func (b *Bot) authorizeMessage(ctx context.Context, msg Message) (bool, error) {
+	if b.accounts == nil {
+		return false, nil
+	}
+	telegramUserID := messageTelegramUserID(msg)
+	if telegramUserID <= 0 {
+		return false, nil
+	}
+	_, err := b.accounts.FindByTelegramUserID(ctx, telegramUserID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func messageTelegramUserID(msg Message) int64 {
+	if msg.From != nil && msg.From.ID > 0 {
+		return msg.From.ID
+	}
+	if msg.Chat.ID > 0 && (msg.Chat.Type == "" || msg.Chat.Type == "private") {
+		return msg.Chat.ID
+	}
+	return 0
 }
 
 func (b *Bot) rememberChat(ctx context.Context, chat Chat) error {

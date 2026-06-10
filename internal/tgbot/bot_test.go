@@ -66,7 +66,7 @@ func TestBotCommands(t *testing.T) {
 	subs := repository.NewTelegramBotSubscriptionRepository(conn)
 	resources := resource.NewService(links, files)
 
-	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", TelegramUserID: 42, Status: model.AccountStatusOnline})
 	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "电影频道", Type: model.ChannelTypeChannel})
 	stored, err := messages.SaveBatch(ctx, []model.Message{{
 		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
@@ -83,7 +83,7 @@ func TestBotCommands(t *testing.T) {
 		{UpdateID: 2, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscribe 哪吒3"}},
 		{UpdateID: 3, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
 	}}
-	bot := NewBot(BotOptions{API: api, Resources: resources, SavedSearches: searches, Subscriptions: subs})
+	bot := NewBot(BotOptions{API: api, Accounts: accounts, Resources: resources, SavedSearches: searches, Subscriptions: subs})
 	if err := bot.Run(ctx); err != nil {
 		t.Fatalf("run bot: %v", err)
 	}
@@ -105,6 +105,38 @@ func TestBotCommands(t *testing.T) {
 	}
 	if len(chats) != 1 || chats[0].ChatID != 42 {
 		t.Fatalf("bot chats = %+v, want chat 42", chats)
+	}
+}
+
+func TestBotRejectsUnknownTelegramAccount(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	accounts := repository.NewAccountRepository(conn)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	api := &fakeAPI{updates: []Update{
+		{UpdateID: 1, Message: &Message{Chat: Chat{ID: 99, Type: "private"}, Text: "/subscribe secret"}},
+	}}
+	bot := NewBot(BotOptions{API: api, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
+	if err := bot.Run(ctx); err != nil {
+		t.Fatalf("run bot: %v", err)
+	}
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].text, "not authorized") {
+		t.Fatalf("sent = %+v, want authorization rejection", api.sent)
+	}
+	items, err := searches.FindAll(ctx)
+	if err != nil {
+		t.Fatalf("find saved searches: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("saved searches = %+v, want none", items)
+	}
+	chats, err := subs.FindChats(ctx)
+	if err != nil {
+		t.Fatalf("find bot chats: %v", err)
+	}
+	if len(chats) != 0 {
+		t.Fatalf("bot chats = %+v, want none", chats)
 	}
 }
 
@@ -244,8 +276,12 @@ func TestFormatMatchMessageLinksPrivateTelegramMessage(t *testing.T) {
 func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
 	ctx := context.Background()
 	conn := setupBotDB(t)
+	accounts := repository.NewAccountRepository(conn)
 	searches := repository.NewSavedSearchRepository(conn)
 	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	if _, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", TelegramUserID: 42, Status: model.AccountStatusOnline}); err != nil {
+		t.Fatalf("save account: %v", err)
+	}
 	searchID, err := searches.Create(ctx, model.SavedSearch{
 		Name:           "网页订阅",
 		Keyword:        "哪吒3",
@@ -261,7 +297,7 @@ func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
 		{UpdateID: 2, Message: &Message{Chat: Chat{ID: 42}, Text: fmt.Sprintf("/subscribe %d", searchID)}},
 		{UpdateID: 3, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
 	}}
-	bot := NewBot(BotOptions{API: api, SavedSearches: searches, Subscriptions: subs})
+	bot := NewBot(BotOptions{API: api, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
 	if err := bot.Run(ctx); err != nil {
 		t.Fatalf("run bot: %v", err)
 	}
@@ -287,8 +323,12 @@ func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
 func TestBotUnsubscribeAcceptsSavedSearchIDFallback(t *testing.T) {
 	ctx := context.Background()
 	conn := setupBotDB(t)
+	accounts := repository.NewAccountRepository(conn)
 	searches := repository.NewSavedSearchRepository(conn)
 	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	if _, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", TelegramUserID: 42, Status: model.AccountStatusOnline}); err != nil {
+		t.Fatalf("save account: %v", err)
+	}
 	if _, err := searches.Create(ctx, model.SavedSearch{Name: "翘楚", Keyword: "翘楚", NotifyTelegram: true, Enabled: true}); err != nil {
 		t.Fatalf("create first saved search: %v", err)
 	}
@@ -311,7 +351,7 @@ func TestBotUnsubscribeAcceptsSavedSearchIDFallback(t *testing.T) {
 		{UpdateID: 2, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
 		{UpdateID: 3, Message: &Message{Chat: Chat{ID: 42}, Text: "/unsubscribe 99"}},
 	}}
-	bot := NewBot(BotOptions{API: api, SavedSearches: searches, Subscriptions: subs})
+	bot := NewBot(BotOptions{API: api, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
 	if err := bot.Run(ctx); err != nil {
 		t.Fatalf("run bot: %v", err)
 	}
@@ -333,9 +373,13 @@ func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 	ctx := context.Background()
 	conn := setupBotDB(t)
 	settings := repository.NewSettingsRepository(conn)
+	accounts := repository.NewAccountRepository(conn)
 	searches := repository.NewSavedSearchRepository(conn)
 	subs := repository.NewTelegramBotSubscriptionRepository(conn)
 	deliveries := repository.NewNotificationDeliveryRepository(conn)
+	if _, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", TelegramUserID: 42, Status: model.AccountStatusOnline}); err != nil {
+		t.Fatalf("save account: %v", err)
+	}
 	firstAPI := &fakeAPI{updates: []Update{{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/help"}}}}
 	secondAPI := &fakeAPI{updates: []Update{{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/help"}}}}
 	now := time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC)
@@ -348,6 +392,7 @@ func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 			}
 			return firstAPI
 		},
+		Accounts:      accounts,
 		SavedSearches: searches,
 		Subscriptions: subs,
 		Deliveries:    deliveries,

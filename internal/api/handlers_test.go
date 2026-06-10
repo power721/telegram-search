@@ -974,12 +974,69 @@ func TestSetupAndAuthAPIs(t *testing.T) {
 	}
 }
 
+func TestSetupAndSettingsRequireAdminAfterBootstrap(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/admin", bytes.NewBufferString(`{"username":"second","password":"password123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("second setup admin code = %d body=%s, want 403", w.Code, w.Body.String())
+	}
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodPost, "/api/setup/api-key", ""},
+		{http.MethodPost, "/api/setup/telegram-api", `{"app_id":123456,"app_hash":"hash-secret"}`},
+		{http.MethodPost, "/api/setup/listen-rules", `{"message_types":["text"],"link_types":["cloud_drive"]}`},
+		{http.MethodPost, "/api/setup/complete", ""},
+		{http.MethodGet, "/api/settings/telegram-api", ""},
+		{http.MethodPut, "/api/settings/telegram-api", `{"app_id":123456,"app_hash":"hash-secret"}`},
+		{http.MethodGet, "/api/settings/telegram-bot", ""},
+		{http.MethodPut, "/api/settings/telegram-bot", `{"enabled":false,"poll_interval":"5s"}`},
+		{http.MethodGet, "/api/settings/runtime", ""},
+		{http.MethodPut, "/api/settings/runtime", `{"sync":{"workers":1,"history_batch_size":100,"telegram_request_interval":"1s"},"storage":{"max_db_size":1000000000,"max_media_cache":1000000000},"telegram":{"reconnect_timeout":"1m","dial_timeout":"10s","rate_limit":{"enabled":true,"rate_per_second":1,"burst":1},"stream":{"concurrency":1,"buffers":1,"chunk_timeout":"10s"},"media":{"concurrency":1}}}`},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			var body io.Reader
+			if tc.body != "" {
+				body = strings.NewReader(tc.body)
+			}
+			req := httptest.NewRequest(tc.method, tc.path, body)
+			if tc.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			router.ServeHTTP(w, req)
+			if w.Code != http.StatusUnauthorized {
+				t.Fatalf("unauthenticated %s %s code = %d body=%s, want 401", tc.method, tc.path, w.Code, w.Body.String())
+			}
+		})
+	}
+
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("authenticated runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+}
+
 func TestSetupAPIKeyAutoGeneratesAndSkipIsDisabled(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/setup/api-key", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("api key code = %d body=%s", w.Code, w.Body.String())
@@ -1702,8 +1759,10 @@ func TestAdminSettingsUpdatesCredentialsAndSessionUser(t *testing.T) {
 
 func createTestAPIKey(t *testing.T, router *gin.Engine) string {
 	t.Helper()
+	cookie := createAdminSession(t, router)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/setup/api-key", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create api key code = %d body=%s", w.Code, w.Body.String())
@@ -1742,7 +1801,7 @@ func createAdminSession(t *testing.T, router *gin.Engine) *http.Cookie {
 	req := httptest.NewRequest(http.MethodPost, "/api/setup/admin", bytes.NewBufferString(`{"username":"admin","password":"password123"}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
-	if w.Code != http.StatusCreated {
+	if w.Code != http.StatusCreated && w.Code != http.StatusForbidden {
 		t.Fatalf("create admin code = %d body=%s", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
@@ -1776,6 +1835,7 @@ func withAdminSession(t *testing.T, deps Dependencies, req *http.Request) *http.
 func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/setup/listen-rules", bytes.NewBufferString(`{
@@ -1785,6 +1845,7 @@ func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
 		"link_types":["cloud_drive","magnet","ed2k","other"]
 	}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup listen rules code = %d body=%s", w.Code, w.Body.String())
@@ -1801,9 +1862,11 @@ func TestSetupListenRulesMarksStepConfigured(t *testing.T) {
 func TestTelegramAPISettings(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/settings/telegram-api", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get default telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1813,6 +1876,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":0,"app_hash":""}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup telegram api skip code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1825,6 +1889,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":""}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("partial setup telegram api code = %d body=%s, want 400", w.Code, w.Body.String())
@@ -1833,6 +1898,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/setup/telegram-api", bytes.NewBufferString(`{"app_id":123456,"app_hash":"hash-secret"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("setup telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1844,6 +1910,7 @@ func TestTelegramAPISettings(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/settings/telegram-api", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1856,6 +1923,7 @@ func TestTelegramAPISettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-api", bytes.NewBufferString(`{"app_id":654321,"app_hash":"new-hash-secret"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put telegram api code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1870,9 +1938,11 @@ func TestTelegramBotSettings(t *testing.T) {
 	deps := testDeps(t)
 	deps.RuntimeConfig.Bot.PollInterval = config.Duration(3 * time.Second)
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/settings/telegram-bot", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get default telegram bot code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1882,6 +1952,7 @@ func TestTelegramBotSettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"poll_interval":"5s"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("put enabled telegram bot without token code = %d body=%s, want 400", w.Code, w.Body.String())
@@ -1890,6 +1961,7 @@ func TestTelegramBotSettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"token":"bot-secret","poll_interval":"5s"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put telegram bot code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1902,6 +1974,7 @@ func TestTelegramBotSettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/settings/telegram-bot", bytes.NewBufferString(`{"enabled":true,"token":"","poll_interval":"10s"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put telegram bot preserving token code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1931,9 +2004,11 @@ func TestRuntimeSettings(t *testing.T) {
 	deps.RuntimeConfig.Telegram.Stream = config.TelegramStreamConfig{Concurrency: 2, Buffers: 4, ChunkTimeout: config.Duration(20 * time.Second)}
 	deps.RuntimeConfig.Telegram.Media = config.TelegramMediaConfig{Concurrency: 2}
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1964,6 +2039,7 @@ func TestRuntimeSettings(t *testing.T) {
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/settings/runtime", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1980,6 +2056,7 @@ func TestRuntimeSettings(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("get saved runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
@@ -1995,6 +2072,7 @@ func TestRuntimeSettings(t *testing.T) {
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/runtime", bytes.NewBufferString(`{
@@ -2009,6 +2087,7 @@ func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("invalid runtime settings code = %d body=%s, want 400", w.Code, w.Body.String())

@@ -160,6 +160,15 @@ func readFrontendFile(dist fs.FS, name string) ([]byte, error) {
 }
 
 func (h handlers) setupAdmin(c *gin.Context) {
+	count, err := h.deps.Users.Count(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	if count > 0 {
+		errorText(c, http.StatusForbidden, "admin already configured")
+		return
+	}
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -176,6 +185,9 @@ func (h handlers) setupAdmin(c *gin.Context) {
 }
 
 func (h handlers) setupAPIKey(c *gin.Context) {
+	if !h.allowSetupWrite(c) {
+		return
+	}
 	resp, err := h.deps.APIKeyService.EnsureActive(c.Request.Context())
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
@@ -243,6 +255,9 @@ func (h handlers) updateAdminSettings(c *gin.Context) {
 }
 
 func (h handlers) setupListenRules(c *gin.Context) {
+	if !h.allowSetupWrite(c) {
+		return
+	}
 	var req model.ListenRules
 	if !bindJSON(c, &req) {
 		return
@@ -346,6 +361,9 @@ func emptyListenRules() model.ListenRules {
 }
 
 func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
+	if !h.allowSetupWrite(c) {
+		return
+	}
 	settings, ok := readSetupTelegramAPISettingsRequest(c)
 	if !ok {
 		return
@@ -362,6 +380,9 @@ func (h handlers) saveSetupTelegramAPI(c *gin.Context) {
 }
 
 func (h handlers) setupComplete(c *gin.Context) {
+	if !h.allowSetupWrite(c) {
+		return
+	}
 	if err := h.deps.Settings.Set(c.Request.Context(), "setup.complete", `true`); err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
@@ -372,6 +393,23 @@ func (h handlers) setupComplete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+func (h handlers) allowSetupWrite(c *gin.Context) bool {
+	status, err := h.loadSetupStatus(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return false
+	}
+	if !status.AdminConfigured {
+		errorText(c, http.StatusForbidden, "admin is required")
+		return false
+	}
+	if h.hasAdminSession(c) {
+		return true
+	}
+	errorText(c, http.StatusUnauthorized, "not authenticated")
+	return false
 }
 
 func (h handlers) getTelegramAPISettings(c *gin.Context) {

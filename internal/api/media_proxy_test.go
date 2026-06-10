@@ -500,6 +500,7 @@ func TestUpdateRuntimeSettingsAppliesMediaConcurrencyImmediately(t *testing.T) {
 	deps.MediaLimiter = medialimit.New(1)
 	router := NewRouter(deps)
 	key := createTestAPIKey(t, router)
+	cookie := createAdminSession(t, router)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/runtime", strings.NewReader(`{
@@ -515,6 +516,7 @@ func TestUpdateRuntimeSettingsAppliesMediaConcurrencyImmediately(t *testing.T) {
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("put runtime settings status = %d body=%s, want 200", w.Code, w.Body.String())

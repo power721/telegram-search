@@ -87,14 +87,40 @@ const webhookForm = ref({
 })
 const deliveries = ref<NotificationDelivery[]>([])
 const deliveryLoading = ref(false)
+const notificationEventLabels: Record<string, string> = {
+  'resource.created': '资源创建',
+  'resource.updated': '资源更新',
+  'saved_search.matched': '搜索订阅匹配',
+  'task.completed': '任务完成',
+  'task.failed': '任务失败',
+  'account.offline': '账号离线',
+  'channel.sync.completed': '频道同步完成'
+}
+const notificationTargetLabels: Record<string, string> = {
+  webhook: 'Webhook',
+  telegram: 'Telegram 消息',
+  saved_search: '搜索订阅'
+}
+const notificationDeliveryStatusLabels: Record<string, string> = {
+  pending: '待发送',
+  running: '发送中',
+  succeeded: '发送成功',
+  failed: '发送失败'
+}
+const telegramChatTypeLabels: Record<string, string> = {
+  private: '私聊',
+  group: '群组',
+  supergroup: '超级群组',
+  channel: '频道'
+}
 const notificationEventOptions = [
-  { value: 'resource.created', label: 'resource.created' },
-  { value: 'resource.updated', label: 'resource.updated' },
-  { value: 'saved_search.matched', label: 'saved_search.matched' },
-  { value: 'task.completed', label: 'task.completed' },
-  { value: 'task.failed', label: 'task.failed' },
-  { value: 'account.offline', label: 'account.offline' },
-  { value: 'channel.sync.completed', label: 'channel.sync.completed' }
+  { value: 'resource.created', label: notificationEventLabels['resource.created'] },
+  { value: 'resource.updated', label: notificationEventLabels['resource.updated'] },
+  { value: 'saved_search.matched', label: notificationEventLabels['saved_search.matched'] },
+  { value: 'task.completed', label: notificationEventLabels['task.completed'] },
+  { value: 'task.failed', label: notificationEventLabels['task.failed'] },
+  { value: 'account.offline', label: notificationEventLabels['account.offline'] },
+  { value: 'channel.sync.completed', label: notificationEventLabels['channel.sync.completed'] }
 ]
 const savedSearchCategoryOptions = [
   { label: '全部大类', value: '' },
@@ -279,7 +305,7 @@ async function loadTelegramBotSettings() {
     telegramBotForm.value.pollInterval = telegramBotSettings.value.poll_interval || '3s'
     telegramBotForm.value.token = ''
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '无法加载 Telegram Bot')
+    message.error(error instanceof Error ? error.message : '无法加载 Telegram 机器人')
   }
 }
 
@@ -421,9 +447,9 @@ async function updateTelegramBot() {
     telegramBotForm.value.enabled = telegramBotSettings.value.enabled
     telegramBotForm.value.pollInterval = telegramBotSettings.value.poll_interval
     telegramBotForm.value.token = ''
-    message.success('Telegram Bot 已保存并生效')
+    message.success('Telegram 机器人已保存并生效')
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '无法保存 Telegram Bot')
+    message.error(error instanceof Error ? error.message : '无法保存 Telegram 机器人')
   } finally {
     telegramBotLoading.value = false
   }
@@ -553,7 +579,35 @@ function savedSearchPayload() {
 function telegramBotChatLabel(chat: TelegramBotChat) {
   const name = chat.title || (chat.username ? `@${chat.username}` : [chat.first_name, chat.last_name].filter(Boolean).join(' '))
   const base = name || String(chat.chat_id)
-  return chat.type ? `${base} (${chat.type})` : base
+  return chat.type ? `${base} (${telegramChatTypeLabel(chat.type)})` : base
+}
+
+function telegramChatTypeLabel(type: string) {
+  return telegramChatTypeLabels[type] ?? type
+}
+
+function notificationEventLabel(type: string) {
+  return notificationEventLabels[type] ?? type
+}
+
+function notificationTargetLabel(type: string) {
+  return notificationTargetLabels[type] ?? type
+}
+
+function notificationDeliveryStatusLabel(status: string) {
+  return notificationDeliveryStatusLabels[status] ?? status
+}
+
+function savedSearchNotificationLabels(item: SavedSearch) {
+  return [
+    item.notify_rss ? 'RSS 订阅' : '',
+    item.notify_webhook ? 'Webhook' : '',
+    item.notify_telegram ? 'Telegram 消息' : ''
+  ].filter(Boolean).join(' / ') || '-'
+}
+
+function webhookEventLabels(events: string[]) {
+  return events.map((event) => notificationEventLabel(event)).join('，')
 }
 
 async function saveWebhook() {
@@ -1093,21 +1147,21 @@ function versionStatusText() {
         <div class="notification-layout">
           <section class="panel bot-panel">
             <div class="panel-header">
-              <h2>Telegram Bot</h2>
+              <h2>Telegram 机器人</h2>
             </div>
             <n-form class="notification-form bot-form" @submit.prevent="updateTelegramBot">
               <label class="checkbox-row">
                 <input v-model="telegramBotForm.enabled" data-testid="telegram-bot-enabled-input" type="checkbox" />
-                启用 Bot
+                启用机器人
               </label>
               <div class="notification-grid">
-                <n-form-item label="Bot Token">
+                <n-form-item label="机器人令牌">
                   <n-input
                     v-model:value="telegramBotForm.token"
                     data-testid="telegram-bot-token-input"
                     type="password"
                     autocomplete="off"
-                    :placeholder="telegramBotSettings?.token_set ? '已设置，输入新 Token 保存' : '请输入 Bot Token'"
+                    :placeholder="telegramBotSettings?.token_set ? '已设置，输入新令牌后保存' : '请输入机器人令牌'"
                   />
                 </n-form-item>
                 <n-form-item label="轮询间隔">
@@ -1178,10 +1232,10 @@ function versionStatusText() {
                       clearable
                       :loading="telegramBotChatsLoading"
                       :options="telegramBotChatOptions"
-                      placeholder="选择已和 Bot 对话的接收人"
+                      placeholder="选择已和机器人对话的接收人"
                     />
                     <p v-if="!telegramBotChatsLoading && telegramBotChats.length === 0" class="form-hint">
-                      先在 Telegram 里给 Bot 发送 /start 后可选择接收人。
+                      先在 Telegram 里给机器人发送 /start 后可选择接收人。
                     </p>
                   </n-form-item>
                 </div>
@@ -1196,7 +1250,7 @@ function versionStatusText() {
                   </label>
                   <label class="checkbox-row">
                     <input v-model="savedSearchForm.notifyTelegram" data-testid="saved-search-notify-telegram-input" type="checkbox" />
-                    Telegram
+                    Telegram 消息
                   </label>
                   <label class="checkbox-row">
                     <input v-model="savedSearchForm.enabled" data-testid="saved-search-enabled-input" type="checkbox" />
@@ -1228,7 +1282,7 @@ function versionStatusText() {
                     <tr v-for="item in savedSearches" :key="item.id">
                       <td>{{ item.name }}</td>
                       <td>{{ item.keyword }}</td>
-                      <td>{{ [item.notify_rss ? 'RSS' : '', item.notify_webhook ? 'Webhook' : '', item.notify_telegram ? 'Telegram' : ''].filter(Boolean).join(' / ') || '-' }}</td>
+                      <td>{{ savedSearchNotificationLabels(item) }}</td>
                       <td>{{ item.enabled ? '启用' : '停用' }}</td>
                       <td class="table-actions">
                         <n-button size="tiny" secondary @click="editSavedSearch(item)">编辑</n-button>
@@ -1258,7 +1312,7 @@ function versionStatusText() {
                   <n-form-item label="URL">
                     <n-input v-model:value="webhookForm.url" data-testid="webhook-url-input" placeholder="https://example.com/hook" />
                   </n-form-item>
-                  <n-form-item label="Secret">
+                  <n-form-item label="签名密钥">
                     <n-input
                       v-model:value="webhookForm.secret"
                       data-testid="webhook-secret-input"
@@ -1307,7 +1361,7 @@ function versionStatusText() {
                     <tr v-for="item in webhooks" :key="item.id">
                       <td>{{ item.name }}</td>
                       <td class="url-cell">{{ item.url }}</td>
-                      <td>{{ item.events.join(', ') }}</td>
+                      <td>{{ webhookEventLabels(item.events) }}</td>
                       <td>{{ item.enabled ? '启用' : '停用' }}</td>
                       <td class="table-actions">
                         <n-button size="tiny" secondary @click="editWebhook(item)">编辑</n-button>
@@ -1346,9 +1400,9 @@ function versionStatusText() {
                     <td colspan="6">加载中</td>
                   </tr>
                   <tr v-for="item in deliveries" :key="item.id">
-                    <td>{{ item.event_type }}</td>
-                    <td>{{ item.target_type }} #{{ item.target_id }}</td>
-                    <td>{{ item.status }}</td>
+                    <td>{{ notificationEventLabel(item.event_type) }}</td>
+                    <td>{{ notificationTargetLabel(item.target_type) }} #{{ item.target_id }}</td>
+                    <td>{{ notificationDeliveryStatusLabel(item.status) }}</td>
                     <td>{{ item.retry_count }}</td>
                     <td>{{ formatTime(item.created_at) }}</td>
                     <td class="url-cell">{{ item.last_error || '-' }}</td>

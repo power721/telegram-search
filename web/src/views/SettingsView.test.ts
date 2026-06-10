@@ -612,6 +612,27 @@ describe('SettingsView', () => {
     expect(apiDelete).toHaveBeenCalledWith('/api/webhooks/20')
   })
 
+  it('renders notification integration enum values in Chinese', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+    await wrapper.get<HTMLInputElement>('[data-testid="saved-search-notify-telegram-input"]').setValue(true)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Telegram 机器人')
+    expect(wrapper.text()).toContain('@harold (私聊)')
+    expect(wrapper.text()).toContain('资源创建')
+    expect(wrapper.text()).toContain('发送成功')
+    expect(wrapper.text()).toContain('Telegram 消息')
+    expect(wrapper.text()).toContain('Webhook')
+    expect(wrapper.text()).not.toContain('resource.created')
+    expect(wrapper.text()).not.toContain('succeeded')
+    expect(wrapper.text()).not.toContain('(private)')
+  })
+
   it('keeps API key and Telegram API panels in the right security column', async () => {
     const wrapper = mount(SettingsView, {
       global: {

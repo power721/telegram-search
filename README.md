@@ -14,7 +14,7 @@ tg-search 是一个自托管的 Telegram 资源搜索服务。它使用个人 Te
 推荐使用 Docker。脚本会拉取 `haroldli/tg-search:latest`，创建/复用 `tg-search-data` 数据卷，启动容器并尝试打开管理界面：
 
 ```bash
-scripts/install-docker.sh
+curl -fsSL https://raw.githubusercontent.com/power721/tg-search/refs/heads/main/scripts/install-docker.sh | bash
 ```
 
 指定端口或不自动打开浏览器：

@@ -122,7 +122,7 @@ async function finish() {
         <div>
           <p class="eyebrow">首次运行设置</p>
           <h1>选择频道</h1>
-          <p class="page-subtitle">选择首次启用索引和实时监听的频道。</p>
+          <p class="page-subtitle">选择首次启用索引和实时监听的频道。选择的频道才能搜索。</p>
         </div>
         <n-button :loading="channels.loading" @click="loadChannels">刷新</n-button>
       </div>

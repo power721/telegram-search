@@ -385,6 +385,21 @@ CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_saved_search ON telegr
 CREATE INDEX IF NOT EXISTS idx_telegram_bot_subscriptions_chat ON telegram_bot_subscriptions(chat_id, enabled);
 `,
 	},
+	{
+		version: 9,
+		name:    "telegram_bot_sent_resources",
+		sql: `
+CREATE TABLE IF NOT EXISTS telegram_bot_sent_resources (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER NOT NULL,
+  resource_id TEXT NOT NULL,
+  created_at DATETIME NOT NULL,
+  UNIQUE(chat_id, resource_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_bot_sent_resources_chat ON telegram_bot_sent_resources(chat_id);
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

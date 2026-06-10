@@ -33,6 +33,7 @@ const (
 type BotAPI interface {
 	GetUpdates(context.Context, int64) ([]Update, error)
 	SendMessage(context.Context, int64, string) error
+	SetCommands(context.Context, []BotCommand) error
 }
 
 type API struct {
@@ -53,6 +54,11 @@ type Message struct {
 
 type Chat struct {
 	ID int64 `json:"id"`
+}
+
+type BotCommand struct {
+	Command     string `json:"command"`
+	Description string `json:"description"`
 }
 
 type apiResponse[T any] struct {
@@ -92,6 +98,20 @@ func (a *API) SendMessage(ctx context.Context, chatID int64, text string) error 
 		return err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint("sendMessage"), bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	var resp apiResponse[json.RawMessage]
+	return a.do(req, &resp)
+}
+
+func (a *API) SetCommands(ctx context.Context, commands []BotCommand) error {
+	body, err := json.Marshal(map[string]any{"commands": commands})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint("setMyCommands"), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -237,7 +257,26 @@ func (b *Bot) handleSubscribe(ctx context.Context, chatID int64, keyword string)
 	}
 	keyword = strings.TrimSpace(keyword)
 	if keyword == "" {
-		return b.api.SendMessage(ctx, chatID, "Usage: /subscribe <keyword>")
+		return b.api.SendMessage(ctx, chatID, "Usage: /subscribe <keyword or saved_search_id>")
+	}
+	if id, ok := parseSavedSearchID(keyword); ok {
+		search, err := b.savedSearches.FindByID(ctx, id)
+		if err == nil {
+			if !search.Enabled {
+				return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Saved search #%d is disabled.", search.ID))
+			}
+			if !search.NotifyTelegram {
+				return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Saved search #%d is not enabled for Telegram notifications.", search.ID))
+			}
+			subID, err := b.subscriptions.Create(ctx, model.TelegramBotSubscription{ChatID: chatID, SavedSearchID: search.ID, Enabled: true})
+			if err != nil {
+				return err
+			}
+			return b.api.SendMessage(ctx, chatID, fmt.Sprintf("Subscribed #%d to saved search #%d: %s", subID, search.ID, firstText(search.Name, search.Keyword)))
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
 	}
 	searchID, err := b.savedSearches.Create(ctx, model.SavedSearch{
 		Name:           keyword,
@@ -281,12 +320,42 @@ func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
 	if err != nil {
 		return err
 	}
-	if len(items) == 0 {
-		return b.api.SendMessage(ctx, chatID, "No subscriptions.")
+	lines := []string{}
+	subscribedSearches := map[int64]struct{}{}
+	if len(items) > 0 {
+		lines = append(lines, "My subscriptions:")
 	}
-	lines := []string{"Subscriptions:"}
 	for _, item := range items {
-		lines = append(lines, fmt.Sprintf("#%d %s", item.ID, item.Keyword))
+		subscribedSearches[item.SavedSearchID] = struct{}{}
+		lines = append(lines, fmt.Sprintf("#%d saved #%d %s", item.ID, item.SavedSearchID, firstText(item.SavedSearch, item.Keyword)))
+	}
+	if b.savedSearches != nil {
+		searches, err := b.savedSearches.FindAll(ctx)
+		if err != nil {
+			return err
+		}
+		available := []model.SavedSearch{}
+		for _, search := range searches {
+			if !search.Enabled || !search.NotifyTelegram {
+				continue
+			}
+			if _, ok := subscribedSearches[search.ID]; ok {
+				continue
+			}
+			available = append(available, search)
+		}
+		if len(available) > 0 {
+			if len(lines) > 0 {
+				lines = append(lines, "")
+			}
+			lines = append(lines, "Available saved searches:")
+			for _, search := range available {
+				lines = append(lines, fmt.Sprintf("saved #%d %s - /subscribe %d", search.ID, firstText(search.Name, search.Keyword), search.ID))
+			}
+		}
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "No subscriptions. Use /subscribe <keyword> or create a saved search in Settings.")
 	}
 	return b.api.SendMessage(ctx, chatID, strings.Join(lines, "\n"))
 }
@@ -373,8 +442,22 @@ func (d *DeliveryDispatcher) deliver(ctx context.Context, delivery model.Notific
 	if err := json.Unmarshal([]byte(delivery.PayloadJSON), &match); err != nil {
 		return d.markTerminalFailure(ctx, delivery, "invalid telegram delivery payload")
 	}
+	if match.ResourceID != "" {
+		sent, err := d.subscriptions.ResourceSent(ctx, sub.ChatID, match.ResourceID)
+		if err != nil {
+			return err
+		}
+		if sent {
+			return d.deliveries.MarkSucceeded(ctx, delivery.ID, d.now())
+		}
+	}
 	if err := d.api.SendMessage(ctx, sub.ChatID, formatMatchMessage(match)); err != nil {
 		return d.markRetryableFailure(ctx, delivery, err.Error())
+	}
+	if match.ResourceID != "" {
+		if err := d.subscriptions.MarkResourceSent(ctx, sub.ChatID, match.ResourceID); err != nil {
+			d.logger.Warn("mark telegram resource sent failed", zap.Int64("delivery_id", delivery.ID), zap.Error(err))
+		}
 	}
 	return d.deliveries.MarkSucceeded(ctx, delivery.ID, d.now())
 }
@@ -415,11 +498,32 @@ func splitCommand(text string) (string, string) {
 	return command, arg
 }
 
+func parseSavedSearchID(value string) (int64, bool) {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "#")
+	value = strings.TrimPrefix(value, "saved:")
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return 0, false
+	}
+	return id, true
+}
+
+func DefaultCommands() []BotCommand {
+	return []BotCommand{
+		{Command: "search", Description: "Search resources"},
+		{Command: "subscribe", Description: "Subscribe to a keyword or saved search ID"},
+		{Command: "subscriptions", Description: "List my subscriptions and available saved searches"},
+		{Command: "unsubscribe", Description: "Remove a subscription"},
+		{Command: "help", Description: "Show command help"},
+	}
+}
+
 func helpText() string {
 	return strings.Join([]string{
 		"tg-search bot commands:",
 		"/search <keyword>",
-		"/subscribe <keyword>",
+		"/subscribe <keyword or saved_search_id>",
 		"/unsubscribe <subscription_id>",
 		"/subscriptions",
 	}, "\n")

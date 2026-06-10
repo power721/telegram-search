@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"tg-search/internal/model"
@@ -77,6 +78,39 @@ ORDER BY s.id`, savedSearchID)
 	}
 	defer rows.Close()
 	return scanTelegramBotSubscriptions(rows)
+}
+
+func (r *TelegramBotSubscriptionRepository) ResourceSent(ctx context.Context, chatID int64, resourceID string) (bool, error) {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return false, nil
+	}
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
+SELECT id
+FROM telegram_bot_sent_resources
+WHERE chat_id = ? AND resource_id = ?`, chatID, resourceID).Scan(&id)
+	if err == nil {
+		return true, nil
+	}
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return false, fmt.Errorf("check telegram sent resource: %w", err)
+}
+
+func (r *TelegramBotSubscriptionRepository) MarkResourceSent(ctx context.Context, chatID int64, resourceID string) error {
+	resourceID = strings.TrimSpace(resourceID)
+	if resourceID == "" {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT OR IGNORE INTO telegram_bot_sent_resources (chat_id, resource_id, created_at)
+VALUES (?, ?, ?)`, chatID, resourceID, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("mark telegram sent resource: %w", err)
+	}
+	return nil
 }
 
 func scanTelegramBotSubscriptions(rows *sql.Rows) ([]model.TelegramBotSubscription, error) {

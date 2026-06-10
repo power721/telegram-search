@@ -23,11 +23,13 @@ type Runtime struct {
 	logger        *zap.Logger
 	now           func() time.Time
 
-	token      string
-	interval   time.Duration
-	nextRun    time.Time
-	bot        *Bot
-	dispatcher *DeliveryDispatcher
+	token       string
+	interval    time.Duration
+	nextRun     time.Time
+	api         BotAPI
+	bot         *Bot
+	dispatcher  *DeliveryDispatcher
+	commandsSet bool
 }
 
 type RuntimeOptions struct {
@@ -93,6 +95,12 @@ func (r *Runtime) Run(ctx context.Context) error {
 		r.interval = interval
 		r.nextRun = time.Time{}
 	}
+	if !r.commandsSet && r.api != nil {
+		if err := r.api.SetCommands(ctx, DefaultCommands()); err != nil {
+			return err
+		}
+		r.commandsSet = true
+	}
 	now := r.now()
 	if !r.nextRun.IsZero() && now.Before(r.nextRun) {
 		return nil
@@ -117,6 +125,8 @@ func (r *Runtime) configure(token string, interval time.Duration) {
 	r.token = token
 	r.interval = interval
 	r.nextRun = time.Time{}
+	r.api = api
+	r.commandsSet = false
 	r.bot = NewBot(BotOptions{
 		API:           api,
 		Resources:     r.resources,

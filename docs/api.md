@@ -263,6 +263,7 @@ complete
 ### `PUT /api/settings/telegram-bot`
 
 保存 Telegram Bot 设置。`token` 为空时沿用已有 Token；启用 Bot 且没有已保存 Token 时会返回 `400`。保存后由后台 Bot runtime 自动生效，无需重启服务。
+启用后 runtime 会调用 Telegram `setMyCommands` 注册命令菜单。
 
 ```json
 {

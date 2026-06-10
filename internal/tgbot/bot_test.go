@@ -3,6 +3,7 @@ package tgbot
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,8 +17,9 @@ import (
 )
 
 type fakeAPI struct {
-	updates []Update
-	sent    []sentMessage
+	updates  []Update
+	sent     []sentMessage
+	commands []BotCommand
 }
 
 type sentMessage struct {
@@ -37,6 +39,11 @@ func (f *fakeAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error
 
 func (f *fakeAPI) SendMessage(ctx context.Context, chatID int64, text string) error {
 	f.sent = append(f.sent, sentMessage{chatID: chatID, text: text})
+	return nil
+}
+
+func (f *fakeAPI) SetCommands(ctx context.Context, commands []BotCommand) error {
+	f.commands = append([]BotCommand{}, commands...)
 	return nil
 }
 
@@ -133,6 +140,111 @@ func TestDeliveryDispatcherSendsTelegramMatch(t *testing.T) {
 	}
 }
 
+func TestDeliveryDispatcherSkipsDuplicateResourceForSameChat(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	deliveries := repository.NewNotificationDeliveryRepository(conn)
+	firstSearchID, err := searches.Create(ctx, model.SavedSearch{Name: "香港", Keyword: "香港", NotifyTelegram: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("create first saved search: %v", err)
+	}
+	secondSearchID, err := searches.Create(ctx, model.SavedSearch{Name: "地图", Keyword: "地图", NotifyTelegram: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("create second saved search: %v", err)
+	}
+	firstSubID, err := subs.Create(ctx, model.TelegramBotSubscription{ChatID: 42, SavedSearchID: firstSearchID, Enabled: true})
+	if err != nil {
+		t.Fatalf("create first subscription: %v", err)
+	}
+	secondSubID, err := subs.Create(ctx, model.TelegramBotSubscription{ChatID: 42, SavedSearchID: secondSearchID, Enabled: true})
+	if err != nil {
+		t.Fatalf("create second subscription: %v", err)
+	}
+	payload := `{"saved_search_id":1,"saved_search_name":"香港","keyword":"香港","resource_id":"link:https://115cdn.com/s/swsz4fd3zrk?password=t58d","resource_title":"香港探秘地图","resource_type":"115","resource_category":"cloud_drive","resource_url":"https://115cdn.com/s/swsz4fd3zrk?password=t58d","source_channel_id":1,"source_channel_name":"LEO网盘搜集","telegram_message_id":9,"datetime":"2026-06-10T12:00:00Z"}`
+	firstDeliveryID, err := deliveries.Create(ctx, model.NotificationDelivery{
+		EventType:   model.NotificationEventSavedSearchMatched,
+		TargetType:  model.NotificationTargetTelegram,
+		TargetID:    firstSubID,
+		PayloadJSON: payload,
+	})
+	if err != nil {
+		t.Fatalf("create first delivery: %v", err)
+	}
+	secondDeliveryID, err := deliveries.Create(ctx, model.NotificationDelivery{
+		EventType:   model.NotificationEventSavedSearchMatched,
+		TargetType:  model.NotificationTargetTelegram,
+		TargetID:    secondSubID,
+		PayloadJSON: payload,
+	})
+	if err != nil {
+		t.Fatalf("create second delivery: %v", err)
+	}
+	api := &fakeAPI{}
+	dispatcher := NewDeliveryDispatcher(DeliveryDispatcherOptions{
+		API:           api,
+		Deliveries:    deliveries,
+		Subscriptions: subs,
+		Now:           func() time.Time { return time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC) },
+	})
+	if err := dispatcher.Run(ctx); err != nil {
+		t.Fatalf("run dispatcher: %v", err)
+	}
+	if len(api.sent) != 1 || !strings.Contains(api.sent[0].text, "香港探秘地图") {
+		t.Fatalf("sent = %+v, want one resource message", api.sent)
+	}
+	for _, id := range []int64{firstDeliveryID, secondDeliveryID} {
+		stored, err := deliveries.FindByID(ctx, id)
+		if err != nil {
+			t.Fatalf("find delivery %d: %v", id, err)
+		}
+		if stored.Status != model.NotificationDeliverySucceeded || stored.DeliveredAt == nil {
+			t.Fatalf("delivery %d = %+v, want succeeded", id, stored)
+		}
+	}
+}
+
+func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	searchID, err := searches.Create(ctx, model.SavedSearch{
+		Name:           "网页订阅",
+		Keyword:        "哪吒3",
+		NotifyRSS:      true,
+		NotifyTelegram: true,
+		Enabled:        true,
+	})
+	if err != nil {
+		t.Fatalf("create saved search: %v", err)
+	}
+	api := &fakeAPI{updates: []Update{
+		{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
+		{UpdateID: 2, Message: &Message{Chat: Chat{ID: 42}, Text: fmt.Sprintf("/subscribe %d", searchID)}},
+		{UpdateID: 3, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
+	}}
+	bot := NewBot(BotOptions{API: api, SavedSearches: searches, Subscriptions: subs})
+	if err := bot.Run(ctx); err != nil {
+		t.Fatalf("run bot: %v", err)
+	}
+	if len(api.sent) != 3 {
+		t.Fatalf("sent = %+v, want 3 messages", api.sent)
+	}
+	if !strings.Contains(api.sent[0].text, "Available saved searches:") ||
+		!strings.Contains(api.sent[0].text, fmt.Sprintf("saved #%d", searchID)) ||
+		!strings.Contains(api.sent[0].text, "/subscribe") {
+		t.Fatalf("first subscriptions response = %q, want available web saved search", api.sent[0].text)
+	}
+	if !strings.Contains(api.sent[1].text, fmt.Sprintf("saved search #%d", searchID)) {
+		t.Fatalf("subscribe response = %q, want bound saved search", api.sent[1].text)
+	}
+	if !strings.Contains(api.sent[2].text, "My subscriptions:") || strings.Contains(api.sent[2].text, "Available saved searches:") {
+		t.Fatalf("second subscriptions response = %q, want only bound subscription", api.sent[2].text)
+	}
+}
+
 func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 	ctx := context.Background()
 	conn := setupBotDB(t)
@@ -173,6 +285,9 @@ func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 	if len(firstAPI.sent) != 1 || !strings.Contains(firstAPI.sent[0].text, "/search <keyword>") {
 		t.Fatalf("first token sent = %+v, want help message", firstAPI.sent)
 	}
+	if len(firstAPI.commands) == 0 || firstAPI.commands[0].Command != "search" {
+		t.Fatalf("first token commands = %+v, want menu commands", firstAPI.commands)
+	}
 	now = now.Add(time.Second)
 	if err := runtime.Run(ctx); err != nil {
 		t.Fatalf("run before interval: %v", err)
@@ -188,6 +303,9 @@ func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 	}
 	if len(secondAPI.sent) != 1 {
 		t.Fatalf("second token sent = %+v, want one message", secondAPI.sent)
+	}
+	if len(secondAPI.commands) == 0 || secondAPI.commands[0].Command != "search" {
+		t.Fatalf("second token commands = %+v, want menu commands", secondAPI.commands)
 	}
 }
 

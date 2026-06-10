@@ -876,6 +876,31 @@ GET /api/channels?account_id=1
 }
 ```
 
+投递请求为 `POST`，`Content-Type` 是 `application/json`：
+
+```json
+{
+  "event_type": "saved_search.matched",
+  "delivery_id": 1,
+  "created_at": "2026-06-10T12:00:00Z",
+  "payload": {
+    "saved_search_id": 1,
+    "keyword": "哪吒3",
+    "resource_title": "哪吒3 4K"
+  }
+}
+```
+
+请求头：
+
+| Header | 说明 |
+| --- | --- |
+| `X-TG-Search-Event` | 事件类型。 |
+| `X-TG-Search-Delivery` | 投递记录 ID。 |
+| `X-TG-Search-Signature` | 配置 `secret` 时返回 `sha256=<hmac>`。 |
+
+非 2xx 响应会标记失败并按退避时间重试。达到最大重试次数后保留为 `failed` 且不再调度。
+
 ### `GET /api/webhooks/:id`
 
 返回单个 Webhook 配置。

@@ -93,6 +93,39 @@ LIMIT ? OFFSET ?`, args...)
 	return out, rows.Err()
 }
 
+func (r *NotificationDeliveryRepository) DueWebhookDeliveries(ctx context.Context, now time.Time, limit int) ([]model.NotificationDelivery, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, event_type, target_type, target_id, payload_json, status, retry_count, last_error, next_run_at, delivered_at, created_at, updated_at
+FROM notification_deliveries
+WHERE target_type = ?
+  AND (
+    (status = ? AND (next_run_at IS NULL OR next_run_at <= ?))
+    OR
+    (status = ? AND next_run_at IS NOT NULL AND next_run_at <= ?)
+  )
+ORDER BY id
+LIMIT ?`, model.NotificationTargetWebhook, model.NotificationDeliveryPending, now, model.NotificationDeliveryFailed, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find due webhook deliveries: %w", err)
+	}
+	defer rows.Close()
+	var out []model.NotificationDelivery
+	for rows.Next() {
+		item, err := scanNotificationDelivery(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (r *NotificationDeliveryRepository) MarkSucceeded(ctx context.Context, id int64, deliveredAt time.Time) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE notification_deliveries

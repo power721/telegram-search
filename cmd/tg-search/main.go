@@ -214,6 +214,19 @@ func run(configPath string) error {
 	})
 	cleanupScheduler.Start(ctx)
 	logs.App.Info("cleanup scheduler started", zap.Duration("interval", time.Hour))
+	notificationScheduler := scheduler.New(scheduler.Options{
+		Interval: 15 * time.Second,
+		Jobs: []scheduler.Job{
+			notification.NewDispatcher(notification.DispatcherOptions{
+				Deliveries: deliveries,
+				Webhooks:   webhooks,
+				Logger:     logs.App,
+			}),
+		},
+		Logger: logs.App,
+	})
+	notificationScheduler.Start(ctx)
+	logs.App.Info("notification dispatcher scheduler started", zap.Duration("interval", 15*time.Second))
 
 	router := api.NewRouter(api.Dependencies{
 		Logger: logs.App,
@@ -261,6 +274,10 @@ func run(configPath string) error {
 	logs.App.Info("api server shutdown completed")
 	if err := cleanupScheduler.Stop(shutdownCtx); err != nil {
 		logs.App.Error("cleanup scheduler stop failed", zap.Error(err))
+		return err
+	}
+	if err := notificationScheduler.Stop(shutdownCtx); err != nil {
+		logs.App.Error("notification scheduler stop failed", zap.Error(err))
 		return err
 	}
 	if err := taskWorker.Stop(shutdownCtx); err != nil {

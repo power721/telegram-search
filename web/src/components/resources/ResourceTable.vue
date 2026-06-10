@@ -228,6 +228,13 @@ function formatDate(value?: string) {
               loading="lazy"
               @error="markImageThumbFailed(item)"
             />
+            <img
+              v-if="showImageThumb(item)"
+              class="resource-thumb-preview"
+              :src="item.media?.image_url"
+              alt=""
+              aria-hidden="true"
+            />
             <span v-else class="resource-thumb resource-video-placeholder" aria-hidden="true"></span>
           </button>
           <span v-else-if="showImageThumb(item)" class="resource-thumb-frame">
@@ -508,7 +515,8 @@ function formatDate(value?: string) {
   z-index: 20;
 }
 
-.resource-thumb-frame:hover .resource-thumb-preview {
+.resource-thumb-frame:hover .resource-thumb-preview,
+.resource-thumb-button:hover .resource-thumb-preview {
   opacity: 1;
   transform: translateY(-50%) scale(1);
   visibility: visible;
@@ -657,7 +665,8 @@ function formatDate(value?: string) {
     transform-origin: top left;
   }
 
-  .resource-thumb-frame:hover .resource-thumb-preview {
+  .resource-thumb-frame:hover .resource-thumb-preview,
+  .resource-thumb-button:hover .resource-thumb-preview {
     transform: scale(1);
   }
 }

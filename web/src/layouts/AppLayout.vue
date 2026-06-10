@@ -8,8 +8,8 @@ const route = useRoute()
 const navItems = [
   { label: '首页', eyebrow: '概览', to: '/', name: 'home' },
   { label: '搜索', eyebrow: '检索', to: '/search', name: 'search' },
-  { label: '频道', eyebrow: '频道管理', to: '/channels', name: 'channels' },
   { label: '资源', eyebrow: '资源库', to: '/resources', name: 'resources' },
+  { label: '频道', eyebrow: '频道管理', to: '/channels', name: 'channels' },
   { label: '账号', eyebrow: '账号管理', to: '/accounts', name: 'accounts' },
   { label: '任务', eyebrow: '任务队列', to: '/tasks', name: 'tasks' },
   { label: '日志', eyebrow: '运行日志', to: '/logs', name: 'logs' },

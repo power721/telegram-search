@@ -13,6 +13,12 @@ type ChannelRepository struct {
 	db *sql.DB
 }
 
+type ChannelClearResult struct {
+	Messages int64 `json:"messages"`
+	Links    int64 `json:"links"`
+	Files    int64 `json:"files"`
+}
+
 func NewChannelRepository(db *sql.DB) *ChannelRepository {
 	return &ChannelRepository{db: db}
 }
@@ -143,6 +149,99 @@ WHERE id = ?`,
 		return fmt.Errorf("commit update channel controls: %w", err)
 	}
 	return nil
+}
+
+func (r *ChannelRepository) ClearIndexedData(ctx context.Context, id int64) (ChannelClearResult, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return ChannelClearResult{}, fmt.Errorf("begin clear channel data: %w", err)
+	}
+	defer tx.Rollback()
+
+	var historySyncEnabled int
+	if err := tx.QueryRowContext(ctx, `
+SELECT history_sync_enabled
+FROM telegram_channels
+WHERE id = ?`, id).Scan(&historySyncEnabled); err != nil {
+		if isNotFound(err) {
+			return ChannelClearResult{}, fmt.Errorf("%w: channel not found", sql.ErrNoRows)
+		}
+		return ChannelClearResult{}, fmt.Errorf("load channel before clear: %w", err)
+	}
+
+	var result ChannelClearResult
+	if err := tx.QueryRowContext(ctx, `
+SELECT count(*)
+FROM telegram_messages
+WHERE channel_id = ?`, id).Scan(&result.Messages); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("count channel messages: %w", err)
+	}
+	if err := tx.QueryRowContext(ctx, `
+SELECT count(*)
+FROM telegram_links
+WHERE message_id IN (SELECT id FROM telegram_messages WHERE channel_id = ?)`, id).Scan(&result.Links); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("count channel links: %w", err)
+	}
+	if err := tx.QueryRowContext(ctx, `
+SELECT count(*)
+FROM telegram_files
+WHERE message_id IN (SELECT id FROM telegram_messages WHERE channel_id = ?)`, id).Scan(&result.Files); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("count channel files: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM telegram_files
+WHERE message_id IN (SELECT id FROM telegram_messages WHERE channel_id = ?)`, id); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("delete channel files: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM telegram_links
+WHERE message_id IN (SELECT id FROM telegram_messages WHERE channel_id = ?)`, id); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("delete channel links: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM telegram_message_contents
+WHERE message_id IN (SELECT id FROM telegram_messages WHERE channel_id = ?)`, id); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("delete channel message contents: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM telegram_messages
+WHERE channel_id = ?`, id); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("delete channel messages: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM telegram_sync_cursors
+WHERE channel_id = ?`, id); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("delete channel sync cursors: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM resource_group_counts`); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("clear resource group count cache: %w", err)
+	}
+
+	syncState := "metadata_only"
+	if historySyncEnabled != 0 {
+		syncState = "pending"
+	}
+	res, err := tx.ExecContext(ctx, `
+UPDATE telegram_channels
+SET listen_enabled = 0,
+    listen_state = 'disabled',
+    sync_state = ?,
+    last_message_id = 0,
+    last_sync_time = NULL,
+    updated_at = ?
+WHERE id = ?`, syncState, time.Now().UTC(), id)
+	if err != nil {
+		return ChannelClearResult{}, fmt.Errorf("update cleared channel state: %w", err)
+	}
+	if err := requireRows(res, "channel not found"); err != nil {
+		return ChannelClearResult{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ChannelClearResult{}, fmt.Errorf("commit clear channel data: %w", err)
+	}
+	return result, nil
 }
 
 func (r *ChannelRepository) disableDuplicateOwnersTx(ctx context.Context, tx *sql.Tx, id int64, control model.ChannelControl) error {

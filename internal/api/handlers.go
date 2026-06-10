@@ -1540,6 +1540,31 @@ func (h handlers) updateChannelsControl(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": localizeChannels(items)})
 }
 
+func (h handlers) clearChannel(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	result, err := h.deps.Channels.ClearIndexedData(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) || errors.Is(err, sql.ErrNoRows) {
+			errorJSON(c, http.StatusNotFound, err)
+			return
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	item, err := h.deps.Channels.FindByID(c.Request.Context(), id)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"channel": localizeChannel(item),
+		"deleted": result,
+	})
+}
+
 func (h handlers) shouldEnqueueListenHistorySync(before model.Channel, after model.Channel) bool {
 	if h.deps.Tasks == nil {
 		return false

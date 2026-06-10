@@ -21,6 +21,7 @@ const sortDirection = ref<'asc' | 'desc'>('asc')
 const syncingChannelIds = ref(new Set<number>())
 const checkingWebAccessChannelIds = ref(new Set<number>())
 const listeningChannelIds = ref(new Set<number>())
+const clearingChannelIds = ref(new Set<number>())
 const batchCheckingWebAccess = ref(false)
 const ruleLoading = ref(false)
 const ruleSaving = ref(false)
@@ -302,6 +303,17 @@ async function toggleListening(channel: TelegramChannel) {
   }
 }
 
+async function clearChannel(channel: TelegramChannel) {
+  const confirmed = window.confirm(`清空「${channel.title}」？这会取消监听，并删除这个频道的所有消息和资源。`)
+  if (!confirmed) return
+  setLoadingChannel(clearingChannelIds, channel.id, true)
+  try {
+    await channels.clearChannel(channel.id)
+  } finally {
+    setLoadingChannel(clearingChannelIds, channel.id, false)
+  }
+}
+
 function terms(value: string) {
   return value
     .split(',')
@@ -542,6 +554,9 @@ async function useGlobalRule() {
               </n-button>
               <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
                 {{ isListeningEnabled(channel) ? '取消监听' : '监听' }}
+              </n-button>
+              <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="clearChannel(channel)">
+                清空
               </n-button>
               <n-button size="small" :loading="ruleLoading && ruleTarget?.id === channel.id" @click="openChannelRules(channel)">
                 规则

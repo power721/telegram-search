@@ -4518,6 +4518,118 @@ func TestChannelControlAPIDeepProfileChecksStorageQuota(t *testing.T) {
 	}
 }
 
+func TestClearChannelAPIStopsListeningAndDeletesIndexedData(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	lastSync := time.Now().UTC()
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{
+		AccountID:           accountID,
+		TelegramChannelID:   64,
+		Title:               "Clear Me",
+		Type:                model.ChannelTypeChannel,
+		HistorySyncEnabled:  true,
+		SyncProfile:         "Normal",
+		SyncState:           "synced",
+		ListenEnabled:       true,
+		ListenState:         "enabled",
+		RemoteSearchAllowed: true,
+		LastMessageID:       10,
+		LastSyncTime:        &lastSync,
+	})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 10, Text: "movie https://example.com/a", RawJSON: "{}", Date: time.Now().UTC()},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 11, Text: "clip", RawJSON: "{}", Date: time.Now().UTC()},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "url", URL: "https://example.com/a"}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	if _, err := deps.Files.SaveBatch(ctx, stored[1].ID, []model.File{{FileName: "clip.mp4", SizeBytes: 1024, Category: "video"}}); err != nil {
+		t.Fatalf("save files: %v", err)
+	}
+	if err := repository.NewSyncCursorRepository(deps.BackupDB).Save(ctx, model.SyncCursor{
+		AccountID: accountID, ChannelID: channelID, CursorType: "history", LastMessageID: 11, Date: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("save cursor: %v", err)
+	}
+	if err := repository.NewResourceStatsRepository(deps.BackupDB).SaveGrouped(ctx, map[string]int{"http": 1, "files": 1}); err != nil {
+		t.Fatalf("save resource stats: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/channels/"+strconv.FormatInt(channelID, 10)+"/clear", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Channel model.Channel                 `json:"channel"`
+		Deleted repository.ChannelClearResult `json:"deleted"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Deleted.Messages != 2 || body.Deleted.Links != 1 || body.Deleted.Files != 1 {
+		t.Fatalf("deleted = %+v, want 2 messages, 1 link, 1 file", body.Deleted)
+	}
+	if body.Channel.ID != channelID || body.Channel.ListenEnabled || body.Channel.ListenState != "disabled" {
+		t.Fatalf("response channel listen state = %+v", body.Channel)
+	}
+	if body.Channel.IndexedMessageCount != 0 || body.Channel.LastMessageID != 0 || body.Channel.LastSyncTime != nil {
+		t.Fatalf("response channel indexed/cursor fields = %+v", body.Channel)
+	}
+	if body.Channel.SyncState != "pending" {
+		t.Fatalf("response sync_state = %q, want pending for history-enabled channel", body.Channel.SyncState)
+	}
+
+	storedChannel, err := deps.Channels.FindByID(ctx, channelID)
+	if err != nil {
+		t.Fatalf("find channel: %v", err)
+	}
+	if storedChannel.ListenEnabled || storedChannel.ListenState != "disabled" || storedChannel.IndexedMessageCount != 0 {
+		t.Fatalf("stored channel after clear = %+v", storedChannel)
+	}
+	for _, tc := range []struct {
+		name  string
+		query string
+	}{
+		{"messages", `SELECT count(*) FROM telegram_messages WHERE channel_id = ?`},
+		{"message contents", `SELECT count(*) FROM telegram_message_contents WHERE message_id IN (?, ?)`},
+		{"links", `SELECT count(*) FROM telegram_links WHERE message_id IN (?, ?)`},
+		{"files", `SELECT count(*) FROM telegram_files WHERE message_id IN (?, ?)`},
+		{"cursors", `SELECT count(*) FROM telegram_sync_cursors WHERE channel_id = ?`},
+		{"resource stats", `SELECT count(*) FROM resource_group_counts`},
+	} {
+		var count int
+		var scanErr error
+		if strings.Contains(tc.query, "IN (?, ?)") {
+			scanErr = deps.BackupDB.QueryRowContext(ctx, tc.query, stored[0].ID, stored[1].ID).Scan(&count)
+		} else if strings.Contains(tc.query, "channel_id = ?") {
+			scanErr = deps.BackupDB.QueryRowContext(ctx, tc.query, channelID).Scan(&count)
+		} else {
+			scanErr = deps.BackupDB.QueryRowContext(ctx, tc.query).Scan(&count)
+		}
+		if scanErr != nil {
+			t.Fatalf("count %s: %v", tc.name, scanErr)
+		}
+		if count != 0 {
+			t.Fatalf("%s count = %d, want 0", tc.name, count)
+		}
+	}
+	results, err := deps.Messages.Search(ctx, repository.SearchParams{Query: "movie", ChannelID: channelID, Limit: 10})
+	if err != nil {
+		t.Fatalf("search cleared messages: %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("search results len = %d, want 0", len(results))
+	}
+}
+
 func TestChannelAnalyze(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

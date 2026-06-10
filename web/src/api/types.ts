@@ -215,6 +215,15 @@ export interface ChannelsResponse {
   items: TelegramChannel[]
 }
 
+export interface ChannelClearResponse {
+  channel: TelegramChannel
+  deleted: {
+    messages: number
+    links: number
+    files: number
+  }
+}
+
 export interface WebAccessCheckResponse {
   items: Array<{
     channel_id: number

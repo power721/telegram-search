@@ -29,6 +29,12 @@ vi.mock('@/api/client', () => ({
     if (path.endsWith('/analyze')) {
       return Promise.resolve({ channel: { id: 1 }, indexed_counts: { messages: 0, links: 0, files: 0 } })
     }
+    if (path === '/api/channels/1/clear') {
+      return Promise.resolve({
+        channel: { id: 1, title: 'Movies', sync_profile: 'Normal', listen_enabled: false, indexed_message_count: 0 },
+        deleted: { messages: 3, links: 2, files: 1 }
+      })
+    }
     if (path === '/api/admin/search/remote') {
       return Promise.resolve({ id: 1, status: 'queued', source: 'remote' })
     }
@@ -60,6 +66,7 @@ describe('channels store', () => {
     })
     await store.checkWebAccess([1])
     await store.syncChannels([1], 250)
+    await store.clearChannel(1)
     await store.analyzeChannel(1)
     await store.updateWatchRule(7, {
       channel_id: 1,
@@ -97,6 +104,7 @@ describe('channels store', () => {
     })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/web-access/check', { channel_ids: [1] })
     expect(apiPost).toHaveBeenCalledWith('/api/channels/sync', { channel_ids: [1], max_messages: 250 })
+    expect(apiPost).toHaveBeenCalledWith('/api/channels/1/clear')
     expect(apiPost).toHaveBeenCalledWith('/api/channels/1/analyze')
     expect(apiPut).toHaveBeenCalledWith('/api/watch-rules/7', {
       channel_id: 1,

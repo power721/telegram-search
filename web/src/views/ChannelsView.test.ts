@@ -122,6 +122,27 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/watch-rules') {
       return Promise.resolve({ id: 10, channel_id: 1, enabled: true })
     }
+    if (path === '/api/channels/1/clear') {
+      return Promise.resolve({
+        channel: {
+          id: 1,
+          title: 'Movies',
+          username: 'movies',
+          type: 'channel',
+          sync_state: 'metadata_only',
+          listen_state: 'disabled',
+          sync_profile: 'Normal',
+          indexed_message_count: 0,
+          member_count: 1200,
+          description: 'Public movie releases',
+          web_access: true,
+          history_sync_enabled: false,
+          listen_enabled: false,
+          remote_search_allowed: true
+        },
+        deleted: { messages: 42, links: 3, files: 2 }
+      })
+    }
     return Promise.resolve({ job_id: 'job-1', status: 'queued' })
   }),
   apiPut: vi.fn((path: string) => {
@@ -170,7 +191,7 @@ describe('ChannelsView', () => {
         stubs: {
           'n-button': {
             emits: ['click'],
-            props: ['disabled', 'loading'],
+            props: ['disabled', 'loading', 'type'],
             template:
               '<button :disabled="disabled" :data-loading="loading ? \'true\' : \'false\'" @click="$emit(\'click\', $event)"><slot /></button>'
           },
@@ -388,6 +409,36 @@ describe('ChannelsView', () => {
       listen_enabled: false,
       remote_search_allowed: true
     })
+  })
+
+  it('clears a channel after confirmation', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => true))
+    const wrapper = mountChannelsView()
+    await flushPromises()
+
+    await channelRow(wrapper, 'Movies')
+      .findAll('button')
+      .find((button) => button.text() === '清空')
+      ?.trigger('click')
+    await flushPromises()
+
+    expect(window.confirm).toHaveBeenCalledWith('清空「Movies」？这会取消监听，并删除这个频道的所有消息和资源。')
+    expect(apiPost).toHaveBeenCalledWith('/api/channels/1/clear')
+    expect(channelRow(wrapper, 'Movies').text()).toContain('0')
+  })
+
+  it('does not clear a channel when confirmation is cancelled', async () => {
+    vi.stubGlobal('confirm', vi.fn(() => false))
+    const wrapper = mountChannelsView()
+    await flushPromises()
+
+    await channelRow(wrapper, 'Movies')
+      .findAll('button')
+      .find((button) => button.text() === '清空')
+      ?.trigger('click')
+    await flushPromises()
+
+    expect(apiPost).not.toHaveBeenCalledWith('/api/channels/1/clear')
   })
 
   it('edits global listen rules from the channel toolbar', async () => {

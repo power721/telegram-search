@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/api/client'
 import type {
   ChannelAnalysis,
+  ChannelClearResponse,
   ChannelControlPayload,
   ChannelsResponse,
   ListenRulesPayload,
@@ -64,6 +65,13 @@ export const useChannelsStore = defineStore('channels', {
           channel_ids: channelIds,
           ...(maxMessages ? { max_messages: maxMessages } : {})
         })
+      })
+    },
+    async clearChannel(channelId: number) {
+      return this.withLoading(async () => {
+        const response = await apiPost<ChannelClearResponse>(`/api/channels/${channelId}/clear`)
+        this.replaceChannel(response.channel)
+        return response
       })
     },
     async createWatchRule(payload: WatchRulePayload) {

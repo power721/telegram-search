@@ -302,7 +302,9 @@ describe('ResourceTable', () => {
     expect(resourceTableSource).toMatch(/\.resource-thumb\s*\{[\s\S]*height:\s*55px;[\s\S]*object-fit:\s*cover;[\s\S]*width:\s*88px;/)
     expect(resourceTableSource).not.toMatch(/img\.resource-thumb\s*\{[\s\S]*object-fit:\s*contain;/)
     expect(resourceTableSource).toMatch(/\.resource-thumb-preview\s*\{[\s\S]*max-height:\s*calc\(100vh - 32px\);[\s\S]*object-fit:\s*contain;[\s\S]*width:\s*auto;/)
-    expect(resourceTableSource).toMatch(/\.resource-thumb-frame:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
+    expect(resourceTableSource).toMatch(
+      /\.resource-thumb-frame:hover\s+\.resource-thumb-preview,\s*\.resource-thumb-button:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/
+    )
   })
 
   it('renders a video placeholder when only a video URL is available', () => {
@@ -327,6 +329,33 @@ describe('ResourceTable', () => {
     expect(wrapper.find('video.resource-thumb').exists()).toBe(false)
     expect(resourceTableSource).toMatch(/\.resource-video-placeholder\s*\{[\s\S]*linear-gradient/)
     expect(resourceTableSource).toMatch(/\.resource-thumb-button::after\s*\{[\s\S]*border-left:\s*11px solid #fff;/)
+  })
+
+  it('renders an enlarged hover preview for video thumbnails with poster images', () => {
+    const wrapper = mount(ResourceTable, {
+      props: {
+        items: [
+          {
+            id: 'file:video',
+            kind: 'file',
+            category: 'files',
+            file_name: 'clip.mp4',
+            media: {
+              image_url: '/i/77',
+              video_url: '/v/77'
+            }
+          }
+        ]
+      }
+    })
+
+    const preview = wrapper.find('.resource-thumb-button img.resource-thumb-preview')
+    expect(preview.exists()).toBe(true)
+    expect(preview.attributes('src')).toBe('/i/77')
+    expect(preview.attributes('aria-hidden')).toBe('true')
+    expect(resourceTableSource).toMatch(
+      /\.resource-thumb-frame:hover\s+\.resource-thumb-preview,\s*\.resource-thumb-button:hover\s+\.resource-thumb-preview\s*\{[\s\S]*opacity:\s*1;/
+    )
   })
 
   it('falls back to a video placeholder when an image thumbnail fails', async () => {

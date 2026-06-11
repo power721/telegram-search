@@ -355,23 +355,18 @@ onBeforeUnmount(() => {
     />
 
     <n-modal v-model:show="loginDialogVisible" :mask-closable="false">
-      <n-card class="login-dialog" :bordered="false">
-        <div class="login-dialog-header">
+      <n-card
+        class="login-dialog"
+        :bordered="false"
+        closable
+        @close="closeTelegramLogin"
+      >
+        <template #header>
           <div>
             <p class="page-kicker">Telegram</p>
             <h2>Telegram 登录</h2>
           </div>
-          <n-button
-            aria-label="关闭 Telegram 登录"
-            circle
-            quaternary
-            size="small"
-            :disabled="telegram.loading"
-            @click="closeTelegramLogin"
-          >
-            ×
-          </n-button>
-        </div>
+        </template>
         <n-button-group class="mode-switch">
           <n-button :type="loginMode === 'qr' ? 'primary' : 'default'" @click="setLoginMode('qr')">
             扫码登录
@@ -483,16 +478,9 @@ table {
   width: min(420px, calc(100vw - 32px));
 }
 
-.login-dialog-header {
-  align-items: flex-start;
-  display: flex;
-  gap: 12px;
-  justify-content: space-between;
-}
-
 .login-dialog h2 {
   font-size: 22px;
-  margin: 0 0 22px;
+  margin: 0;
 }
 
 .mode-switch {

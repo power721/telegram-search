@@ -14,8 +14,9 @@ const loginDialogVisible = ref(false)
 const loginPhone = ref('')
 const loginCode = ref('')
 const loginPassword = ref('')
+const loginSessionString = ref('')
 const loginCodeSent = ref(false)
-const loginMode = ref<'qr' | 'code'>('qr')
+const loginMode = ref<'qr' | 'code' | 'session'>('qr')
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrLoginID = ref('')
 const qrStatus = ref('')
@@ -95,6 +96,7 @@ function openTelegramLogin(account?: TelegramAccount) {
   loginPhone.value = account?.phone ?? ''
   loginCode.value = ''
   loginPassword.value = ''
+  loginSessionString.value = ''
   loginCodeSent.value = false
   loginMode.value = account ? 'code' : 'qr'
   qrLoginID.value = ''
@@ -111,9 +113,9 @@ function closeTelegramLogin() {
   loginDialogVisible.value = false
 }
 
-function setLoginMode(mode: 'qr' | 'code') {
+function setLoginMode(mode: 'qr' | 'code' | 'session') {
   loginMode.value = mode
-  if (mode === 'code') {
+  if (mode === 'code' || mode === 'session') {
     void cancelQRLogin()
   }
 }
@@ -212,6 +214,17 @@ async function submitPassword() {
     }
   } catch (error) {
     message.error(error instanceof Error ? error.message : '无法提交密码')
+  }
+}
+
+async function loginWithSession() {
+  try {
+    const response = await telegram.loginWithTelethonSession(loginSessionString.value)
+    if (response.account) {
+      finishLogin()
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法登录')
   }
 }
 
@@ -366,6 +379,9 @@ onBeforeUnmount(() => {
           <n-button :type="loginMode === 'code' ? 'primary' : 'default'" @click="setLoginMode('code')">
             验证码登录
           </n-button>
+          <n-button :type="loginMode === 'session' ? 'primary' : 'default'" @click="setLoginMode('session')">
+            Session登录
+          </n-button>
         </n-button-group>
 
         <div v-if="loginMode === 'qr'" class="qr-login">
@@ -377,6 +393,21 @@ onBeforeUnmount(() => {
           <n-button v-if="qrLoginID" block @click="cancelQRLogin">取消扫码</n-button>
           <p v-if="qrStatus" class="sync-result">扫码状态：{{ qrStatus }}</p>
         </div>
+
+        <n-form v-else-if="loginMode === 'session'" @submit.prevent>
+          <n-form-item label="Telethon Session String">
+            <n-input
+              v-model:value="loginSessionString"
+              type="textarea"
+              placeholder="请粘贴 Telethon StringSession"
+              :autosize="{ minRows: 3, maxRows: 6 }"
+            />
+            <template #feedback>从 Telethon 客户端导出的 session.string_session() 字符串</template>
+          </n-form-item>
+          <n-button type="primary" block :loading="telegram.loading" @click="loginWithSession">
+            登录
+          </n-button>
+        </n-form>
 
         <n-form v-else @submit.prevent>
           <n-form-item label="手机号">
@@ -466,7 +497,7 @@ table {
 
 .mode-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   margin-bottom: 18px;
   width: 100%;
 }

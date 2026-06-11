@@ -158,6 +158,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	telegramAPI.POST("/login/sign-in", h.signIn)
 	telegramAPI.POST("/login/password", h.password)
 	telegramAPI.POST("/login/qr/start", h.startQRLogin)
+	telegramAPI.POST("/login/telethon-session", h.telethonSessionLogin)
 	telegramAPI.GET("/login/qr/:login_id", h.pollQRLogin)
 	telegramAPI.DELETE("/login/qr/:login_id", h.cancelQRLogin)
 	adminOnly.GET("/accounts", h.accounts)

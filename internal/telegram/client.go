@@ -113,6 +113,7 @@ type Client interface {
 	SignIn(ctx context.Context, phone string, code string, phoneCodeHash string, sessionPath string) (Profile, error)
 	Password(ctx context.Context, password string, sessionPath string) (Profile, error)
 	StartQRLogin(ctx context.Context, sessionPath string) (QRLoginSession, error)
+	LoginWithTelethonSession(ctx context.Context, sessionString string, sessionPath string) (Profile, error)
 	Logout(ctx context.Context, session AccountSession) error
 	ListChannels(ctx context.Context, session AccountSession) ([]Channel, error)
 	FetchHistory(ctx context.Context, session AccountSession, channel ChannelRef, offsetID int64, limit int) ([]Message, error)
@@ -183,6 +184,10 @@ func (NopClient) Password(context.Context, string, string) (Profile, error) {
 
 func (NopClient) StartQRLogin(context.Context, string) (QRLoginSession, error) {
 	return nil, ErrUnavailable
+}
+
+func (NopClient) LoginWithTelethonSession(context.Context, string, string) (Profile, error) {
+	return Profile{}, ErrUnavailable
 }
 
 func (NopClient) Logout(context.Context, AccountSession) error {

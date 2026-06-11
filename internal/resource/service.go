@@ -21,45 +21,58 @@ type Query struct {
 	ChannelID int64
 	Extension string
 	Sort      string
+	DateFrom  *time.Time
+	DateTo    *time.Time
 	Limit     int
 	Offset    int
 	MaxLimit  int
 }
 
+type ScoreExplain struct {
+	SourceChannelCount int `json:"source_channel_count"`
+	MessageCount       int `json:"message_count"`
+	ProviderCount      int `json:"provider_count"`
+	RecencyScore       int `json:"recency_score"`
+	TypeScore          int `json:"type_score"`
+	MetadataScore      int `json:"metadata_score"`
+}
+
 type Item struct {
-	ID                string    `json:"id"`
-	Kind              string    `json:"kind"`
-	Type              string    `json:"type,omitempty"`
-	Category          string    `json:"category"`
-	URL               string    `json:"url,omitempty"`
-	Password          string    `json:"password,omitempty"`
-	TelegramFileID    int64     `json:"telegram_file_id,omitempty"`
-	FileName          string    `json:"file_name,omitempty"`
-	Extension         string    `json:"extension,omitempty"`
-	MimeType          string    `json:"mime_type,omitempty"`
-	SizeBytes         int64     `json:"size_bytes,omitempty"`
-	Note              string    `json:"note,omitempty"`
-	Title             string    `json:"title,omitempty"`
-	SourceSnippet     string    `json:"source_snippet,omitempty"`
-	MediaTitle        string    `json:"-"`
-	MediaYear         string    `json:"-"`
-	MediaSeason       string    `json:"-"`
-	MediaEpisode      string    `json:"-"`
-	MediaQuality      string    `json:"-"`
-	MediaSize         string    `json:"-"`
-	MediaTMDBID       string    `json:"-"`
-	MediaCategory     string    `json:"-"`
-	MediaTags         string    `json:"-"`
-	Datetime          time.Time `json:"datetime"`
-	AccountID         int64     `json:"account_id"`
-	ChannelID         int64     `json:"channel_id"`
-	TelegramChannelID int64     `json:"telegram_channel_id"`
-	ChannelTitle      string    `json:"channel_title"`
-	ChannelUsername   string    `json:"channel_username"`
-	TelegramMessageID int64     `json:"telegram_message_id"`
-	MessageType       string    `json:"message_type,omitempty"`
-	MediaSummary      string    `json:"-"`
-	Media             *Media    `json:"media,omitempty"`
+	ID                string       `json:"id"`
+	Kind              string       `json:"kind"`
+	Type              string       `json:"type,omitempty"`
+	Category          string       `json:"category"`
+	URL               string       `json:"url,omitempty"`
+	Password          string       `json:"password,omitempty"`
+	TelegramFileID    int64        `json:"telegram_file_id,omitempty"`
+	FileName          string       `json:"file_name,omitempty"`
+	Extension         string       `json:"extension,omitempty"`
+	MimeType          string       `json:"mime_type,omitempty"`
+	SizeBytes         int64        `json:"size_bytes,omitempty"`
+	Note              string       `json:"note,omitempty"`
+	Title             string       `json:"title,omitempty"`
+	SourceSnippet     string       `json:"source_snippet,omitempty"`
+	MediaTitle        string       `json:"-"`
+	MediaYear         string       `json:"-"`
+	MediaSeason       string       `json:"-"`
+	MediaEpisode      string       `json:"-"`
+	MediaQuality      string       `json:"-"`
+	MediaSize         string       `json:"-"`
+	MediaTMDBID       string       `json:"-"`
+	MediaCategory     string       `json:"-"`
+	MediaTags         string       `json:"-"`
+	Datetime          time.Time    `json:"datetime"`
+	AccountID         int64        `json:"account_id"`
+	ChannelID         int64        `json:"channel_id"`
+	TelegramChannelID int64        `json:"telegram_channel_id"`
+	ChannelTitle      string       `json:"channel_title"`
+	ChannelUsername   string       `json:"channel_username"`
+	TelegramMessageID int64        `json:"telegram_message_id"`
+	MessageType       string       `json:"message_type,omitempty"`
+	MediaSummary      string       `json:"-"`
+	Media             *Media       `json:"media,omitempty"`
+	Score             int          `json:"score"`
+	ScoreExplain      ScoreExplain `json:"score_explain"`
 }
 
 type Media struct {
@@ -147,6 +160,22 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	limit := normalizedLimit(query.Limit, query.MaxLimit)
 	offset := normalizedOffset(query.Offset)
 	fetchLimit := offset + limit
+	hotSort := isHotSort(query.Sort)
+
+	var grouped map[string]int
+	var total int
+	if hotSort {
+		var err error
+		grouped, err = s.groupedForQuery(ctx, query)
+		if err != nil {
+			return ListResult{}, err
+		}
+		total = groupedTotal(grouped)
+		if total == 0 {
+			return ListResult{Items: []Item{}, Total: 0, Grouped: grouped}, nil
+		}
+		fetchLimit = total
+	}
 
 	items := []Item{}
 	if s.links != nil && includeLinks(query) {
@@ -157,6 +186,8 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			ChannelID: query.ChannelID,
 			Keyword:   query.Keyword,
 			Sort:      query.Sort,
+			DateFrom:  query.DateFrom,
+			DateTo:    query.DateTo,
 			Limit:     fetchLimit,
 		})
 		if err != nil {
@@ -209,6 +240,8 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			AccountID:          query.AccountID,
 			ChannelID:          query.ChannelID,
 			Sort:               query.Sort,
+			DateFrom:           query.DateFrom,
+			DateTo:             query.DateTo,
 			Limit:              fetchLimit,
 		})
 		if err != nil {
@@ -236,13 +269,23 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 			})
 		}
 	}
-	SortItemsByQuality(items, query.Keyword)
-
-	grouped, err := s.groupedForQuery(ctx, query)
-	if err != nil {
+	if err := s.attachScores(ctx, items, time.Now().UTC()); err != nil {
 		return ListResult{}, err
 	}
-	total := groupedTotal(grouped)
+	if hotSort {
+		sortItemsByHot(items)
+	} else {
+		SortItemsByQuality(items, query.Keyword)
+	}
+
+	if !hotSort {
+		var err error
+		grouped, err = s.groupedForQuery(ctx, query)
+		if err != nil {
+			return ListResult{}, err
+		}
+		total = groupedTotal(grouped)
+	}
 	if offset > total {
 		offset = total
 	}
@@ -374,6 +417,8 @@ func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]
 			AccountID: query.AccountID,
 			ChannelID: query.ChannelID,
 			Keyword:   query.Keyword,
+			DateFrom:  query.DateFrom,
+			DateTo:    query.DateTo,
 		})
 		if err != nil {
 			return nil, err
@@ -390,6 +435,8 @@ func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]
 			Extension:          query.Extension,
 			AccountID:          query.AccountID,
 			ChannelID:          query.ChannelID,
+			DateFrom:           query.DateFrom,
+			DateTo:             query.DateTo,
 		})
 		if err != nil {
 			return nil, err
@@ -539,6 +586,119 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+type resourceScoreStats struct {
+	SourceChannelCount int
+	MessageCount       int
+	ProviderCount      int
+}
+
+func isHotSort(sort string) bool {
+	return sort == "hot"
+}
+
+func (s *Service) attachScores(ctx context.Context, items []Item, now time.Time) error {
+	statsByURL := map[string]repository.LinkResourceStats{}
+	if s.links != nil {
+		urls := make([]string, 0, len(items))
+		for _, item := range items {
+			if item.Kind == "link" && item.URL != "" {
+				urls = append(urls, item.URL)
+			}
+		}
+		if len(urls) > 0 {
+			var err error
+			statsByURL, err = s.links.ResourceStatsByURL(ctx, urls)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for i := range items {
+		stats := resourceScoreStats{SourceChannelCount: 1, MessageCount: 1, ProviderCount: 1}
+		if items[i].Kind == "link" {
+			if linkStats, ok := statsByURL[items[i].URL]; ok {
+				stats = resourceScoreStats{
+					SourceChannelCount: positiveOrOne(linkStats.SourceChannelCount),
+					MessageCount:       positiveOrOne(linkStats.MessageCount),
+					ProviderCount:      positiveOrOne(linkStats.ProviderCount),
+				}
+			}
+		}
+		items[i].Score, items[i].ScoreExplain = itemScore(items[i], stats, now)
+	}
+	return nil
+}
+
+func itemScore(item Item, stats resourceScoreStats, now time.Time) (int, ScoreExplain) {
+	explain := ScoreExplain{
+		SourceChannelCount: positiveOrOne(stats.SourceChannelCount),
+		MessageCount:       positiveOrOne(stats.MessageCount),
+		ProviderCount:      positiveOrOne(stats.ProviderCount),
+		RecencyScore:       recencyScore(item.Datetime, now),
+		TypeScore:          resourceCategoryScore(item),
+		MetadataScore: searchrank.MetadataScore(
+			item.MediaTitle,
+			item.MediaYear,
+			item.MediaSeason,
+			item.MediaEpisode,
+			item.MediaQuality,
+			item.MediaSize,
+			item.MediaTMDBID,
+			item.MediaCategory,
+			item.MediaTags,
+		),
+	}
+	score := explain.SourceChannelCount*10 +
+		explain.MessageCount*3 +
+		explain.ProviderCount*6 +
+		explain.RecencyScore +
+		explain.TypeScore +
+		explain.MetadataScore
+	return score, explain
+}
+
+func positiveOrOne(value int) int {
+	if value <= 0 {
+		return 1
+	}
+	return value
+}
+
+func recencyScore(publishedAt time.Time, now time.Time) int {
+	if publishedAt.IsZero() {
+		return 0
+	}
+	publishedAt = publishedAt.UTC()
+	now = now.UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	switch {
+	case !publishedAt.Before(today):
+		return 30
+	case !publishedAt.Before(now.AddDate(0, 0, -7)):
+		return 20
+	case !publishedAt.Before(now.AddDate(0, 0, -30)):
+		return 10
+	default:
+		return 0
+	}
+}
+
+func sortItemsByHot(items []Item) {
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Score != items[j].Score {
+			return items[i].Score > items[j].Score
+		}
+		if !items[i].Datetime.Equal(items[j].Datetime) {
+			return items[i].Datetime.After(items[j].Datetime)
+		}
+		if leftRank, rightRank := resourceKindRank(items[i].Kind), resourceKindRank(items[j].Kind); leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		return items[i].ID < items[j].ID
+	})
 }
 
 func SortItemsByQuality(items []Item, keyword string) {

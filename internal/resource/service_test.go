@@ -202,6 +202,144 @@ func TestResourceLibraryRanksQualityBeforeFreshness(t *testing.T) {
 	}
 }
 
+func TestResourceLibraryHotSortUsesScoreExplanations(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	primaryChannelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Primary", Type: model.ChannelTypeChannel})
+	mirrorChannelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2, Title: "Mirror", Type: model.ChannelTypeChannel})
+	oldDate := time.Now().UTC().Add(-48 * time.Hour)
+	newDate := time.Now().UTC().Add(-time.Hour)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 1, Text: "hot pack 4k", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: mirrorChannelID, TelegramMessageID: 2, Text: "hot pack mirror", RawJSON: "{}", Date: oldDate.Add(time.Minute)},
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 3, Text: "weak new resource", RawJSON: "{}", Date: newDate},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored[:2] {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/hot", Note: "Hot Pack", MediaTitle: "Hot Pack",
+			MediaYear: "2026", MediaQuality: "4K", MediaCategory: "movie", MediaTags: "hot,4k",
+		}}); err != nil {
+			t.Fatalf("save hot link: %v", err)
+		}
+	}
+	if _, err := links.SaveBatch(ctx, stored[2].ID, []model.Link{{
+		Type: "url", Category: "http", URL: "https://example.com/weak", Note: "weak new resource",
+	}}); err != nil {
+		t.Fatalf("save weak link: %v", err)
+	}
+
+	service := NewService(links, nil)
+	result, err := service.List(ctx, Query{Sort: "hot", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(result.Items) != 2 {
+		t.Fatalf("items = %+v, want two deduped resources", result.Items)
+	}
+	if result.Items[0].URL != "https://pan.quark.cn/s/hot" {
+		t.Fatalf("first hot resource = %+v, want repeated quark resource", result.Items[0])
+	}
+	if result.Items[0].Score <= result.Items[1].Score {
+		t.Fatalf("scores = %d <= %d, want hot resource first", result.Items[0].Score, result.Items[1].Score)
+	}
+	if result.Items[0].ScoreExplain.SourceChannelCount != 2 || result.Items[0].ScoreExplain.MessageCount != 2 || result.Items[0].ScoreExplain.ProviderCount != 1 {
+		t.Fatalf("score explain = %+v, want source/message/provider counts", result.Items[0].ScoreExplain)
+	}
+}
+
+func TestResourceLibraryHotSortConsidersResourcesOutsideNewestPage(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := repository.NewAccountRepository(conn)
+	channels := repository.NewChannelRepository(conn)
+	messages := repository.NewMessageRepository(conn)
+	links := repository.NewLinkRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	primaryChannelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Primary", Type: model.ChannelTypeChannel})
+	mirrorChannelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2, Title: "Mirror", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	oldDate := now.Add(-48 * time.Hour)
+
+	input := []model.Message{
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 1, Text: "older hot pack", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: mirrorChannelID, TelegramMessageID: 2, Text: "older hot mirror", RawJSON: "{}", Date: oldDate.Add(time.Minute)},
+	}
+	for i := 0; i < 60; i++ {
+		input = append(input, model.Message{
+			AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: int64(i + 10),
+			Text: "new weak resource", RawJSON: "{}", Date: now.Add(-time.Duration(i) * time.Minute),
+		})
+	}
+	stored, err := messages.SaveBatch(ctx, input)
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored[:2] {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/older-hot", Note: "Older Hot Pack",
+			MediaTitle: "Older Hot Pack", MediaYear: "2026", MediaQuality: "4K", MediaCategory: "movie", MediaTags: "hot,4k",
+		}}); err != nil {
+			t.Fatalf("save older hot link: %v", err)
+		}
+	}
+	for i, msg := range stored[2:] {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "url", Category: "http", URL: "https://example.com/weak-" + strconv.Itoa(i), Note: "new weak resource",
+		}}); err != nil {
+			t.Fatalf("save weak link %d: %v", i, err)
+		}
+	}
+
+	service := NewService(links, nil)
+	result, err := service.List(ctx, Query{Sort: "hot", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(result.Items) != 10 {
+		t.Fatalf("items len = %d, want first page of 10", len(result.Items))
+	}
+	if result.Items[0].URL != "https://pan.quark.cn/s/older-hot" {
+		t.Fatalf("first hot resource = %+v, want older resource outside newest page", result.Items[0])
+	}
+
+	from := now.Add(-24 * time.Hour)
+	recent, err := service.List(ctx, Query{Sort: "hot", DateFrom: &from, Limit: 10})
+	if err != nil {
+		t.Fatalf("recent List returned error: %v", err)
+	}
+	for _, item := range recent.Items {
+		if item.URL == "https://pan.quark.cn/s/older-hot" {
+			t.Fatalf("recent items = %+v, want older hot resource excluded by DateFrom", recent.Items)
+		}
+	}
+}
+
 func TestResourceLibraryExcludesImageFilesByDefault(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

@@ -22,11 +22,26 @@ type fakeAPI struct {
 	sent     []sentMessage
 	sentHTML []sentMessage
 	commands []BotCommand
+	edited   []editedMessage
+	answered []callbackAnswer
 }
 
 type sentMessage struct {
 	chatID int64
 	text   string
+	markup *InlineKeyboardMarkup
+}
+
+type editedMessage struct {
+	chatID    int64
+	messageID int64
+	text      string
+	markup    *InlineKeyboardMarkup
+}
+
+type callbackAnswer struct {
+	id   string
+	text string
 }
 
 func (f *fakeAPI) GetUpdates(ctx context.Context, offset int64) ([]Update, error) {
@@ -52,6 +67,28 @@ func (f *fakeAPI) SendHTMLMessage(ctx context.Context, chatID int64, text string
 func (f *fakeAPI) SetCommands(ctx context.Context, commands []BotCommand) error {
 	f.commands = append([]BotCommand{}, commands...)
 	return nil
+}
+
+func (f *fakeAPI) SendMessageWithMarkup(ctx context.Context, chatID int64, text string, markup *InlineKeyboardMarkup) error {
+	f.sent = append(f.sent, sentMessage{chatID: chatID, text: text, markup: markup})
+	return nil
+}
+
+func (f *fakeAPI) EditMessageText(ctx context.Context, chatID int64, messageID int64, text string, markup *InlineKeyboardMarkup) error {
+	f.edited = append(f.edited, editedMessage{chatID: chatID, messageID: messageID, text: text, markup: markup})
+	return nil
+}
+
+func (f *fakeAPI) AnswerCallbackQuery(ctx context.Context, callbackID string, text string) error {
+	f.answered = append(f.answered, callbackAnswer{id: callbackID, text: text})
+	return nil
+}
+
+func buttonCallback(markup *InlineKeyboardMarkup) string {
+	if markup == nil || len(markup.InlineKeyboard) == 0 || len(markup.InlineKeyboard[0]) == 0 {
+		return ""
+	}
+	return markup.InlineKeyboard[0][0].CallbackData
 }
 
 func TestBotCommands(t *testing.T) {
@@ -98,6 +135,9 @@ func TestBotCommands(t *testing.T) {
 	}
 	if !strings.Contains(api.sent[2].text, "哪吒3") {
 		t.Fatalf("subscriptions response = %q, want keyword", api.sent[2].text)
+	}
+	if !strings.HasPrefix(buttonCallback(api.sent[2].markup), "unsub:") {
+		t.Fatalf("subscriptions card markup = %+v, want unsubscribe button", api.sent[2].markup)
 	}
 	chats, err := subs.FindChats(ctx)
 	if err != nil {
@@ -304,19 +344,20 @@ func TestBotListsAndBindsWebSavedSearchSubscriptions(t *testing.T) {
 	if len(api.sent) != 3 {
 		t.Fatalf("sent = %+v, want 3 messages", api.sent)
 	}
-	if !strings.Contains(api.sent[0].text, "Available saved searches:") ||
-		!strings.Contains(api.sent[0].text, fmt.Sprintf("saved #%d", searchID)) ||
-		!strings.Contains(api.sent[0].text, "/subscribe") {
-		t.Fatalf("first subscriptions response = %q, want available web saved search", api.sent[0].text)
+	if got := buttonCallback(api.sent[0].markup); got != fmt.Sprintf("sub:%d", searchID) {
+		t.Fatalf("first subscriptions card callback = %q, want sub:%d", got, searchID)
+	}
+	if !strings.Contains(api.sent[0].text, "哪吒3") {
+		t.Fatalf("first subscriptions card = %q, want keyword", api.sent[0].text)
 	}
 	if !strings.Contains(api.sent[1].text, fmt.Sprintf("saved search #%d", searchID)) {
 		t.Fatalf("subscribe response = %q, want bound saved search", api.sent[1].text)
 	}
-	if !strings.Contains(api.sent[2].text, "My subscriptions:") ||
-		!strings.Contains(api.sent[2].text, "sub #") ||
-		!strings.Contains(api.sent[2].text, fmt.Sprintf("saved #%d", searchID)) ||
-		strings.Contains(api.sent[2].text, "Available saved searches:") {
-		t.Fatalf("second subscriptions response = %q, want only bound subscription", api.sent[2].text)
+	if got := buttonCallback(api.sent[2].markup); !strings.HasPrefix(got, "unsub:") {
+		t.Fatalf("second subscriptions card callback = %q, want unsubscribe button", got)
+	}
+	if !strings.Contains(api.sent[2].text, "哪吒3") {
+		t.Fatalf("second subscriptions card = %q, want keyword", api.sent[2].text)
 	}
 }
 
@@ -355,17 +396,20 @@ func TestBotUnsubscribeAcceptsSavedSearchIDFallback(t *testing.T) {
 	if err := bot.Run(ctx); err != nil {
 		t.Fatalf("run bot: %v", err)
 	}
-	if len(api.sent) != 3 {
-		t.Fatalf("sent = %+v, want 3 messages", api.sent)
+	if len(api.sent) != 4 {
+		t.Fatalf("sent = %+v, want 4 messages", api.sent)
 	}
 	if !strings.Contains(api.sent[0].text, "Unsubscribed from saved search #2.") {
 		t.Fatalf("unsubscribe response = %q, want saved search fallback", api.sent[0].text)
 	}
-	if !strings.Contains(api.sent[1].text, "Available saved searches:") || strings.Contains(api.sent[1].text, "My subscriptions:") {
-		t.Fatalf("subscriptions response = %q, want available searches only", api.sent[1].text)
+	if got := buttonCallback(api.sent[1].markup); !strings.HasPrefix(got, "sub:") {
+		t.Fatalf("available card #1 callback = %q, want subscribe button", got)
 	}
-	if !strings.Contains(api.sent[2].text, "not subscribed to subscription or saved search #99") {
-		t.Fatalf("missing unsubscribe response = %q, want clear miss", api.sent[2].text)
+	if got := buttonCallback(api.sent[2].markup); !strings.HasPrefix(got, "sub:") {
+		t.Fatalf("available card #2 callback = %q, want subscribe button", got)
+	}
+	if !strings.Contains(api.sent[3].text, "not subscribed to subscription or saved search #99") {
+		t.Fatalf("missing unsubscribe response = %q, want clear miss", api.sent[3].text)
 	}
 }
 
@@ -435,6 +479,107 @@ func TestRuntimeAppliesTelegramBotSettingsWithoutRestart(t *testing.T) {
 	}
 	if len(secondAPI.commands) == 0 || secondAPI.commands[0].Command != "search" {
 		t.Fatalf("second token commands = %+v, want menu commands", secondAPI.commands)
+	}
+}
+
+func TestBotSubscriptionsCardsAndCallbacks(t *testing.T) {
+	ctx := context.Background()
+	conn := setupBotDB(t)
+	accounts := repository.NewAccountRepository(conn)
+	searches := repository.NewSavedSearchRepository(conn)
+	subs := repository.NewTelegramBotSubscriptionRepository(conn)
+	if _, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", TelegramUserID: 42, Status: model.AccountStatusOnline}); err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	subscribedID, err := searches.Create(ctx, model.SavedSearch{Name: "已订阅剧", Keyword: "哪吒3", NotifyTelegram: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("create subscribed saved search: %v", err)
+	}
+	availableID, err := searches.Create(ctx, model.SavedSearch{Name: "可订阅剧", Keyword: "流浪地球", NotifyTelegram: true, Enabled: true})
+	if err != nil {
+		t.Fatalf("create available saved search: %v", err)
+	}
+	subID, err := subs.Create(ctx, model.TelegramBotSubscription{ChatID: 42, SavedSearchID: subscribedID, Enabled: true})
+	if err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+
+	// /subscriptions sends one card per subscription, then one per available saved search.
+	listAPI := &fakeAPI{updates: []Update{
+		{UpdateID: 1, Message: &Message{Chat: Chat{ID: 42}, Text: "/subscriptions"}},
+	}}
+	listBot := NewBot(BotOptions{API: listAPI, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
+	if err := listBot.Run(ctx); err != nil {
+		t.Fatalf("run /subscriptions: %v", err)
+	}
+	if len(listAPI.sent) != 2 {
+		t.Fatalf("sent = %+v, want 2 cards", listAPI.sent)
+	}
+	if !strings.Contains(listAPI.sent[0].text, "哪吒3") {
+		t.Fatalf("subscription card = %q, want keyword", listAPI.sent[0].text)
+	}
+	if got := buttonCallback(listAPI.sent[0].markup); got != fmt.Sprintf("unsub:%d", subID) {
+		t.Fatalf("subscription card callback = %q, want unsub:%d", got, subID)
+	}
+	if !strings.Contains(listAPI.sent[1].text, "流浪地球") {
+		t.Fatalf("available card = %q, want keyword", listAPI.sent[1].text)
+	}
+	if got := buttonCallback(listAPI.sent[1].markup); got != fmt.Sprintf("sub:%d", availableID) {
+		t.Fatalf("available card callback = %q, want sub:%d", got, availableID)
+	}
+
+	// Tapping "取消订阅" unsubscribes and edits that card in place, button removed.
+	unsubAPI := &fakeAPI{updates: []Update{
+		{UpdateID: 1, CallbackQuery: &CallbackQuery{
+			ID:      "cb-unsub",
+			From:    &User{ID: 42},
+			Message: &Message{MessageID: 555, Chat: Chat{ID: 42}},
+			Data:    fmt.Sprintf("unsub:%d", subID),
+		}},
+	}}
+	unsubBot := NewBot(BotOptions{API: unsubAPI, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
+	if err := unsubBot.Run(ctx); err != nil {
+		t.Fatalf("run unsubscribe callback: %v", err)
+	}
+	remaining, err := subs.FindByChat(ctx, 42)
+	if err != nil {
+		t.Fatalf("find subscriptions after unsubscribe: %v", err)
+	}
+	if len(remaining) != 0 {
+		t.Fatalf("subscriptions after unsubscribe = %+v, want none", remaining)
+	}
+	if len(unsubAPI.answered) != 1 || unsubAPI.answered[0].id != "cb-unsub" {
+		t.Fatalf("answered = %+v, want callback acknowledged", unsubAPI.answered)
+	}
+	if len(unsubAPI.edited) != 1 || unsubAPI.edited[0].messageID != 555 || !strings.Contains(unsubAPI.edited[0].text, "已取消订阅") {
+		t.Fatalf("edited = %+v, want in-place unsubscribe confirmation", unsubAPI.edited)
+	}
+	if unsubAPI.edited[0].markup != nil {
+		t.Fatalf("edited markup = %+v, want button removed", unsubAPI.edited[0].markup)
+	}
+
+	// Tapping "订阅" on an available card subscribes and edits that card in place.
+	subAPI := &fakeAPI{updates: []Update{
+		{UpdateID: 1, CallbackQuery: &CallbackQuery{
+			ID:      "cb-sub",
+			From:    &User{ID: 42},
+			Message: &Message{MessageID: 777, Chat: Chat{ID: 42}},
+			Data:    fmt.Sprintf("sub:%d", availableID),
+		}},
+	}}
+	subBot := NewBot(BotOptions{API: subAPI, Accounts: accounts, SavedSearches: searches, Subscriptions: subs})
+	if err := subBot.Run(ctx); err != nil {
+		t.Fatalf("run subscribe callback: %v", err)
+	}
+	after, err := subs.FindByChat(ctx, 42)
+	if err != nil {
+		t.Fatalf("find subscriptions after subscribe: %v", err)
+	}
+	if len(after) != 1 || after[0].SavedSearchID != availableID {
+		t.Fatalf("subscriptions after subscribe = %+v, want bound to available saved search", after)
+	}
+	if len(subAPI.edited) != 1 || subAPI.edited[0].messageID != 777 || !strings.Contains(subAPI.edited[0].text, "已订阅") {
+		t.Fatalf("edited = %+v, want in-place subscribe confirmation", subAPI.edited)
 	}
 }
 

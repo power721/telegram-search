@@ -35,6 +35,9 @@ type BotAPI interface {
 	GetUpdates(context.Context, int64) ([]Update, error)
 	SendMessage(context.Context, int64, string) error
 	SendHTMLMessage(context.Context, int64, string) error
+	SendMessageWithMarkup(context.Context, int64, string, *InlineKeyboardMarkup) error
+	EditMessageText(context.Context, int64, int64, string, *InlineKeyboardMarkup) error
+	AnswerCallbackQuery(context.Context, string, string) error
 	SetCommands(context.Context, []BotCommand) error
 }
 
@@ -45,14 +48,23 @@ type API struct {
 }
 
 type Update struct {
-	UpdateID int64    `json:"update_id"`
-	Message  *Message `json:"message,omitempty"`
+	UpdateID      int64          `json:"update_id"`
+	Message       *Message       `json:"message,omitempty"`
+	CallbackQuery *CallbackQuery `json:"callback_query,omitempty"`
 }
 
 type Message struct {
-	Chat Chat   `json:"chat"`
-	From *User  `json:"from,omitempty"`
-	Text string `json:"text"`
+	MessageID int64 `json:"message_id"`
+	Chat      Chat  `json:"chat"`
+	From      *User `json:"from,omitempty"`
+	Text      string `json:"text"`
+}
+
+type CallbackQuery struct {
+	ID      string   `json:"id"`
+	From    *User    `json:"from,omitempty"`
+	Message *Message `json:"message,omitempty"`
+	Data    string   `json:"data"`
 }
 
 type User struct {
@@ -75,6 +87,15 @@ type Chat struct {
 type BotCommand struct {
 	Command     string `json:"command"`
 	Description string `json:"description"`
+}
+
+type InlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data,omitempty"`
+}
+
+type InlineKeyboardMarkup struct {
+	InlineKeyboard [][]InlineKeyboardButton `json:"inline_keyboard"`
 }
 
 type apiResponse[T any] struct {
@@ -121,25 +142,52 @@ func (a *API) sendMessage(ctx context.Context, chatID int64, text string, parseM
 	if parseMode != "" {
 		payload["parse_mode"] = parseMode
 	}
+	return a.post(ctx, "sendMessage", payload)
+}
+
+func (a *API) SendMessageWithMarkup(ctx context.Context, chatID int64, text string, markup *InlineKeyboardMarkup) error {
+	payload := map[string]any{
+		"chat_id":                  chatID,
+		"text":                     text,
+		"disable_web_page_preview": true,
+	}
+	if markup != nil {
+		payload["reply_markup"] = markup
+	}
+	return a.post(ctx, "sendMessage", payload)
+}
+
+func (a *API) EditMessageText(ctx context.Context, chatID int64, messageID int64, text string, markup *InlineKeyboardMarkup) error {
+	payload := map[string]any{
+		"chat_id":                  chatID,
+		"message_id":               messageID,
+		"text":                     text,
+		"disable_web_page_preview": true,
+	}
+	if markup != nil {
+		payload["reply_markup"] = markup
+	}
+	return a.post(ctx, "editMessageText", payload)
+}
+
+func (a *API) AnswerCallbackQuery(ctx context.Context, callbackID string, text string) error {
+	payload := map[string]any{"callback_query_id": callbackID}
+	if text != "" {
+		payload["text"] = text
+	}
+	return a.post(ctx, "answerCallbackQuery", payload)
+}
+
+func (a *API) SetCommands(ctx context.Context, commands []BotCommand) error {
+	return a.post(ctx, "setMyCommands", map[string]any{"commands": commands})
+}
+
+func (a *API) post(ctx context.Context, method string, payload map[string]any) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint("sendMessage"), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	var resp apiResponse[json.RawMessage]
-	return a.do(req, &resp)
-}
-
-func (a *API) SetCommands(ctx context.Context, commands []BotCommand) error {
-	body, err := json.Marshal(map[string]any{"commands": commands})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint("setMyCommands"), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.endpoint(method), bytes.NewReader(body))
 	if err != nil {
 		return err
 	}
@@ -237,38 +285,64 @@ func (b *Bot) Run(ctx context.Context) error {
 		if update.UpdateID > b.offset {
 			b.offset = update.UpdateID
 		}
-		if update.Message == nil {
-			continue
-		}
-		if strings.TrimSpace(update.Message.Text) == "" {
-			continue
-		}
-		allowed, err := b.authorizeMessage(ctx, *update.Message)
-		if err != nil {
-			b.logger.Warn("telegram bot authorization failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
-			continue
-		}
-		if !allowed {
-			if err := b.api.SendMessage(ctx, update.Message.Chat.ID, "This Telegram account is not authorized to use this bot."); err != nil {
-				b.logger.Warn("telegram bot authorization response failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
+		switch {
+		case update.Message != nil:
+			msg := *update.Message
+			if strings.TrimSpace(msg.Text) == "" {
+				continue
 			}
-			continue
-		}
-		if err := b.rememberChat(ctx, update.Message.Chat); err != nil {
-			b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
-		}
-		if err := b.handleMessage(ctx, *update.Message); err != nil {
-			b.logger.Warn("telegram bot command failed", zap.Int64("chat_id", update.Message.Chat.ID), zap.Error(err))
+			allowed, err := b.authorizeMessage(ctx, msg)
+			if err != nil {
+				b.logger.Warn("telegram bot authorization failed", zap.Int64("chat_id", msg.Chat.ID), zap.Error(err))
+				continue
+			}
+			if !allowed {
+				if err := b.api.SendMessage(ctx, msg.Chat.ID, "This Telegram account is not authorized to use this bot."); err != nil {
+					b.logger.Warn("telegram bot authorization response failed", zap.Int64("chat_id", msg.Chat.ID), zap.Error(err))
+				}
+				continue
+			}
+			if err := b.rememberChat(ctx, msg.Chat); err != nil {
+				b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", msg.Chat.ID), zap.Error(err))
+			}
+			if err := b.handleMessage(ctx, msg); err != nil {
+				b.logger.Warn("telegram bot command failed", zap.Int64("chat_id", msg.Chat.ID), zap.Error(err))
+			}
+		case update.CallbackQuery != nil:
+			cq := *update.CallbackQuery
+			if cq.Message == nil {
+				continue
+			}
+			allowed, err := b.authorizeTelegramUser(ctx, callbackTelegramUserID(cq))
+			if err != nil {
+				b.logger.Warn("telegram bot callback authorization failed", zap.Int64("chat_id", cq.Message.Chat.ID), zap.Error(err))
+				continue
+			}
+			if !allowed {
+				if err := b.api.AnswerCallbackQuery(ctx, cq.ID, "This Telegram account is not authorized to use this bot."); err != nil {
+					b.logger.Warn("telegram bot callback authorization response failed", zap.Int64("chat_id", cq.Message.Chat.ID), zap.Error(err))
+				}
+				continue
+			}
+			if err := b.rememberChat(ctx, cq.Message.Chat); err != nil {
+				b.logger.Warn("telegram bot chat registry update failed", zap.Int64("chat_id", cq.Message.Chat.ID), zap.Error(err))
+			}
+			if err := b.handleCallback(ctx, cq); err != nil {
+				b.logger.Warn("telegram bot callback command failed", zap.Int64("chat_id", cq.Message.Chat.ID), zap.Error(err))
+			}
 		}
 	}
 	return nil
 }
 
 func (b *Bot) authorizeMessage(ctx context.Context, msg Message) (bool, error) {
+	return b.authorizeTelegramUser(ctx, messageTelegramUserID(msg))
+}
+
+func (b *Bot) authorizeTelegramUser(ctx context.Context, telegramUserID int64) (bool, error) {
 	if b.accounts == nil {
 		return false, nil
 	}
-	telegramUserID := messageTelegramUserID(msg)
 	if telegramUserID <= 0 {
 		return false, nil
 	}
@@ -280,6 +354,13 @@ func (b *Bot) authorizeMessage(ctx context.Context, msg Message) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func callbackTelegramUserID(cq CallbackQuery) int64 {
+	if cq.From != nil && cq.From.ID > 0 {
+		return cq.From.ID
+	}
+	return 0
 }
 
 func messageTelegramUserID(msg Message) int64 {
@@ -416,21 +497,20 @@ func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
 	if err != nil {
 		return err
 	}
-	lines := []string{}
 	subscribedSearches := map[int64]struct{}{}
-	if len(items) > 0 {
-		lines = append(lines, "My subscriptions:")
-	}
+	sent := false
 	for _, item := range items {
 		subscribedSearches[item.SavedSearchID] = struct{}{}
-		lines = append(lines, fmt.Sprintf("sub #%d -> saved #%d %s", item.ID, item.SavedSearchID, firstText(item.SavedSearch, item.Keyword)))
+		if err := b.api.SendMessageWithMarkup(ctx, chatID, subscriptionCardText(item), unsubscribeMarkup(item.ID)); err != nil {
+			return err
+		}
+		sent = true
 	}
 	if b.savedSearches != nil {
 		searches, err := b.savedSearches.FindAll(ctx)
 		if err != nil {
 			return err
 		}
-		available := []model.SavedSearch{}
 		for _, search := range searches {
 			if !search.Enabled || !search.NotifyTelegram {
 				continue
@@ -438,22 +518,112 @@ func (b *Bot) handleSubscriptions(ctx context.Context, chatID int64) error {
 			if _, ok := subscribedSearches[search.ID]; ok {
 				continue
 			}
-			available = append(available, search)
-		}
-		if len(available) > 0 {
-			if len(lines) > 0 {
-				lines = append(lines, "")
+			if err := b.api.SendMessageWithMarkup(ctx, chatID, availableCardText(search), subscribeMarkup(search.ID)); err != nil {
+				return err
 			}
-			lines = append(lines, "Available saved searches:")
-			for _, search := range available {
-				lines = append(lines, fmt.Sprintf("saved #%d %s - bind with /subscribe %d", search.ID, firstText(search.Name, search.Keyword), search.ID))
-			}
+			sent = true
 		}
 	}
-	if len(lines) == 0 {
-		lines = append(lines, "No subscriptions. Use /subscribe <keyword> or create a saved search in Settings.")
+	if !sent {
+		return b.api.SendMessage(ctx, chatID, "No subscriptions. Use /subscribe <keyword> or create a saved search in Settings.")
 	}
-	return b.api.SendMessage(ctx, chatID, strings.Join(lines, "\n"))
+	return nil
+}
+
+func (b *Bot) handleCallback(ctx context.Context, cq CallbackQuery) error {
+	if b.subscriptions == nil {
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "订阅服务不可用")
+	}
+	chatID := cq.Message.Chat.ID
+	messageID := cq.Message.MessageID
+	action, idText, _ := strings.Cut(cq.Data, ":")
+	id, err := strconv.ParseInt(strings.TrimSpace(idText), 10, 64)
+	if err != nil || id <= 0 {
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "无效操作")
+	}
+	switch action {
+	case "unsub":
+		return b.handleUnsubscribeCallback(ctx, cq, chatID, messageID, id)
+	case "sub":
+		return b.handleSubscribeCallback(ctx, cq, chatID, messageID, id)
+	default:
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "")
+	}
+}
+
+func (b *Bot) handleUnsubscribeCallback(ctx context.Context, cq CallbackQuery, chatID, messageID, subscriptionID int64) error {
+	sub, err := b.subscriptions.FindByID(ctx, subscriptionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if err := b.api.AnswerCallbackQuery(ctx, cq.ID, "订阅不存在"); err != nil {
+				return err
+			}
+			return b.api.EditMessageText(ctx, chatID, messageID, "✅ 已取消订阅", nil)
+		}
+		return err
+	}
+	if sub.ChatID != chatID {
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "无效操作")
+	}
+	if err := b.subscriptions.DeleteForChat(ctx, chatID, subscriptionID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err := b.api.AnswerCallbackQuery(ctx, cq.ID, "已取消订阅"); err != nil {
+		return err
+	}
+	return b.api.EditMessageText(ctx, chatID, messageID, "✅ 已取消订阅："+firstText(sub.SavedSearch, sub.Keyword), nil)
+}
+
+func (b *Bot) handleSubscribeCallback(ctx context.Context, cq CallbackQuery, chatID, messageID, savedSearchID int64) error {
+	if b.savedSearches == nil {
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "订阅服务不可用")
+	}
+	search, err := b.savedSearches.FindByID(ctx, savedSearchID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return b.api.AnswerCallbackQuery(ctx, cq.ID, "订阅不存在")
+		}
+		return err
+	}
+	if !search.Enabled || !search.NotifyTelegram {
+		return b.api.AnswerCallbackQuery(ctx, cq.ID, "该订阅不可用")
+	}
+	if _, err := b.subscriptions.Create(ctx, model.TelegramBotSubscription{ChatID: chatID, SavedSearchID: search.ID, Enabled: true}); err != nil {
+		return err
+	}
+	if err := b.api.AnswerCallbackQuery(ctx, cq.ID, "已订阅"); err != nil {
+		return err
+	}
+	return b.api.EditMessageText(ctx, chatID, messageID, "✅ 已订阅："+firstText(search.Name, search.Keyword), nil)
+}
+
+func subscriptionCardText(item model.TelegramBotSubscription) string {
+	return cardText("🔔 已订阅", firstText(item.SavedSearch, item.Keyword), item.Keyword)
+}
+
+func availableCardText(search model.SavedSearch) string {
+	return cardText("🔍 可订阅", firstText(search.Name, search.Keyword), search.Keyword)
+}
+
+func cardText(prefix, title, keyword string) string {
+	lines := []string{prefix + "：" + title}
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" && keyword != strings.TrimSpace(title) {
+		lines = append(lines, "关键词："+keyword)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func unsubscribeMarkup(subscriptionID int64) *InlineKeyboardMarkup {
+	return singleButtonMarkup("取消订阅", fmt.Sprintf("unsub:%d", subscriptionID))
+}
+
+func subscribeMarkup(savedSearchID int64) *InlineKeyboardMarkup {
+	return singleButtonMarkup("订阅", fmt.Sprintf("sub:%d", savedSearchID))
+}
+
+func singleButtonMarkup(text, data string) *InlineKeyboardMarkup {
+	return &InlineKeyboardMarkup{InlineKeyboard: [][]InlineKeyboardButton{{{Text: text, CallbackData: data}}}}
 }
 
 type DeliveryDispatcher struct {

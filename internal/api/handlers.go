@@ -2446,6 +2446,54 @@ func (h handlers) resources(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+func (h handlers) trendingResources(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	query, ok := readResourceQuery(c)
+	if !ok {
+		return
+	}
+	dateFrom, dateTo, ok := trendingDateRange(c.Query("range"), time.Now().UTC())
+	if !ok {
+		errorText(c, http.StatusBadRequest, "range must be today, week, or month")
+		return
+	}
+	query.Sort = "hot"
+	query.DateFrom = dateFrom
+	query.DateTo = dateTo
+	result, err := h.deps.Resources.List(c.Request.Context(), query)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	result.Items, err = h.attachMediaToResourceItems(c.Request.Context(), result.Items, h.shouldSignMediaURLs(c))
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func trendingDateRange(value string, now time.Time) (*time.Time, *time.Time, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	now = now.UTC()
+	dateTo := now
+	var dateFrom time.Time
+	switch value {
+	case "", "today":
+		dateFrom = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	case "week":
+		dateFrom = now.AddDate(0, 0, -7)
+	case "month":
+		dateFrom = now.AddDate(0, 0, -30)
+	default:
+		return nil, nil, false
+	}
+	return &dateFrom, &dateTo, true
+}
+
 func (h handlers) resourcesGrouped(c *gin.Context) {
 	if h.deps.Resources == nil {
 		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")

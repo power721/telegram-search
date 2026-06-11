@@ -1,565 +1,256 @@
-# ROADMAP.md
-
 # tg-search Product Roadmap
 
 ## Vision
 
-tg-search 不只是一个 Telegram 搜索工具。
+`tg-search` 是一个自托管 Telegram 资源发现平台。
 
-目标是构建：
+它帮助用户索引自己有权限访问的 Telegram 内容，并通过管理后台、公开 API、RSS、Telegram Bot、Webhook 和签名媒体代理完成资源发现、整理、搜索、订阅和消费。
 
-> Self-hosted Telegram Resource Discovery Platform
+本项目不是公开 Telegram 爬虫，也不是云端搜索服务。它是一个本地长期运行的个人索引，面向用户自己的频道、群组、Saved Messages、文件和链接。
 
-帮助用户从 Telegram 频道中发现、整理、聚合、搜索和消费资源，并通过 API、Bot、RSS、媒体代理等方式对外提供统一服务。
+## 当前状态
 
----
+当前跟踪版本：`v0.13.0`。
 
-# Current Status (v1.0)
+已完成能力：
 
-已完成：
+### Core Platform
 
-## Core Platform
+* Telegram 多账号登录与 Session 持久化。
+* 手机号登录和二维码登录。
+* 频道、群组、Saved Messages 元数据同步。
+* 显式频道历史同步和实时监听控制。
+* SQLite 存储与 FTS5 消息全文搜索。
+* 任务中心、进度事件、日志、备份和维护工具。
+* 运行时设置，覆盖同步、存储、Telegram 客户端和 Bot 配置。
 
-* Telegram 多账号登录
-* Session 持久化
-* 频道元数据同步
-* 历史消息同步
-* 实时监听
-* SQLite 存储
-* FTS5 全文搜索
+### Resource Indexing
 
-## Resource Extraction
+* 提取网盘链接、磁力链接、ED2K、HTTP 链接和 Telegram 文件资源。
+* 从消息文本和文件名中提取标题、年份、季集、清晰度、大小、分类、标签和 TMDB ID 等媒体元数据。
+* Resource API 支持可选嵌套媒体元数据和签名图片/视频 URL。
+* 查询时按文本匹配、元数据完整度、资源类型、提供方和时间进行质量排序。
+* Resource UI 支持筛选、分页、宽屏内容模式和视频缩略图悬停预览。
 
-* Cloud Drive
-* Magnet
-* ED2K
-* HTTP Links
-* Telegram Files
+### Subscriptions And Integrations
 
-## Management
+* Saved Search 支持 RSS、Webhook 和 Telegram Bot 通知。
+* 持久化通知投递记录，可查看重试状态。
+* Webhook CRUD API 和通知投递历史。
+* 最新资源、关键词搜索和 Saved Search RSS Feed。
+* Telegram Bot 搜索、订阅、取消订阅、命令菜单、聊天记录和重复投递抑制。
+* API Key 保护的公开搜索和资源 API。
 
-* Vue Admin UI
-* Task Center
-* Logs
-* Runtime Settings
-* Backup & Maintenance
+### Operations And Reliability
 
-## Public Services
+* Docker 和二进制发布打包。
+* API Key 管理、调用计数和密钥脱敏。
+* 管理员认证与服务端 Session 过期。
+* Telegram 重试和 FloodWait 处理。
+* 调度任务 panic 恢复。
+* 首次设置接口管理员校验和高风险频道操作确认。
 
-* Public Search API
-* Signed Media URLs
-* Video Proxy
-* Image Proxy
+## 产品原则
 
----
+* 只索引用户 Telegram 账号有权限访问的内容。
+* 默认只同步频道元数据，历史同步和监听必须由用户显式开启。
+* 增加更丰富的结果结构时，保持现有公开 API 和 RSS 合约兼容。
+* 在引入 AI 流程前，优先使用确定性解析、排序和归一化。
+* 长期稳定运行、可观测性和本地数据所有权优先于功能面扩张。
 
-# v1.1 Resource Discovery
+## 优先级
 
-目标：
+| Priority | Milestone | Outcome |
+| --- | --- | --- |
+| P0 | `v0.14` 资源质量与趋势 | 提升默认排序质量，提供热门资源和搜索需求可见性。 |
+| P0 | `v0.15` 资源聚合 | 将重复资源折叠为来源和提供方分组。 |
+| P1 | `v0.16` 元数据增强 | 将解析出的资源文本升级为结构化媒体和作品级元数据。 |
+| P1 | `v0.17` 发现体验 | 在直接关键词搜索之外提供发现入口。 |
+| P2 | `v0.18` 生态 API | 更容易接入浏览器、TVBox、AList 和 SDK 用户。 |
+| P2 | `v0.19` 管理分析 | 帮助运维者理解 API 使用、搜索需求和缺失结果。 |
+| P3 | `v2.0` AI 与网络化搜索 | 增加可选语义搜索、AI 分类和可信实例联合发现。 |
 
-提升搜索结果质量。
+## v0.14 资源质量与趋势
 
-## Resource Score
+目标：提升搜索结果质量，并暴露当前热门资源。
 
-新增资源评分系统。
+范围：
 
-评分来源：
+* 新增持久化资源评分数据，不再只依赖请求时排序。
+* 按来源频道数量、消息数量、提供方数量、更新时间、资源类型和元数据完整度计算评分。
+* 新增 `sort=hot` 或等价 API 排序，同时保留现有按时间和质量排序。
+* 在管理或调试响应中提供评分解释字段。
+* 新增热门资源 API，初始支持：
+  * `GET /api/trending?range=today`
+  * `GET /api/trending?range=week`
+  * `GET /api/trending?range=month`
+* 在管理后台提供今日、本周、本月热门资源入口。
 
-* 来源频道数量
-* 出现次数
-* 更新时间
-* 文件完整度
+验收标准：
 
-新增字段：
+* 搜索结果可以按评分排序，同时不破坏默认响应兼容性。
+* 评分重算可以安全重复执行，不阻塞历史同步或实时监听热路径。
+* 热门结果排除已删除消息，并遵守现有 Resource API 的资源可见性规则。
 
-```sql
-resource_score
-resource_popularity
-```
+不包含：
 
-搜索结果默认按评分排序。
+* AI 语义排序。
+* 跨实例热门统计。
+* 人工编辑推荐。
 
----
+## v0.15 资源聚合
 
-## Resource Aggregation
+目标：减少看起来重复的搜索结果，并展示同一资源的所有来源。
 
-多个频道中的同一资源自动聚合。
+范围：
 
-当前：
+* 基于归一化标题、媒体元数据、URL 指纹和提供方特定 ID 生成 canonical resource identity。
+* 跨频道和消息聚合同一资源。
+* 保留原始 Telegram 消息和原始提取链接/文件作为不可变来源记录。
+* 暴露分组来源，包括频道、消息、提供方、URL/文件和消息时间。
+* UI 支持展开分组资源，查看来源频道和可用提供方。
 
+示例：
+
+```text
+优化前：
 流浪地球2
 流浪地球2
 流浪地球2
 
 优化后：
-
 流浪地球2
+  来源：Channel A, Channel B, Channel C
+  资源：Quark, Aliyun, Magnet
+```
 
-来源：
+验收标准：
 
-* Channel A
-* Channel B
-* Channel C
+* 同一个提供方 URL 出现在多条消息中时，在分组视图中只展示一次。
+* 不同提供方但高置信匹配同一媒体标题时，聚合到同一资源下。
+* 模糊匹配不做破坏性合并，保持独立结果。
 
-资源：
+不包含：
 
-* Quark
-* Aliyun
-* Magnet
+* 删除或重写原始 Telegram 消息记录。
+* 对所有标题变体做完全自动化作品实体合并。
 
----
+## v0.16 元数据增强
 
-## Resource Trends
+目标：从链接搜索升级为结构化资源库。
 
-新增热门资源排行榜。
+范围：
 
-支持：
+* 扩展影视、剧集、动漫、综艺、电子书、软件和课程的确定性元数据解析。
+* 归一化标题、年份、季集、分辨率、编码、来源、语言、大小、分类和标签。
+* 增加可选外部元数据查找，优先 TMDB，后续保留 Douban 或其他来源空间。
+* 缓存作品图片和元数据字段：
+  * poster
+  * backdrop
+  * logo
+  * overview
+  * external IDs
+* 新增作品页，将链接、文件、频道和提供方聚合到归一化媒体项下。
 
-* 今日热门
-* 本周热门
-* 本月热门
+验收标准：
 
-API：
+* 外部元数据查找关闭时，现有资源搜索仍可正常工作。
+* 外部元数据失败可见，但不会导致消息索引失败。
+* 作品页始终能回链到原始 Telegram 来源。
 
-GET /api/trending
+不包含：
 
----
+* 仅依赖 AI 的元数据提取。
+* 用未经确认的外部元数据覆盖原始提取字段。
 
-## Search Analytics
+## v0.17 发现体验
 
-统计：
+目标：让用户在不知道精确关键词时也能发现资源。
 
-* 热门关键词
-* 零结果关键词
-* API调用趋势
+范围：
 
----
+* 新增发现视图，包含热门资源、最新资源、活跃频道和提供方筛选。
+* 基于已索引消息和资源模式自动分类频道。
+* 自动生成频道标签，例如 movie、TV、anime、music、software、ebook、tutorial、4K、Quark、Aliyun 和 magnet。
+* 按更新频率、已索引资源数、活跃时间和资源质量计算频道排名。
+* 从高价值零结果关键词或重复搜索词生成 Saved Search 快捷入口。
 
-# v1.2 Subscription Platform
+验收标准：
 
-目标：
+* 用户无需输入关键词也能找到近期和热门资源。
+* 频道分类可解释，并可回退到 `other`。
+* 现有频道同步和监听控制与发现排名保持解耦。
 
-让用户持续回来。
+## v0.18 生态 API
 
-## Saved Search
+目标：让外部客户端和媒体工具更容易使用 tg-search。
 
-用户保存搜索条件。
+范围：
 
-示例：
+* 新增 OpenSearch 浏览器搜索集成。
+* 新增 TVBox 和 AList 风格的专用资源接口。
+* 为公开搜索、资源、RSS、媒体代理、Saved Search 和 Webhook API 发布稳定 OpenAPI 文档。
+* 提供或生成 Go、Python、TypeScript 客户端使用示例。
+* 强化 Webhook 签名、重试策略可见性和投递排障文档。
 
-哪吒3
+验收标准：
 
-自动跟踪新资源。
+* 现有 `/api/search`、`/api/resources`、`/feeds/*`、`/i/:file_id` 和 `/v/:file_id` 行为保持兼容。
+* 新生态接口使用 API Key 认证，不通过 query-string 暴露本地数据访问密钥。
+* API 文档包含常见自动化客户端的请求/响应示例。
 
----
+## v0.19 管理分析
 
-## Notification Center
+目标：帮助运维者理解使用情况并改进索引质量。
 
-支持：
+范围：
 
-* Telegram Bot
-* Webhook
-* RSS
-* Email
+* 按 API Key、路由、状态码、延迟区间和时间窗口统计 API 调用。
+* 统计热门关键词和零结果关键词。
+* 统计 Saved Search 命中数量和通知投递成功率。
+* 在管理后台增加 API 使用、搜索需求、投递健康和同步健康面板。
 
-事件：
+验收标准：
 
-* resource.created
-* task.completed
-* account.offline
+* 分析数据有存储上限和保留周期控制。
+* 零结果报表可以按时间范围过滤。
+* 敏感查询数据可以通过配置关闭或截断。
 
----
+## v2.0 AI 与网络化搜索
 
-## RSS Feeds
+目标：在保持本地优先模型的基础上，增加可选高级发现能力。
 
-新增：
+范围：
 
-/feeds/latest
+* 可选接入 Qdrant 或其他向量后端进行 Embedding Search。
+* 支持类似 `刘慈欣电影` 的相似资源搜索。
+* AI 辅助分类和标签生成，并保留确定性回退。
+* 在可信 tg-search 实例之间进行多节点或联合搜索。
+* 为明确共享的非私有索引提供资源交换协议。
 
-/feeds/movies
+验收标准：
 
-/feeds/software
+* AI 和向量能力必须是 opt-in。
+* 除非用户显式配置外部提供方或可信联合目标，原始 Telegram 内容保留在本地。
+* 联合搜索结果必须明确区分本地结果和远端结果。
 
-/feeds/search?q=keyword
+## Backlog
 
----
+* 手动资源修正、合并和拆分工具。
+* Saved Search 与 Webhook 定义导入导出。
+* 浏览器扩展或 Bookmarklet 快捷搜索。
+* 按频道统计索引成本和存储占用。
+* 更细粒度的媒体缓存控制。
+* 可插拔解析器、元数据和通知适配器。
 
-## Webhook Platform
+## Non Goals
 
-支持：
+tg-search 不计划成为：
 
-POST /api/webhooks
+* 公开 Telegram 爬虫。
+* Telegram 消息发送或群管理工具。
+* Telegram CRM。
+* 云端托管搜索产品。
+* 通用 IM 客户端替代品。
 
-配置：
-
-* URL
-* Secret
-* Event Types
-
----
-
-# v1.3 Telegram Ecosystem
-
-目标：
-
-成为 Telegram 内部资源搜索入口。
-
-## Telegram Search Bot
-
-支持：
-
-/search keyword
-
-/latest
-
-/trending
-
-/sub keyword
-
----
-
-## Telegram Inline Mode
-
-支持：
-
-@tgsearch movie
-
-直接返回搜索结果。
-
----
-
-## Share Resource
-
-支持：
-
-资源分享到：
-
-* Telegram
-* RSS
-* Webhook
-
----
-
-# v1.4 Media Metadata
-
-目标：
-
-资源结构化。
-
-## Metadata Extraction
-
-自动提取：
-
-* Title
-* Year
-* Season
-* Episode
-* Resolution
-* Codec
-* Size
-
----
-
-## TMDB Integration
-
-自动匹配：
-
-* Movie
-* TV Show
-
-新增字段：
-
-* tmdb_id
-* imdb_id
-
----
-
-## Resource Deduplication
-
-统一：
-
-流浪地球
-
-流浪地球2
-
-流浪地球导演版
-
-形成作品实体。
-
----
-
-## Artwork Support
-
-自动获取：
-
-* Poster
-* Backdrop
-* Logo
-
----
-
-# v1.5 Content Library
-
-目标：
-
-从搜索引擎升级为资源库。
-
-## Work Page
-
-作品页：
-
-流浪地球2
-
-包含：
-
-* 简介
-* 海报
-* 标签
-* 所有资源
-
----
-
-## Collections
-
-合集：
-
-* 漫威宇宙
-* 哈利波特
-* 刘慈欣作品
-
----
-
-## Related Content
-
-相关推荐：
-
-看过：
-
-流浪地球
-
-推荐：
-
-* 三体
-* 球状闪电
-
----
-
-# v2.0 Search Engine
-
-目标：
-
-Telegram Google。
-
-## Channel Classification
-
-自动分类频道：
-
-* Movie
-* TV
-* Anime
-* Music
-* Software
-* Books
-
----
-
-## Channel Tags
-
-自动标签：
-
-4K
-蓝光
-夸克
-阿里云
-
----
-
-## Channel Ranking
-
-频道评分：
-
-* 更新频率
-* 资源数量
-* 活跃度
-
----
-
-## Discovery
-
-发现页面：
-
-热门频道
-
-热门资源
-
-最新资源
-
----
-
-# v2.1 AI Search
-
-目标：
-
-超越关键词搜索。
-
-## Embedding Search
-
-引入：
-
-* Qdrant
-
-支持：
-
-语义搜索
-
----
-
-## Similar Resource Search
-
-搜索：
-
-刘慈欣电影
-
-返回：
-
-* 流浪地球
-* 三体
-* 球状闪电
-
----
-
-## AI Classification
-
-自动识别：
-
-* 影视
-* 软件
-* 音乐
-* 电子书
-
----
-
-## AI Tagging
-
-自动生成：
-
-* 类型
-* 风格
-* 标签
-
----
-
-# v2.2 Ecosystem
-
-目标：
-
-开放平台。
-
-## OpenAPI SDK
-
-提供：
-
-* Go SDK
-* Python SDK
-* TypeScript SDK
-
----
-
-## TVBox Integration
-
-专用接口：
-
-/api/tvbox/search
-
----
-
-## AList Integration
-
-统一资源入口。
-
----
-
-## Plugin System
-
-支持：
-
-* Parser Plugins
-* Metadata Plugins
-* Notification Plugins
-
----
-
-# v3.0 Resource Network
-
-长期目标。
-
-## Multi-node Search
-
-多个 tg-search 节点联合搜索。
-
----
-
-## Federated Search
-
-跨实例搜索。
-
----
-
-## Resource Exchange
-
-资源共享网络。
-
----
-
-## Global Discovery
-
-形成去中心化资源发现平台。
-
----
-
-# Priority Order
-
-P0
-
-* Resource Score
-* Resource Aggregation
-* Saved Search
-
-P1
-
-* RSS
-* Webhook
-* Telegram Bot
-
-P2
-
-* Metadata Extraction
-* TMDB Integration
-
-P3
-
-* AI Search
-* Qdrant
-
-P4
-
-* Federated Search
-
----
-
-# Non Goals
-
-当前不计划：
-
-* Telegram 消息发送
-* Telegram 群管理
-* Telegram CRM
-* IM客户端替代
-* 云端托管服务
-
-tg-search 专注于：
-
-资源发现
-资源搜索
-资源聚合
-资源分发
+项目保持聚焦于本地 Telegram 资源发现、搜索、聚合、订阅和分发。

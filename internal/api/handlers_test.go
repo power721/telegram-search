@@ -480,6 +480,121 @@ func TestResourcesAPIMediaURLsRequireAdminSession(t *testing.T) {
 	}
 }
 
+func TestResourcesAPIHotSortReturnsScoreFields(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Hot Channel", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{
+			AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+			Text: "hot resource", RawJSON: "{}", Date: time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/hot", Note: "Hot Resource",
+		MediaTitle: "Hot Resource", MediaYear: "2026", MediaQuality: "4K", MediaCategory: "movie",
+	}}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/resources?sort=hot", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 1 {
+		t.Fatalf("items = %+v, want one hot resource", body.Items)
+	}
+	if body.Items[0].Score <= 0 || body.Items[0].ScoreExplain.MessageCount <= 0 || body.Items[0].ScoreExplain.TypeScore <= 0 {
+		t.Fatalf("score fields = score:%d explain:%+v, want populated score fields", body.Items[0].Score, body.Items[0].ScoreExplain)
+	}
+}
+
+func TestTrendingResourcesAPIUsesRangeAndHotSort(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	primaryChannelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Primary", Type: model.ChannelTypeChannel})
+	mirrorChannelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 2, Title: "Mirror", Type: model.ChannelTypeChannel})
+	now := time.Now().UTC()
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 1, Text: "week hot", RawJSON: "{}", Date: now.Add(-48 * time.Hour)},
+		{AccountID: accountID, ChannelID: mirrorChannelID, TelegramMessageID: 2, Text: "week hot mirror", RawJSON: "{}", Date: now.Add(-47 * time.Hour)},
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 3, Text: "week weak", RawJSON: "{}", Date: now.Add(-time.Hour)},
+		{AccountID: accountID, ChannelID: primaryChannelID, TelegramMessageID: 4, Text: "old resource", RawJSON: "{}", Date: now.AddDate(0, 0, -9)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored[:2] {
+		if _, err := deps.Links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/week-hot", Note: "Week Hot",
+			MediaTitle: "Week Hot", MediaYear: "2026", MediaQuality: "4K", MediaCategory: "movie",
+		}}); err != nil {
+			t.Fatalf("save hot link: %v", err)
+		}
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[2].ID, []model.Link{{
+		Type: "url", Category: "http", URL: "https://example.com/week-weak", Note: "Week Weak",
+	}}); err != nil {
+		t.Fatalf("save weak link: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[3].ID, []model.Link{{
+		Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/old", Note: "Old Resource",
+		MediaTitle: "Old Resource", MediaQuality: "4K",
+	}}); err != nil {
+		t.Fatalf("save old link: %v", err)
+	}
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/trending?range=week&limit=10", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body resource.ListResult
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(body.Items) != 2 {
+		t.Fatalf("items = %+v, want week resources only", body.Items)
+	}
+	if body.Items[0].URL != "https://pan.quark.cn/s/week-hot" {
+		t.Fatalf("first trending resource = %+v, want higher scored week resource", body.Items[0])
+	}
+	for _, item := range body.Items {
+		if item.URL == "https://pan.quark.cn/s/old" {
+			t.Fatalf("trending items = %+v, want old resource outside week excluded", body.Items)
+		}
+	}
+}
+
+func TestTrendingResourcesAPIRejectsInvalidRange(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/trending?range=year", nil)
+	withAdminSession(t, deps, req)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+}
+
 func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
 	ctx := context.Background()
 	deps := testDeps(t)

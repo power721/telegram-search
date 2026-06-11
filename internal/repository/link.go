@@ -16,6 +16,13 @@ type LinkRepository struct {
 	db *sql.DB
 }
 
+type LinkResourceStats struct {
+	URL                string
+	SourceChannelCount int
+	MessageCount       int
+	ProviderCount      int
+}
+
 type mergedLinkCandidate struct {
 	id  int64
 	typ string
@@ -256,6 +263,56 @@ GROUP BY COALESCE(NULLIF(type, ''), 'url')`)
 		grouped[typ] = count
 	}
 	return grouped, rows.Err()
+}
+
+func (r *LinkRepository) ResourceStatsByURL(ctx context.Context, urls []string) (map[string]LinkResourceStats, error) {
+	unique := map[string]struct{}{}
+	ordered := []string{}
+	for _, url := range urls {
+		url = strings.TrimSpace(url)
+		if url == "" {
+			continue
+		}
+		if _, ok := unique[url]; ok {
+			continue
+		}
+		unique[url] = struct{}{}
+		ordered = append(ordered, url)
+	}
+	if len(ordered) == 0 {
+		return map[string]LinkResourceStats{}, nil
+	}
+
+	markers := make([]string, 0, len(ordered))
+	args := make([]any, 0, len(ordered))
+	for _, url := range ordered {
+		markers = append(markers, "?")
+		args = append(args, url)
+	}
+	query := `
+SELECT l.url,
+       count(DISTINCT m.channel_id) AS source_channel_count,
+       count(DISTINCT m.id) AS message_count,
+       count(DISTINCT COALESCE(NULLIF(l.type, ''), 'url')) AS provider_count
+FROM telegram_links l
+JOIN telegram_messages m ON m.id = l.message_id
+WHERE m.deleted = 0 AND l.url IN (` + strings.Join(markers, ",") + `)
+GROUP BY l.url`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("resource stats by url: %w", err)
+	}
+	defer rows.Close()
+
+	out := map[string]LinkResourceStats{}
+	for rows.Next() {
+		var item LinkResourceStats
+		if err := rows.Scan(&item.URL, &item.SourceChannelCount, &item.MessageCount, &item.ProviderCount); err != nil {
+			return nil, err
+		}
+		out[item.URL] = item
+	}
+	return out, rows.Err()
 }
 
 func (r *LinkRepository) DeleteResourceByURL(ctx context.Context, url string) (int64, error) {

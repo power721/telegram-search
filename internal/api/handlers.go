@@ -1146,6 +1146,85 @@ func (h handlers) password(c *gin.Context) {
 	h.updateAccountProfile(c, account, profile)
 }
 
+func (h handlers) telethonSessionLogin(c *gin.Context) {
+	var req struct {
+		SessionString string `json:"session_string"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	req.SessionString = strings.TrimSpace(req.SessionString)
+	if req.SessionString == "" {
+		errorText(c, http.StatusBadRequest, "session_string is required")
+		return
+	}
+
+	sessionPath := ""
+	if h.deps.Sessions != nil {
+		sessionPath = h.deps.Sessions.PathForTemporary("telethon-" + fmt.Sprintf("%d", time.Now().UnixNano()))
+		if err := os.MkdirAll(filepath.Dir(sessionPath), 0o700); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+	}
+
+	profile, err := h.deps.Telegram.LoginWithTelethonSession(c.Request.Context(), req.SessionString, sessionPath)
+	if err != nil {
+		if h.deps.Sessions != nil && sessionPath != "" {
+			_ = h.deps.Sessions.RemovePath(sessionPath)
+		}
+		errorJSON(c, http.StatusBadRequest, err)
+		return
+	}
+
+	phone := profile.Phone
+	if phone == "" {
+		phone = fmt.Sprintf("tg:%d", profile.TelegramUserID)
+	}
+
+	accountID, err := h.deps.Accounts.Save(c.Request.Context(), model.Account{
+		Phone:          phone,
+		TelegramUserID: profile.TelegramUserID,
+		Status:         model.AccountStatusLoginRequired,
+	})
+	if err != nil {
+		if h.deps.Sessions != nil && sessionPath != "" {
+			_ = h.deps.Sessions.RemovePath(sessionPath)
+		}
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	if h.deps.Sessions != nil && sessionPath != "" {
+		finalPath, err := h.deps.Sessions.MoveTemporaryToAccount(sessionPath, accountID)
+		if err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
+		sessionPath = finalPath
+	}
+
+	account := model.Account{
+		ID:             accountID,
+		Phone:          phone,
+		TelegramUserID: profile.TelegramUserID,
+		FirstName:      profile.FirstName,
+		LastName:       profile.LastName,
+		Username:       profile.Username,
+		Status:         model.AccountStatusOnline,
+		SessionPath:    sessionPath,
+	}
+	now := time.Now().UTC()
+	account.LastOnlineAt = &now
+
+	if err := h.deps.Accounts.Update(c.Request.Context(), account); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+
+	h.respondWithOnlineAccount(c, account)
+}
+
 func (h handlers) startQRLogin(c *gin.Context) {
 	sessionPath := ""
 	if h.deps.Sessions != nil {

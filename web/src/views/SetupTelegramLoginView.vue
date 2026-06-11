@@ -14,8 +14,9 @@ const telegram = useTelegramStore()
 const phone = ref('')
 const code = ref('')
 const password = ref('')
+const sessionString = ref('')
 const codeSent = ref(false)
-const loginMode = ref<'qr' | 'code'>('qr')
+const loginMode = ref<'qr' | 'code' | 'session'>('qr')
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrLoginID = ref('')
 const qrStatus = ref('')
@@ -29,9 +30,9 @@ const metadataText = computed(() => {
   return `元数据同步状态：${sync.status}`
 })
 
-function setLoginMode(mode: 'qr' | 'code') {
+function setLoginMode(mode: 'qr' | 'code' | 'session') {
   loginMode.value = mode
-  if (mode === 'code') {
+  if (mode === 'code' || mode === 'session') {
     stopQRPolling()
   }
 }
@@ -130,6 +131,17 @@ async function submitPassword() {
   }
 }
 
+async function loginWithSession() {
+  try {
+    const response = await telegram.loginWithTelethonSession(sessionString.value)
+    if (response.account) {
+      await finish()
+    }
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法登录')
+  }
+}
+
 async function finish() {
   stopQRPolling()
   await setup.load()
@@ -154,6 +166,9 @@ onBeforeUnmount(() => {
         <n-button :type="loginMode === 'code' ? 'primary' : 'default'" @click="setLoginMode('code')">
           验证码登录
         </n-button>
+        <n-button :type="loginMode === 'session' ? 'primary' : 'default'" @click="setLoginMode('session')">
+          Session登录
+        </n-button>
       </n-button-group>
 
       <div v-if="loginMode === 'qr'" class="qr-login">
@@ -165,6 +180,21 @@ onBeforeUnmount(() => {
         <n-button v-if="qrLoginID" block @click="cancelQRLogin">取消</n-button>
         <p v-if="qrStatus" class="sync-result">扫码状态：{{ qrStatus }}</p>
       </div>
+
+      <n-form v-else-if="loginMode === 'session'" @submit.prevent>
+        <n-form-item label="Telethon Session String">
+          <n-input
+            v-model:value="sessionString"
+            type="textarea"
+            placeholder="请粘贴 Telethon StringSession"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+          />
+          <template #feedback>从 Telethon 客户端导出的 session.string_session() 字符串</template>
+        </n-form-item>
+        <n-button type="primary" block :loading="telegram.loading" @click="loginWithSession">
+          登录
+        </n-button>
+      </n-form>
 
       <n-form v-else @submit.prevent>
         <n-form-item label="手机号">
@@ -214,7 +244,7 @@ h1 {
 
 .mode-switch {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   margin-bottom: 18px;
   width: 100%;
 }

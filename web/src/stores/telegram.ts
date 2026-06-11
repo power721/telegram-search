@@ -73,6 +73,18 @@ export const useTelegramStore = defineStore('telegram', {
         return this.loginResult
       })
     },
+    async loginWithTelethonSession(sessionString: string) {
+      return this.withLoading(async () => {
+        this.passwordRequired = false
+        this.loginResult = await apiPost<TelegramLoginResponse>('/api/telegram/login/telethon-session', {
+          session_string: sessionString
+        })
+        if (this.loginResult.account) {
+          await this.loadAccounts()
+        }
+        return this.loginResult
+      })
+    },
     async startQRLogin() {
       return this.withLoading(async () => {
         this.passwordRequired = false

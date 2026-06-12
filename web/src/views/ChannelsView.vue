@@ -570,14 +570,14 @@ async function useGlobalRule() {
               >
                 检测
               </n-button>
-              <n-button size="small" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
-                {{ isListeningEnabled(channel) ? '取消监听' : '监听' }}
-              </n-button>
-              <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="confirmClearChannel(channel)">
-                清空
+              <n-button size="small" :type="isListeningEnabled(channel) ? '' : 'primary'" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
+                {{ isListeningEnabled(channel) ? '取消监听' : '开启监听' }}
               </n-button>
               <n-button size="small" :loading="ruleLoading && ruleTarget?.id === channel.id" @click="openChannelRules(channel)">
                 规则
+              </n-button>
+              <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="confirmClearChannel(channel)">
+                清空
               </n-button>
             </td>
           </tr>

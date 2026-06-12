@@ -30,7 +30,7 @@ watch(isWideContent, (enabled) => {
   <div class="app-shell">
     <aside class="app-sidebar is-fixed" aria-label="主导航">
       <div class="brand-block">
-        <div class="brand-mark" aria-hidden="true">tg</div>
+        <div class="brand-mark" aria-hidden="true">TG</div>
         <div>
           <div class="brand">TG Search</div>
           <div class="brand-subtitle">本地索引控制台</div>

@@ -171,6 +171,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	telegramAPI.GET("/login/qr/:login_id", h.pollQRLogin)
 	telegramAPI.DELETE("/login/qr/:login_id", h.cancelQRLogin)
 	adminOnly.GET("/accounts", h.accounts)
+	adminOnly.GET("/accounts/:id/avatar", h.serveAccountAvatar)
+	adminOnly.HEAD("/accounts/:id/avatar", h.serveAccountAvatar)
 	adminOnly.POST("/accounts/:id/logout", h.logoutAccount)
 	adminOnly.DELETE("/accounts/:id", h.deleteAccount)
 	adminOnly.POST("/accounts/:id/channels/sync-metadata", h.syncAccountChannels)

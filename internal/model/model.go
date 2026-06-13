@@ -30,6 +30,7 @@ type Account struct {
 	FirstName      string     `json:"first_name"`
 	LastName       string     `json:"last_name"`
 	Username       string     `json:"username"`
+	PhotoID        int64      `json:"photo_id"`
 	Status         string     `json:"status"`
 	SessionPath    string     `json:"session_path"`
 	LastOnlineAt   *time.Time `json:"last_online_at,omitempty"`

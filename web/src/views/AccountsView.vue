@@ -300,6 +300,7 @@ onBeforeUnmount(() => {
       <table class="data-table">
         <thead>
           <tr>
+            <th>头像</th>
             <th>手机号</th>
             <th>名称</th>
             <th>状态</th>
@@ -310,7 +311,7 @@ onBeforeUnmount(() => {
         </thead>
         <tbody>
           <tr v-if="telegram.loading && telegram.accounts.length === 0">
-            <td colspan="6">
+            <td colspan="7">
               <div class="loading-stack" aria-label="正在加载账号">
                 <span class="skeleton-line" />
                 <span class="skeleton-line short" />
@@ -318,6 +319,17 @@ onBeforeUnmount(() => {
             </td>
           </tr>
           <tr v-for="account in pagedAccounts" :key="account.id">
+            <td>
+              <img
+                v-if="account.photo_id"
+                :src="`/api/accounts/${account.id}/avatar`"
+                alt="头像"
+                class="account-avatar"
+              />
+              <div v-else class="account-avatar-placeholder">
+                {{ (account.first_name || account.username || '?')[0].toUpperCase() }}
+              </div>
+            </td>
             <td>{{ account.phone }}</td>
             <td>{{ displayName(account.first_name, account.last_name, account.username) }}</td>
             <td>
@@ -357,7 +369,7 @@ onBeforeUnmount(() => {
             </td>
           </tr>
           <tr v-if="!telegram.loading && telegram.accounts.length === 0">
-            <td colspan="6">
+            <td colspan="7">
               <div class="empty-state">
                 <strong>暂无账号</strong>
                 <span>添加 Telegram 账号后即可同步频道元数据。</span>
@@ -482,6 +494,28 @@ onBeforeUnmount(() => {
 <style scoped>
 table {
   min-width: 760px;
+}
+
+.account-avatar {
+  border-radius: 50%;
+  display: block;
+  height: 40px;
+  object-fit: cover;
+  width: 40px;
+}
+
+.account-avatar-placeholder {
+  align-items: center;
+  background: var(--app-surface-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 50%;
+  color: var(--app-text-muted);
+  display: flex;
+  font-size: 16px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: center;
+  width: 40px;
 }
 
 .action-buttons {

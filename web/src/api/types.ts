@@ -132,6 +132,19 @@ export interface RuntimeSettings {
       concurrency: number
     }
   }
+  ai: {
+    media_metadata: {
+      enabled: boolean
+      base_url: string
+      api_key?: string
+      api_key_set?: boolean
+      model: string
+    }
+  }
+}
+
+export interface AIModelsResponse {
+  items: string[]
 }
 
 export interface TelegramAccount {

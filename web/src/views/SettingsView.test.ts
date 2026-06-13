@@ -138,6 +138,14 @@ vi.mock('@/api/client', () => ({
           media: {
             concurrency: 2
           }
+        },
+        ai: {
+          media_metadata: {
+            enabled: true,
+            base_url: 'https://api.example.com/v1',
+            api_key_set: true,
+            model: 'media-model'
+          }
         }
       })
     }
@@ -175,6 +183,9 @@ vi.mock('@/api/client', () => ({
     })
   }),
   apiPost: vi.fn((path: string) => {
+    if (path === '/api/settings/ai/models') {
+      return Promise.resolve({ items: ['gpt-4.1-mini', 'qwen-plus'] })
+    }
     if (path === '/api/saved-searches') {
       return Promise.resolve({
         id: 11,
@@ -240,6 +251,14 @@ vi.mock('@/api/client', () => ({
           },
           media: {
             concurrency: 3
+          }
+        },
+        ai: {
+          media_metadata: {
+            enabled: true,
+            base_url: 'https://api.example.com/v1',
+            api_key_set: true,
+            model: 'media-model'
           }
         }
       })
@@ -712,9 +731,54 @@ describe('SettingsView', () => {
         media: {
           concurrency: 3
         }
+      },
+      ai: {
+        media_metadata: {
+          enabled: true,
+          base_url: 'https://api.example.com/v1',
+          api_key: '',
+          model: 'media-model'
+        }
       }
     })
     expect(messageMocks.success).toHaveBeenCalledWith('媒体下载并发已立即生效，其余运行参数重启后生效')
+  })
+
+  it('loads model list and saves AI media metadata settings', async () => {
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-media-enabled-input"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input"]').element.value).toBe('https://api.example.com/v1')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-api-key-input"]').element.value).toBe('')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input"]').element.value).toBe('media-model')
+
+    await wrapper.get('[data-testid="ai-api-key-input"]').setValue('new-secret')
+    await wrapper.get('[data-testid="fetch-ai-models"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPost).toHaveBeenCalledWith('/api/settings/ai/models', {
+      base_url: 'https://api.example.com/v1',
+      api_key: 'new-secret'
+    })
+    await wrapper.get('[data-testid="ai-model-input"]').setValue('qwen-plus')
+    await wrapper.get('[data-testid="save-runtime-settings"]').trigger('click')
+    await flushPromises()
+
+    expect(apiPut).toHaveBeenCalledWith('/api/settings/runtime', expect.objectContaining({
+      ai: {
+        media_metadata: {
+          enabled: true,
+          base_url: 'https://api.example.com/v1',
+          api_key: 'new-secret',
+          model: 'qwen-plus'
+        }
+      }
+    }))
   })
 
   it('keeps restart-only success text when media concurrency is unchanged', async () => {

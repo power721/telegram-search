@@ -2487,6 +2487,74 @@ func TestAITestEndpointReturnsOKForNonEmptyReply(t *testing.T) {
 	}
 }
 
+func TestAITestEndpointUsesSavedProviderKeyWhenRequestKeyEmpty(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer server.Close()
+
+	deps := testDeps(t)
+	settings := config.RuntimeSettingsFromConfig(deps.RuntimeConfig)
+	settings.AI.MediaMetadata = config.AIMediaMetadataSettings{
+		Enabled:         true,
+		FallbackEnabled: true,
+		Providers: []config.AIMediaMetadataProviderSettings{
+			{ID: "zhipu-main", Provider: "zhipu", BaseURL: server.URL + "/v1", APIKey: "stored-key", Model: "glm-4.7-flash", Enabled: true},
+		},
+	}
+	if err := deps.Settings.SaveRuntimeSettings(context.Background(), settings); err != nil {
+		t.Fatalf("save runtime settings: %v", err)
+	}
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/ai/test", bytes.NewBufferString(`{"id":"zhipu-main","provider":"zhipu","base_url":"`+server.URL+`/v1","api_key":"","model":"glm-4.7-flash"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai test code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if gotAuth != "Bearer stored-key" {
+		t.Fatalf("provider authorization = %q, want saved key", gotAuth)
+	}
+}
+
+func TestAITestEndpointAcceptsProviderRowPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %s, want /v1/chat/completions", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer server.Close()
+
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/ai/test", bytes.NewBufferString(`{
+		"id":"groq-main",
+		"name":"Groq",
+		"provider":"groq",
+		"baseURL":"`+server.URL+`/v1",
+		"apiKey":"secret",
+		"apiKeySet":true,
+		"model":"media-model",
+		"enabled":true
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai test code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+}
+
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

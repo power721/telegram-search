@@ -565,17 +565,28 @@ func (h handlers) aiProviders(c *gin.Context) {
 
 func (h handlers) aiTest(c *gin.Context) {
 	var req struct {
-		Provider string `json:"provider"`
-		BaseURL  string `json:"base_url"`
-		APIKey   string `json:"api_key"`
-		Model    string `json:"model"`
+		ID           string `json:"id"`
+		Provider     string `json:"provider"`
+		BaseURL      string `json:"base_url"`
+		BaseURLCamel string `json:"baseURL"`
+		APIKey       string `json:"api_key"`
+		APIKeyCamel  string `json:"apiKey"`
+		Model        string `json:"model"`
 	}
 	if !bindJSON(c, &req) {
+		return
+	}
+	settings, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
 	providerID := aipkg.NormalizeProvider(req.Provider)
 	preset, hasPreset := aipkg.LookupProvider(providerID)
 	baseURL := strings.TrimSpace(req.BaseURL)
+	if baseURL == "" {
+		baseURL = strings.TrimSpace(req.BaseURLCamel)
+	}
 	if baseURL == "" && hasPreset {
 		baseURL = preset.BaseURL
 	}
@@ -584,6 +595,12 @@ func (h handlers) aiTest(c *gin.Context) {
 		modelName = preset.DefaultModel
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		apiKey = strings.TrimSpace(req.APIKeyCamel)
+	}
+	if apiKey == "" {
+		apiKey = savedAIMediaProviderAPIKey(settings.AI.MediaMetadata, req.ID, req.Provider, baseURL, modelName)
+	}
 	if baseURL == "" {
 		errorText(c, http.StatusBadRequest, "base_url is required")
 		return
@@ -616,6 +633,32 @@ func (h handlers) aiTest(c *gin.Context) {
 		"model":      modelName,
 		"latency_ms": time.Since(started).Milliseconds(),
 	})
+}
+
+func savedAIMediaProviderAPIKey(settings config.AIMediaMetadataSettings, id string, provider string, baseURL string, model string) string {
+	id = strings.TrimSpace(id)
+	provider = strings.TrimSpace(provider)
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	model = strings.TrimSpace(model)
+	for _, item := range settings.EffectiveProviders() {
+		if strings.TrimSpace(item.APIKey) == "" {
+			continue
+		}
+		if id != "" && strings.TrimSpace(item.ID) == id {
+			return strings.TrimSpace(item.APIKey)
+		}
+		if provider != "" && strings.TrimSpace(item.Provider) != provider {
+			continue
+		}
+		if baseURL != "" && strings.TrimRight(strings.TrimSpace(item.BaseURL), "/") != baseURL {
+			continue
+		}
+		if model != "" && strings.TrimSpace(item.Model) != model {
+			continue
+		}
+		return strings.TrimSpace(item.APIKey)
+	}
+	return ""
 }
 
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {

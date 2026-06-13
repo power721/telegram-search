@@ -567,7 +567,7 @@ describe('SettingsView', () => {
 
     const panes = wrapper.findAll('.n-tab-pane')
     expect(panes.map((pane) => pane.attributes('data-tab-name'))).toEqual(['security', 'storage', 'runtime', 'ai', 'notifications', 'system'])
-    expect(panes.map((pane) => pane.find('h2').text())).toEqual(['账号与安全', '存储', '运行参数', 'AI', '通知集成', '系统'])
+    expect(panes.map((pane) => pane.find('h2').text())).toEqual(['账号与安全', '存储', '运行参数', 'AI增强', '通知集成', '系统'])
     expect(panes[3].text()).toContain('AI 媒体元数据')
   })
 

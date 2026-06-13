@@ -61,6 +61,74 @@ type MediaMetadata struct {
 	Tags     string `json:"tags,omitempty"`
 }
 
+func (m *MediaMetadata) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Title    json.RawMessage `json:"title"`
+		Year     json.RawMessage `json:"year"`
+		Season   json.RawMessage `json:"season"`
+		Episode  json.RawMessage `json:"episode"`
+		Quality  json.RawMessage `json:"quality"`
+		Size     json.RawMessage `json:"size"`
+		TMDBID   json.RawMessage `json:"tmdb_id"`
+		Category json.RawMessage `json:"category"`
+		Tags     json.RawMessage `json:"tags"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var out MediaMetadata
+	var err error
+	if out.Title, err = decodeMetadataString(raw.Title); err != nil {
+		return fmt.Errorf("title: %w", err)
+	}
+	if out.Year, err = decodeMetadataString(raw.Year); err != nil {
+		return fmt.Errorf("year: %w", err)
+	}
+	if out.Season, err = decodeMetadataString(raw.Season); err != nil {
+		return fmt.Errorf("season: %w", err)
+	}
+	if out.Episode, err = decodeMetadataString(raw.Episode); err != nil {
+		return fmt.Errorf("episode: %w", err)
+	}
+	if out.Quality, err = decodeMetadataString(raw.Quality); err != nil {
+		return fmt.Errorf("quality: %w", err)
+	}
+	if out.Size, err = decodeMetadataString(raw.Size); err != nil {
+		return fmt.Errorf("size: %w", err)
+	}
+	if out.TMDBID, err = decodeMetadataString(raw.TMDBID); err != nil {
+		return fmt.Errorf("tmdb_id: %w", err)
+	}
+	if out.Category, err = decodeMetadataString(raw.Category); err != nil {
+		return fmt.Errorf("category: %w", err)
+	}
+	if out.Tags, err = decodeMetadataString(raw.Tags); err != nil {
+		return fmt.Errorf("tags: %w", err)
+	}
+	*m = out
+	return nil
+}
+
+func decodeMetadataString(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s, nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var v any
+	if err := decoder.Decode(&v); err != nil {
+		return "", err
+	}
+	if num, ok := v.(json.Number); ok {
+		return num.String(), nil
+	}
+	return "", fmt.Errorf("unsupported JSON value %s", string(raw))
+}
+
 type EnhancementResponse struct {
 	Items []EnhancementItem `json:"items"`
 }
@@ -186,7 +254,10 @@ func (c *Client) authorize(req *http.Request) {
 }
 
 func (c *Client) chatPayload(input EnhancementRequest) ([]byte, error) {
-	user, err := json.Marshal(input)
+	user, err := json.Marshal(chatInput{
+		Task:  "enhance_media_metadata",
+		Input: input,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("encode enhancement request: %w", err)
 	}
@@ -199,18 +270,100 @@ func (c *Client) chatPayload(input EnhancementRequest) ([]byte, error) {
 		Messages: []chatMessage{
 			{
 				Role:    "system",
-				Content: "Fix media metadata for cloud-drive links. Return JSON only with an items array. Match items by link_id or url. Do not invent unrelated links.",
+				Content: mediaMetadataSystemPrompt,
 			},
 			{Role: "user", Content: string(user)},
 		},
-		ResponseFormat: map[string]any{"type": "json_object"},
+		ResponseFormat: enhancementResponseFormat(),
 	}
 	return json.Marshal(req)
+}
+
+type chatInput struct {
+	Task  string             `json:"task"`
+	Input EnhancementRequest `json:"input"`
 }
 
 type chatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+const mediaMetadataSystemPrompt = `You are a strict data extraction engine.
+
+You must output ONLY valid JSON.
+
+The JSON MUST match this schema exactly:
+
+{
+  "items": [
+    {
+      "link_id": number,
+      "url": string,
+      "media": {
+        "title": string|null,
+        "year": string|null,
+        "season": string|null,
+        "episode": string|null,
+        "quality": string|null,
+        "size": string|null,
+        "tmdb_id": string|null,
+        "category": string|null,
+        "tags": string|null
+      }
+    }
+  ]
+}
+
+Rules:
+- Do NOT add extra fields
+- Do NOT omit "items"
+- Do NOT invent metadata
+- If unknown, use null
+- Match items strictly by link_id or url
+- Output JSON only, no markdown, no explanation`
+
+func enhancementResponseFormat() map[string]any {
+	return map[string]any{
+		"type": "json_schema",
+		"json_schema": map[string]any{
+			"name":   "EnhancementResponse",
+			"strict": true,
+			"schema": map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"required":             []string{"items"},
+				"properties": map[string]any{
+					"items": map[string]any{
+						"type": "array",
+						"items": map[string]any{
+							"type":                 "object",
+							"additionalProperties": false,
+							"required":             []string{"link_id", "url", "media"},
+							"properties": map[string]any{
+								"link_id": map[string]any{"type": "number"},
+								"url":     map[string]any{"type": "string"},
+								"media":   mediaMetadataSchema(),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func mediaMetadataSchema() map[string]any {
+	fields := map[string]any{}
+	for _, name := range []string{"title", "year", "season", "episode", "quality", "size", "tmdb_id", "category", "tags"} {
+		fields[name] = map[string]any{"type": []string{"string", "null"}}
+	}
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"title", "year", "season", "episode", "quality", "size", "tmdb_id", "category", "tags"},
+		"properties":           fields,
+	}
 }
 
 func checkStatus(resp *http.Response) error {

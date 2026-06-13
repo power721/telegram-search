@@ -91,6 +91,7 @@ func run(configPath string) error {
 	links := repository.NewLinkRepository(conn)
 	files := repository.NewFileRepository(conn)
 	resourceStats := repository.NewResourceStatsRepository(conn)
+	resourceIndex := repository.NewResourceIndexRepository(conn)
 	cursors := repository.NewSyncCursorRepository(conn)
 	watchRules := repository.NewWatchRuleRepository(conn)
 	remoteSearch := repository.NewRemoteSearchTaskRepository(conn)
@@ -135,7 +136,7 @@ func run(configPath string) error {
 	mediaLimiter := medialimit.New(cfg.Telegram.Media.Concurrency)
 	avatarLimiter := medialimit.New(20) // Higher concurrency for small images
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
-	resourceService := resource.NewService(links, files, resourceStats)
+	resourceService := resource.NewService(links, files, resourceStats, resourceIndex)
 	notificationService := notification.NewService(notification.Options{
 		SavedSearches: savedSearches,
 		Webhooks:      webhooks,

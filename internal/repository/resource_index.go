@@ -190,9 +190,10 @@ func (r *ResourceIndexRepository) rebuildFiles(ctx context.Context) error {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category,
        m.date, m.message_type, m.media_summary, m.account_id, m.channel_id, c.telegram_channel_id,
-       c.title, c.username, m.telegram_message_id
+       c.title, c.username, m.telegram_message_id, mc.text
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE m.deleted = 0 AND f.category <> 'image'`)
 	if err != nil {
@@ -206,7 +207,7 @@ WHERE m.deleted = 0 AND f.category <> 'image'`)
 		if err := rows.Scan(
 			&fileID, &item.SourceMessageID, &item.TelegramFileID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Type,
 			&item.Datetime, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID,
-			&item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID,
+			&item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID, &item.SourceSnippet,
 		); err != nil {
 			return err
 		}
@@ -370,9 +371,10 @@ func (r *ResourceIndexRepository) refreshFilesForMessage(ctx context.Context, me
 	rows, err := r.db.QueryContext(ctx, `
 SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category,
        m.date, m.message_type, m.media_summary, m.account_id, m.channel_id, c.telegram_channel_id,
-       c.title, c.username, m.telegram_message_id
+       c.title, c.username, m.telegram_message_id, mc.text
 FROM telegram_files f
 JOIN telegram_messages m ON m.id = f.message_id
+JOIN telegram_message_contents mc ON mc.message_id = m.id
 JOIN telegram_channels c ON c.id = m.channel_id
 WHERE m.deleted = 0 AND f.category <> 'image' AND f.message_id = ?`, messageID)
 	if err != nil {
@@ -386,7 +388,7 @@ WHERE m.deleted = 0 AND f.category <> 'image' AND f.message_id = ?`, messageID)
 		if err := rows.Scan(
 			&fileID, &item.SourceMessageID, &item.TelegramFileID, &item.FileName, &item.Extension, &item.MimeType, &item.SizeBytes, &item.Type,
 			&item.Datetime, &item.MessageType, &item.MediaSummary, &item.AccountID, &item.ChannelID, &item.TelegramChannelID,
-			&item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID,
+			&item.ChannelTitle, &item.ChannelUsername, &item.TelegramMessageID, &item.SourceSnippet,
 		); err != nil {
 			return err
 		}

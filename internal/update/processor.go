@@ -146,6 +146,7 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		extracted = result.Links
 	}
 	createdResources := []resource.Item{}
+	var storedMessageID int64
 	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		date := event.Date
 		if date.IsZero() {
@@ -167,6 +168,7 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		if err != nil {
 			return err
 		}
+		storedMessageID = stored[0].ID
 		if _, err := p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted); err != nil {
 			return err
 		}
@@ -182,6 +184,9 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		return err
 	}
 	p.enqueueCreatedResources(ctx, createdResources)
+	if p.resources != nil && storedMessageID > 0 {
+		return p.resources.RefreshMessage(ctx, storedMessageID)
+	}
 	return p.refreshResourceStats(ctx)
 }
 
@@ -265,10 +270,17 @@ func updateResourceCategoryFromLink(link model.Link) string {
 }
 
 func (p *Processor) deleteMessage(ctx context.Context, channel model.Channel, event Event) error {
+	messageID, err := p.messages.FindIDByTelegramMessageID(ctx, channel.ID, event.MessageID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		return p.messages.MarkDeletedTx(ctx, tx, channel.ID, event.MessageID)
 	}); err != nil {
 		return err
+	}
+	if p.resources != nil && messageID > 0 {
+		return p.resources.DeleteMessageResources(ctx, messageID)
 	}
 	return p.refreshResourceStats(ctx)
 }

@@ -1137,6 +1137,7 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 		}
 	}
 	createdResources := []resource.Item{}
+	storedMessageIDs := []int64{}
 	err := dbpkg.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		if len(filtered) > 0 {
 			stored, err := s.messages.SaveBatchTx(ctx, tx, filtered)
@@ -1144,6 +1145,7 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 				return err
 			}
 			for _, msg := range stored {
+				storedMessageIDs = append(storedMessageIDs, msg.ID)
 				extracted := linksByTelegramID[msg.TelegramMessageID]
 				_, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
 				if err != nil {
@@ -1173,6 +1175,11 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 	})
 	if err != nil {
 		return 0, fmt.Errorf("store history batch: %w", err)
+	}
+	if s.resources != nil && len(storedMessageIDs) > 0 {
+		if err := s.resources.RefreshMessages(ctx, storedMessageIDs); err != nil {
+			return 0, fmt.Errorf("refresh resource index: %w", err)
+		}
 	}
 	s.enqueueCreatedResources(ctx, createdResources)
 	return linkCount, nil

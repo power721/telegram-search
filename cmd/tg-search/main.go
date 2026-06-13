@@ -14,6 +14,7 @@ import (
 
 	"tg-search/internal/account"
 	"tg-search/internal/adminauth"
+	aipkg "tg-search/internal/ai"
 	"tg-search/internal/api"
 	"tg-search/internal/channel"
 	"tg-search/internal/config"
@@ -135,6 +136,14 @@ func run(configPath string) error {
 	mediaLimiter := medialimit.New(cfg.Telegram.Media.Concurrency)
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
+	aiService := aipkg.NewService(aipkg.ServiceOptions{
+		Settings:  settings,
+		Defaults:  cfg,
+		Messages:  messages,
+		Links:     links,
+		Resources: resourceService,
+		Logger:    logs.App,
+	})
 	notificationService := notification.NewService(notification.Options{
 		SavedSearches: savedSearches,
 		Webhooks:      webhooks,
@@ -142,17 +151,20 @@ func run(configPath string) error {
 		BotSubs:       botSubscriptions,
 	})
 	updateProcessor := updatepkg.NewProcessor(updatepkg.ProcessorOptions{
-		DB:            conn,
-		Channels:      channels,
-		Messages:      messages,
-		Links:         links,
-		Files:         files,
-		Resources:     resourceService,
-		Notifications: notificationService,
-		Cursors:       cursors,
-		Tasks:         taskService,
-		Extractor:     link.NewExtractor(),
-		Filter:        watchFilter,
+		DB:                   conn,
+		Channels:             channels,
+		Messages:             messages,
+		Links:                links,
+		Files:                files,
+		Resources:            resourceService,
+		Notifications:        notificationService,
+		Cursors:              cursors,
+		Tasks:                taskService,
+		Settings:             settings,
+		RuntimeConfig:        cfg,
+		AIMediaMetadataTasks: taskService,
+		Extractor:            link.NewExtractor(),
+		Filter:               watchFilter,
 	})
 	updateService := updatepkg.NewService(updatepkg.ServiceOptions{
 		Accounts:    accounts,
@@ -178,12 +190,15 @@ func run(configPath string) error {
 		Resources:     resourceService,
 		Notifications: notificationService,
 		Telegram:      tgClient, Sessions: sessions, Extractor: link.NewExtractor(),
-		Filter:           watchFilter,
-		HistoryBatchSize: cfg.Sync.HistoryBatchSize,
-		Workers:          cfg.Sync.Workers,
-		RetryPolicy:      retryPolicy,
-		RequestGovernor:  telegramGovernor,
-		Logger:           logs.SyncLog,
+		Filter:               watchFilter,
+		HistoryBatchSize:     cfg.Sync.HistoryBatchSize,
+		Workers:              cfg.Sync.Workers,
+		RetryPolicy:          retryPolicy,
+		RequestGovernor:      telegramGovernor,
+		Logger:               logs.SyncLog,
+		Settings:             settings,
+		RuntimeConfig:        cfg,
+		AIMediaMetadataTasks: taskService,
 	})
 	channelService := channel.NewService(channels, tgClient, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
@@ -192,8 +207,9 @@ func run(configPath string) error {
 		Repository: taskRepository,
 		Events:     eventBroker,
 		Handlers: map[string]taskpkg.Handler{
-			model.TaskTypeGapRecovery: historyService.RunGapRecoveryTask,
-			model.TaskTypeHistorySync: historyService.RunHistorySyncTask,
+			model.TaskTypeGapRecovery:     historyService.RunGapRecoveryTask,
+			model.TaskTypeHistorySync:     historyService.RunHistorySyncTask,
+			model.TaskTypeAIMediaMetadata: aiService.RunMediaMetadataTask,
 		},
 		PollInterval: 2 * time.Second,
 	})

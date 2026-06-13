@@ -3,11 +3,13 @@ package update
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
@@ -152,6 +154,64 @@ func TestProcessorFiltersRealtimeMessagesByEnabledWatchRule(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].TelegramMessageID != 11 || len(results[0].Links) != 1 {
 		t.Fatalf("results = %+v, want only message 11 with link", results)
+	}
+}
+
+func TestProcessorEnqueuesAIMediaMetadataTaskForCloudLinks(t *testing.T) {
+	ctx := context.Background()
+	fixture := newProcessorFixture(t)
+	settings := repository.NewSettingsRepository(fixture.conn)
+	runtime := config.RuntimeSettingsFromConfig(config.Config{})
+	runtime.AI.MediaMetadata = config.AIMediaMetadataSettings{
+		Enabled: true,
+		BaseURL: "https://api.example.com/v1",
+		APIKey:  "secret",
+		Model:   "media-model",
+	}
+	if err := settings.SaveRuntimeSettings(ctx, runtime); err != nil {
+		t.Fatalf("save runtime settings: %v", err)
+	}
+	taskRepo := taskpkg.NewRepository(fixture.conn)
+	taskService := taskpkg.NewService(taskRepo)
+	processor := NewProcessor(ProcessorOptions{
+		DB:                   fixture.conn,
+		Channels:             fixture.channels,
+		Messages:             fixture.messages,
+		Links:                fixture.links,
+		Extractor:            link.NewExtractor(),
+		Settings:             settings,
+		AIMediaMetadataTasks: taskService,
+	})
+
+	event := Event{
+		Type:              EventNewMessage,
+		AccountID:         fixture.accountID,
+		TelegramChannelID: fixture.telegramChannelID,
+		MessageID:         22,
+		Text:              "迷墙 https://pan.quark.cn/s/a\n另一部 https://www.alipan.com/s/b",
+		RawJSON:           "{}",
+		Date:              time.Now().UTC(),
+	}
+	if err := processor.Process(ctx, event); err != nil {
+		t.Fatalf("process event: %v", err)
+	}
+	items, err := taskRepo.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeAIMediaMetadata, Limit: 10})
+	if err != nil {
+		t.Fatalf("list ai tasks: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("ai task count = %d, want 1: %+v", len(items), items)
+	}
+	var payload taskpkg.AIMediaMetadataPayload
+	if err := json.Unmarshal([]byte(items[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode ai task payload: %v", err)
+	}
+	stored, err := fixture.messages.FindByID(ctx, payload.MessageID)
+	if err != nil {
+		t.Fatalf("find payload message: %v", err)
+	}
+	if stored.TelegramMessageID != 22 {
+		t.Fatalf("payload message telegram id = %d, want 22", stored.TelegramMessageID)
 	}
 }
 

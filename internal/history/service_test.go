@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"tg-search/internal/config"
 	"tg-search/internal/db"
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
@@ -683,6 +685,69 @@ func TestSyncChannelAppliesWatchRuleAndIgnoresEnabled(t *testing.T) {
 	}
 	if len(results) != 1 || results[0].TelegramMessageID != 3 {
 		t.Fatalf("results = %+v, want only message 3", results)
+	}
+}
+
+func TestHistoryStoreBatchEnqueuesAIMediaMetadataTaskForCloudLinks(t *testing.T) {
+	ctx := context.Background()
+	conn, accounts, channels, messages, links := setupHistoryTestStore(t)
+	accountID, channelID := seedHistoryAccountAndChannel(t, ctx, accounts, channels)
+	settings := repository.NewSettingsRepository(conn)
+	runtime := config.RuntimeSettingsFromConfig(config.Config{})
+	runtime.AI.MediaMetadata = config.AIMediaMetadataSettings{
+		Enabled: true,
+		BaseURL: "https://api.example.com/v1",
+		APIKey:  "secret",
+		Model:   "media-model",
+	}
+	if err := settings.SaveRuntimeSettings(ctx, runtime); err != nil {
+		t.Fatalf("save runtime settings: %v", err)
+	}
+	taskRepo := taskpkg.NewRepository(conn)
+	taskService := taskpkg.NewService(taskRepo)
+	service := NewService(Options{
+		DB: conn, Accounts: accounts, Channels: channels, Messages: messages, Links: links,
+		Extractor:            link.NewExtractor(),
+		Settings:             settings,
+		AIMediaMetadataTasks: taskService,
+	})
+
+	count, err := service.storeBatch(ctx, accountID, channelID, 0, time.Now().UTC(), []model.Message{
+		{
+			AccountID:         accountID,
+			ChannelID:         channelID,
+			TelegramMessageID: 100,
+			Text:              "迷墙 https://pan.quark.cn/s/a\n另一部 https://www.alipan.com/s/b",
+			RawJSON:           "{}",
+			Date:              time.Now().UTC(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("storeBatch: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("stored link count = %d, want 2", count)
+	}
+	items, err := taskRepo.List(ctx, taskpkg.ListFilter{Type: model.TaskTypeAIMediaMetadata, Limit: 10})
+	if err != nil {
+		t.Fatalf("list ai tasks: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("ai task count = %d, want 1: %+v", len(items), items)
+	}
+	var payload taskpkg.AIMediaMetadataPayload
+	if err := json.Unmarshal([]byte(items[0].PayloadJSON), &payload); err != nil {
+		t.Fatalf("decode ai task payload: %v", err)
+	}
+	if payload.MessageID <= 0 {
+		t.Fatalf("payload message id = %d, want stored message id", payload.MessageID)
+	}
+	stored, err := messages.FindByID(ctx, payload.MessageID)
+	if err != nil {
+		t.Fatalf("find payload message: %v", err)
+	}
+	if stored.TelegramMessageID != 100 {
+		t.Fatalf("payload message telegram id = %d, want 100", stored.TelegramMessageID)
 	}
 }
 

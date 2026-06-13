@@ -75,10 +75,12 @@ type AIConfig struct {
 }
 
 type AIMediaMetadataSettings struct {
-	Enabled bool   `yaml:"enabled" json:"enabled"`
-	BaseURL string `yaml:"base_url" json:"base_url"`
-	APIKey  string `yaml:"api_key" json:"api_key,omitempty"`
-	Model   string `yaml:"model" json:"model"`
+	Enabled         bool   `yaml:"enabled" json:"enabled"`
+	Provider        string `yaml:"provider" json:"provider,omitempty"`
+	BaseURL         string `yaml:"base_url" json:"base_url"`
+	APIKey          string `yaml:"api_key" json:"api_key,omitempty"`
+	Model           string `yaml:"model" json:"model"`
+	FallbackEnabled bool   `yaml:"fallback_enabled" json:"fallback_enabled"`
 }
 
 type BotConfig struct {
@@ -355,7 +357,7 @@ func validate(cfg Config) error {
 		if strings.TrimSpace(cfg.AI.MediaMetadata.BaseURL) == "" {
 			return errors.New("ai.media_metadata.base_url is required when ai.media_metadata.enabled is true")
 		}
-		if strings.TrimSpace(cfg.AI.MediaMetadata.APIKey) == "" {
+		if aiMediaMetadataRequiresAPIKey(cfg.AI.MediaMetadata) && strings.TrimSpace(cfg.AI.MediaMetadata.APIKey) == "" {
 			return errors.New("ai.media_metadata.api_key is required when ai.media_metadata.enabled is true")
 		}
 		if strings.TrimSpace(cfg.AI.MediaMetadata.Model) == "" {
@@ -369,6 +371,10 @@ func validate(cfg Config) error {
 		return errors.New("bot.poll_interval must be greater than zero")
 	}
 	return nil
+}
+
+func aiMediaMetadataRequiresAPIKey(settings AIMediaMetadataSettings) bool {
+	return strings.TrimSpace(settings.Provider) != "ollama"
 }
 
 func writeGeneratedConfig(path string, cfg Config) error {

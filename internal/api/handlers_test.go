@@ -2378,6 +2378,73 @@ func TestAIModelsEndpointListsProviderModelsFromRequest(t *testing.T) {
 	}
 }
 
+func TestAIProvidersEndpointReturnsPresets(t *testing.T) {
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/ai/providers", nil)
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai providers code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Items []struct {
+			ID             string `json:"id"`
+			Name           string `json:"name"`
+			BaseURL        string `json:"base_url"`
+			DefaultModel   string `json:"default_model"`
+			Website        string `json:"website"`
+			RequiresAPIKey bool   `json:"requires_api_key"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode providers response: %v", err)
+	}
+	var foundGroq bool
+	for _, item := range body.Items {
+		if item.ID == "groq" {
+			foundGroq = true
+			if item.BaseURL != "https://api.groq.com/openai/v1" || item.DefaultModel != "llama-3.3-70b-versatile" || item.Website == "" || !item.RequiresAPIKey {
+				t.Fatalf("groq provider = %+v", item)
+			}
+		}
+	}
+	if !foundGroq {
+		t.Fatalf("providers = %+v, want groq", body.Items)
+	}
+}
+
+func TestAIModelsEndpointAllowsOllamaWithoutAPIKey(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %s, want /v1/models", r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"data":[{"id":"qwen2.5:7b"}]}`))
+	}))
+	defer server.Close()
+
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/ai/models", bytes.NewBufferString(`{"provider":"ollama","base_url":"`+server.URL+`/v1","api_key":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai models code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if gotAuth != "" {
+		t.Fatalf("provider authorization = %q, want empty", gotAuth)
+	}
+}
+
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

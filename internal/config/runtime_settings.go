@@ -82,10 +82,12 @@ type RuntimeAISettingsResponse struct {
 }
 
 type AIMediaMetadataSettingsResponse struct {
-	Enabled   bool   `json:"enabled"`
-	BaseURL   string `json:"base_url"`
-	Model     string `json:"model"`
-	APIKeySet bool   `json:"api_key_set"`
+	Enabled         bool   `json:"enabled"`
+	Provider        string `json:"provider"`
+	BaseURL         string `json:"base_url"`
+	Model           string `json:"model"`
+	FallbackEnabled bool   `json:"fallback_enabled"`
+	APIKeySet       bool   `json:"api_key_set"`
 }
 
 func PreserveRuntimeSecrets(incoming RuntimeSettings, existing RuntimeSettings) RuntimeSettings {
@@ -102,10 +104,12 @@ func RedactRuntimeSettings(settings RuntimeSettings) RuntimeSettingsResponse {
 		Telegram: settings.Telegram,
 		AI: RuntimeAISettingsResponse{
 			MediaMetadata: AIMediaMetadataSettingsResponse{
-				Enabled:   settings.AI.MediaMetadata.Enabled,
-				BaseURL:   settings.AI.MediaMetadata.BaseURL,
-				Model:     settings.AI.MediaMetadata.Model,
-				APIKeySet: settings.AI.MediaMetadata.APIKey != "",
+				Enabled:         settings.AI.MediaMetadata.Enabled,
+				Provider:        settings.AI.MediaMetadata.Provider,
+				BaseURL:         settings.AI.MediaMetadata.BaseURL,
+				Model:           settings.AI.MediaMetadata.Model,
+				FallbackEnabled: settings.AI.MediaMetadata.FallbackEnabled,
+				APIKeySet:       settings.AI.MediaMetadata.APIKey != "",
 			},
 		},
 	}

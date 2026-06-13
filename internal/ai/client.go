@@ -13,22 +13,25 @@ import (
 )
 
 type ClientOptions struct {
-	BaseURL    string
-	APIKey     string
-	Model      string
-	HTTPClient *http.Client
+	BaseURL            string
+	APIKey             string
+	Model              string
+	AllowMissingAPIKey bool
+	HTTPClient         *http.Client
 }
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	model      string
-	httpClient *http.Client
+	baseURL            string
+	apiKey             string
+	model              string
+	allowMissingAPIKey bool
+	httpClient         *http.Client
 }
 
 type EnhancementRequest struct {
 	Message EnhancementMessage `json:"message"`
 	Links   []EnhancementLink  `json:"links"`
+	Context map[string]any     `json:"context,omitempty"`
 }
 
 type EnhancementMessage struct {
@@ -46,6 +49,7 @@ type EnhancementLink struct {
 	Password      string        `json:"password,omitempty"`
 	Note          string        `json:"note,omitempty"`
 	SourceSnippet string        `json:"source_snippet,omitempty"`
+	RawHint       string        `json:"raw_hint,omitempty"`
 	Media         MediaMetadata `json:"media"`
 }
 
@@ -145,10 +149,11 @@ func NewClient(opts ClientOptions) *Client {
 		httpClient = &http.Client{Timeout: 30 * time.Second}
 	}
 	return &Client{
-		baseURL:    strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"),
-		apiKey:     strings.TrimSpace(opts.APIKey),
-		model:      strings.TrimSpace(opts.Model),
-		httpClient: httpClient,
+		baseURL:            strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"),
+		apiKey:             strings.TrimSpace(opts.APIKey),
+		model:              strings.TrimSpace(opts.Model),
+		allowMissingAPIKey: opts.AllowMissingAPIKey,
+		httpClient:         httpClient,
 	}
 }
 
@@ -224,13 +229,12 @@ func (c *Client) Enhance(ctx context.Context, input EnhancementRequest) (Enhance
 	if len(body.Choices) == 0 {
 		return EnhancementResponse{}, errors.New("chat completion response has no choices")
 	}
-	content := extractJSONObject(body.Choices[0].Message.Content)
-	var out EnhancementResponse
-	if err := json.Unmarshal([]byte(content), &out); err != nil {
-		return EnhancementResponse{}, fmt.Errorf("decode media metadata json: %w", err)
+	out, err := decodeEnhancementResponse(body.Choices[0].Message.Content)
+	if err != nil {
+		return EnhancementResponse{}, err
 	}
-	if out.Items == nil {
-		out.Items = []EnhancementItem{}
+	if err := ValidateEnhancementResponse(out, input); err != nil {
+		return EnhancementResponse{}, err
 	}
 	return out, nil
 }
@@ -239,7 +243,7 @@ func (c *Client) validateBase() error {
 	if c.baseURL == "" {
 		return errors.New("ai base_url is required")
 	}
-	if c.apiKey == "" {
+	if c.apiKey == "" && !c.allowMissingAPIKey {
 		return errors.New("ai api_key is required")
 	}
 	if c.httpClient == nil {
@@ -250,7 +254,9 @@ func (c *Client) validateBase() error {
 
 func (c *Client) authorize(req *http.Request) {
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 }
 
 func (c *Client) chatPayload(input EnhancementRequest) ([]byte, error) {

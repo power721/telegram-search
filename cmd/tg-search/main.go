@@ -245,6 +245,7 @@ func run(configPath string) error {
 		Jobs: []scheduler.Job{
 			scheduler.CleanupJob{Logger: logs.App, MediaCache: imageCache},
 			adminauth.SessionCleanupJob{Service: adminAuth},
+			taskpkg.NewCleanupJob(taskService, cfg.TaskRetention, logs.App),
 		},
 		Logger: logs.App,
 	})

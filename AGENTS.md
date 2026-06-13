@@ -61,3 +61,10 @@ Do not commit local runtime data from `data/`, Telegram credentials, API keys, s
     * Delete the merged branch (`git branch -d <branch>`).
     * Verify that no unused worktrees remain (`git worktree list`).
 7. Keep only active worktrees in the repository.
+
+## Release Policy Exception
+1. Release/version publishing must not create a new worktree.
+2. Releases should be performed directly from main or a dedicated release branch.
+3. Release commits must be made without using task worktrees.
+4. If a release branch is used, it should be lightweight and short-lived, and not tied to a worktree lifecycle.
+5. After release, no additional cleanup of worktrees is required for the release process itself.

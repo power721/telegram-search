@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -61,16 +62,18 @@ func (h handlers) serveChannelAvatar(c *gin.Context) {
 
 	var imageData []byte
 	var imageMIME string
-	// Avatars are small (~10KB), download directly without MediaLimiter
-	// to avoid queuing behind large media downloads.
+	// Avatars are small (~10KB), download with 10s timeout to avoid indefinite blocking
 	downloadErr := h.downloadAvatar(c.Request.Context(), session, cacheKey, func() error {
 		if entry, hit := h.avatarCacheGet(c.Request.Context(), cacheKey); hit {
 			imageData = entry.Data
 			imageMIME = http.DetectContentType(entry.Data)
 			return nil
 		}
+		// Set 10-second timeout for avatar download
+		downloadCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
 		img, err := h.deps.Telegram.DownloadChannelAvatar(
-			c.Request.Context(),
+			downloadCtx,
 			session,
 			channel.TelegramChannelID,
 			channel.AccessHash,

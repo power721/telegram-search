@@ -1,10 +1,12 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -58,8 +60,11 @@ func (h handlers) serveAccountAvatar(c *gin.Context) {
 			imageMIME = http.DetectContentType(entry.Data)
 			return nil
 		}
+		// Set 10-second timeout for avatar download
+		downloadCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
 		img, err := h.deps.Telegram.DownloadUserAvatar(
-			c.Request.Context(),
+			downloadCtx,
 			session,
 			account.TelegramUserID,
 			account.PhotoID,

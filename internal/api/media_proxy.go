@@ -133,15 +133,17 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 	}
 
 	var image telegram.ImageFile
-	// Thumbnails are small, download directly without MediaLimiter
-	// to avoid queuing behind large media downloads.
+	// Thumbnails are small, download with 10s timeout to avoid indefinite blocking
 	err := h.downloadAvatar(c.Request.Context(), media.session, cacheKey, func() error {
 		if entry, hit := h.mediaImageCacheGet(c.Request.Context(), cacheKey); hit {
 			image = telegram.ImageFile{Data: entry.Data, MIMEType: http.DetectContentType(entry.Data)}
 			return nil
 		}
+		// Set 10-second timeout for image download
+		downloadCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
 		var err error
-		image, err = h.deps.Telegram.DownloadMessageImage(c.Request.Context(), media.session, media.channel, media.messageID)
+		image, err = h.deps.Telegram.DownloadMessageImage(downloadCtx, media.session, media.channel, media.messageID)
 		if err == nil {
 			h.mediaImageCacheSet(c.Request.Context(), cacheKey, image.Data)
 		}

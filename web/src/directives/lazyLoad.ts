@@ -3,6 +3,33 @@ import type { Directive } from 'vue'
 // Intersection Observer instance shared across all lazy-loaded images
 let observer: IntersectionObserver | null = null
 
+// Limit concurrent image loads to avoid browser connection limits
+const MAX_CONCURRENT_LOADS = 6
+let activeLoads = 0
+const pendingLoads: Array<() => void> = []
+
+function startLoad(img: HTMLImageElement, src: string) {
+  if (activeLoads >= MAX_CONCURRENT_LOADS) {
+    // Queue this load for later
+    pendingLoads.push(() => startLoad(img, src))
+    return
+  }
+
+  activeLoads++
+  img.src = src
+  img.removeAttribute('data-src')
+
+  // When load completes (success or error), process next queued load
+  const onComplete = () => {
+    activeLoads--
+    const next = pendingLoads.shift()
+    if (next) next()
+  }
+
+  img.addEventListener('load', onComplete, { once: true })
+  img.addEventListener('error', onComplete, { once: true })
+}
+
 function getObserver(): IntersectionObserver | null {
   // Check if IntersectionObserver is available (not available in jsdom/tests)
   if (typeof IntersectionObserver === 'undefined') {
@@ -17,8 +44,7 @@ function getObserver(): IntersectionObserver | null {
             const img = entry.target as HTMLImageElement
             const src = img.dataset.src
             if (src) {
-              img.src = src
-              img.removeAttribute('data-src')
+              startLoad(img, src)
             }
             observer!.unobserve(img)
           }
@@ -39,7 +65,7 @@ export const vLazyLoad: Directive<HTMLImageElement> = {
 
     const obs = getObserver()
     if (obs) {
-      // IntersectionObserver available - use lazy loading
+      // IntersectionObserver available - use lazy loading with concurrency control
       obs.observe(el)
     } else {
       // Fallback for environments without IntersectionObserver (tests, old browsers)

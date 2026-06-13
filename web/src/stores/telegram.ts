@@ -125,6 +125,12 @@ export const useTelegramStore = defineStore('telegram', {
         await this.loadAccounts()
       })
     },
+    async syncAccountChannels(id: number) {
+      return this.withLoading(async () => {
+        await apiPost(`/api/accounts/${id}/channels/sync-metadata`)
+        await this.loadAccounts()
+      })
+    },
     async withLoading<T>(fn: () => Promise<T>): Promise<T> {
       this.loading = true
       this.error = ''

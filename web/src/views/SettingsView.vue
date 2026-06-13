@@ -1326,7 +1326,7 @@ function versionStatusText() {
         </section>
       </n-tab-pane>
 
-      <n-tab-pane name="ai" tab="AI">
+      <n-tab-pane name="ai" tab="AI增强">
         <section class="panel runtime-panel">
           <div class="panel-header">
             <h2>AI 媒体元数据</h2>

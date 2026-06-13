@@ -20,12 +20,13 @@ var (
 )
 
 type Config struct {
-	Server   ServerConfig   `yaml:"server" json:"server"`
-	Sync     SyncConfig     `yaml:"sync" json:"sync"`
-	Storage  StorageConfig  `yaml:"storage" json:"storage"`
-	Telegram TelegramConfig `yaml:"telegram" json:"telegram"`
-	AI       AIConfig       `yaml:"ai" json:"ai"`
-	Bot      BotConfig      `yaml:"bot" json:"bot"`
+	Server        ServerConfig        `yaml:"server" json:"server"`
+	Sync          SyncConfig          `yaml:"sync" json:"sync"`
+	Storage       StorageConfig       `yaml:"storage" json:"storage"`
+	Telegram      TelegramConfig      `yaml:"telegram" json:"telegram"`
+	AI            AIConfig            `yaml:"ai" json:"ai"`
+	Bot           BotConfig           `yaml:"bot" json:"bot"`
+	TaskRetention TaskRetentionConfig `yaml:"task_retention" json:"task_retention"`
 }
 
 type ServerConfig struct {
@@ -126,6 +127,15 @@ type BotConfig struct {
 	Enabled      bool     `yaml:"enabled" json:"enabled"`
 	Token        string   `yaml:"token" json:"-"`
 	PollInterval Duration `yaml:"poll_interval" json:"poll_interval"`
+}
+
+type TaskRetentionConfig struct {
+	SucceededDays    int `yaml:"succeeded_days" json:"succeeded_days"`
+	FailedDays       int `yaml:"failed_days" json:"failed_days"`
+	CanceledDays     int `yaml:"canceled_days" json:"canceled_days"`
+	PausedDays       int `yaml:"paused_days" json:"paused_days"`
+	FloodWaitDays    int `yaml:"flood_wait_days" json:"flood_wait_days"`
+	ReconnectingDays int `yaml:"reconnecting_days" json:"reconnecting_days"`
 }
 
 func Load(path string) (Config, error) {
@@ -256,6 +266,14 @@ func defaultConfig() Config {
 		Bot: BotConfig{
 			PollInterval: Duration(3 * time.Second),
 		},
+		TaskRetention: TaskRetentionConfig{
+			SucceededDays:    7,
+			FailedDays:       30,
+			CanceledDays:     7,
+			PausedDays:       30,
+			FloodWaitDays:    30,
+			ReconnectingDays: 7,
+		},
 	}
 }
 
@@ -350,6 +368,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Bot.PollInterval == 0 {
 		cfg.Bot.PollInterval = defaults.Bot.PollInterval
 	}
+	if cfg.TaskRetention == (TaskRetentionConfig{}) {
+		cfg.TaskRetention = defaults.TaskRetention
+	}
 }
 
 func validate(cfg Config) error {
@@ -424,6 +445,24 @@ func validate(cfg Config) error {
 	}
 	if cfg.Bot.PollInterval <= 0 {
 		return errors.New("bot.poll_interval must be greater than zero")
+	}
+	if cfg.TaskRetention.SucceededDays < 0 {
+		return errors.New("task_retention.succeeded_days must be >= 0")
+	}
+	if cfg.TaskRetention.FailedDays < 0 {
+		return errors.New("task_retention.failed_days must be >= 0")
+	}
+	if cfg.TaskRetention.CanceledDays < 0 {
+		return errors.New("task_retention.canceled_days must be >= 0")
+	}
+	if cfg.TaskRetention.PausedDays < 0 {
+		return errors.New("task_retention.paused_days must be >= 0")
+	}
+	if cfg.TaskRetention.FloodWaitDays < 0 {
+		return errors.New("task_retention.flood_wait_days must be >= 0")
+	}
+	if cfg.TaskRetention.ReconnectingDays < 0 {
+		return errors.New("task_retention.reconnecting_days must be >= 0")
 	}
 	return nil
 }

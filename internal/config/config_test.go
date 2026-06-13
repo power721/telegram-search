@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLoadAppliesDefaultsFromLocalConfig(t *testing.T) {
@@ -664,3 +666,90 @@ func TestDatabasePathUsesProductDatabaseName(t *testing.T) {
 		t.Fatalf("DatabasePath = %q, want /data/tg-search/tg-search.db", got)
 	}
 }
+
+func TestDefaultConfig_TaskRetention(t *testing.T) {
+	cfg := defaultConfig()
+
+	assert.Equal(t, 7, cfg.TaskRetention.SucceededDays)
+	assert.Equal(t, 30, cfg.TaskRetention.FailedDays)
+	assert.Equal(t, 7, cfg.TaskRetention.CanceledDays)
+	assert.Equal(t, 30, cfg.TaskRetention.PausedDays)
+	assert.Equal(t, 30, cfg.TaskRetention.FloodWaitDays)
+	assert.Equal(t, 7, cfg.TaskRetention.ReconnectingDays)
+}
+
+func TestValidate_TaskRetention(t *testing.T) {
+	tests := []struct {
+		name      string
+		retention TaskRetentionConfig
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name: "valid all positive",
+			retention: TaskRetentionConfig{
+				SucceededDays:    7,
+				FailedDays:       30,
+				CanceledDays:     7,
+				PausedDays:       30,
+				FloodWaitDays:    30,
+				ReconnectingDays: 7,
+			},
+			wantError: false,
+		},
+		{
+			name: "valid with zeros",
+			retention: TaskRetentionConfig{
+				SucceededDays:    0,
+				FailedDays:       0,
+				CanceledDays:     0,
+				PausedDays:       0,
+				FloodWaitDays:    0,
+				ReconnectingDays: 0,
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid succeeded_days negative",
+			retention: TaskRetentionConfig{
+				SucceededDays:    -1,
+				FailedDays:       30,
+				CanceledDays:     7,
+				PausedDays:       30,
+				FloodWaitDays:    30,
+				ReconnectingDays: 7,
+			},
+			wantError: true,
+			errorMsg:  "task_retention.succeeded_days must be >= 0",
+		},
+		{
+			name: "invalid failed_days negative",
+			retention: TaskRetentionConfig{
+				SucceededDays:    7,
+				FailedDays:       -1,
+				CanceledDays:     7,
+				PausedDays:       30,
+				FloodWaitDays:    30,
+				ReconnectingDays: 7,
+			},
+			wantError: true,
+			errorMsg:  "task_retention.failed_days must be >= 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := defaultConfig()
+			cfg.TaskRetention = tt.retention
+
+			err := validate(cfg)
+			if tt.wantError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+

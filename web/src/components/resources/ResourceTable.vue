@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import type { ResourceItem } from '@/api/types'
 import { telegramMessageHref } from '@/utils/telegramLinks'
-import { vLazyLoad } from '@/directives/lazyLoad'
 
 const props = withDefaults(defineProps<{
   items: ResourceItem[]
@@ -17,10 +16,6 @@ const emit = defineEmits<{
   toggleSelectAll: [selected: boolean]
 }>()
 
-const failedImageThumbs = ref(new Set<string>())
-const activeVideo = ref<ResourceItem | null>(null)
-const videoDialogVisible = ref(false)
-const isVideoMaximized = ref(false)
 const selectedSet = computed(() => new Set(props.selectedIds))
 const selectedItemsCount = computed(() => props.items.filter((item) => selectedSet.value.has(item.id)).length)
 const allCurrentPageSelected = computed(() => props.items.length > 0 && selectedItemsCount.value === props.items.length)
@@ -32,18 +27,6 @@ function toggleResourceSelection(item: ResourceItem, event: Event) {
 
 function toggleCurrentPageSelection(event: Event) {
   emit('toggleSelectAll', (event.target as HTMLInputElement).checked)
-}
-
-function showImageThumb(item: ResourceItem) {
-  return Boolean(item.media?.image_url && !failedImageThumbs.value.has(item.id))
-}
-
-function showPlayableVideo(item: ResourceItem) {
-  return Boolean(item.media?.video_url)
-}
-
-function markImageThumbFailed(item: ResourceItem) {
-  failedImageThumbs.value = new Set(failedImageThumbs.value).add(item.id)
 }
 
 function categoryLabel(category: string) {
@@ -109,31 +92,6 @@ function resourceTypeLabel(item: ResourceItem) {
 
 function itemLabel(item: ResourceItem) {
   return item.media?.title || item.title || item.file_name || item.url || '-'
-}
-
-function openVideoPlayer(item: ResourceItem) {
-  if (!item.media?.video_url) return
-  activeVideo.value = item
-  isVideoMaximized.value = false
-  videoDialogVisible.value = true
-}
-
-function closeVideoPlayer() {
-  videoDialogVisible.value = false
-  isVideoMaximized.value = false
-  activeVideo.value = null
-}
-
-function handleVideoDialogVisibleUpdate(show: boolean) {
-  if (show) {
-    videoDialogVisible.value = true
-    return
-  }
-  closeVideoPlayer()
-}
-
-function toggleVideoMaximized() {
-  isVideoMaximized.value = !isVideoMaximized.value
 }
 
 function mediaMetaParts(item: ResourceItem) {
@@ -214,47 +172,6 @@ function formatDate(value?: string) {
           />
         </label>
         <div class="resource-cell">
-          <button
-            v-if="showPlayableVideo(item)"
-            class="resource-thumb-button"
-            type="button"
-            :aria-label="`播放视频 ${itemLabel(item)}`"
-            @click="openVideoPlayer(item)"
-          >
-            <img
-              v-if="showImageThumb(item)"
-              v-lazy-load
-              class="resource-thumb"
-              :data-src="item.media?.image_url"
-              alt=""
-              @error="markImageThumbFailed(item)"
-            />
-            <img
-              v-if="showImageThumb(item)"
-              v-lazy-load
-              class="resource-thumb-preview"
-              :data-src="item.media?.image_url"
-              alt=""
-              aria-hidden="true"
-            />
-            <span v-else class="resource-thumb resource-video-placeholder" aria-hidden="true"></span>
-          </button>
-          <span v-else-if="showImageThumb(item)" class="resource-thumb-frame">
-            <img
-              v-lazy-load
-              class="resource-thumb"
-              :data-src="item.media?.image_url"
-              alt=""
-              @error="markImageThumbFailed(item)"
-            />
-            <img
-              v-lazy-load
-              class="resource-thumb-preview"
-              :data-src="item.media?.image_url"
-              alt=""
-              aria-hidden="true"
-            />
-          </span>
           <div class="resource-copy">
             <strong>
               <a
@@ -295,68 +212,6 @@ function formatDate(value?: string) {
         </span>
       </article>
     </template>
-    <n-modal :block-scroll="false" :show="videoDialogVisible" @update:show="handleVideoDialogVisibleUpdate">
-      <n-card
-        v-if="activeVideo"
-        class="video-player-dialog"
-        :class="{ 'is-maximized': isVideoMaximized }"
-        :bordered="false"
-      >
-        <div class="video-player-header">
-          <h2>{{ itemLabel(activeVideo) }}</h2>
-          <div class="video-player-actions">
-            <n-button
-              :aria-label="isVideoMaximized ? '还原播放窗口' : '最大化播放窗口'"
-              circle
-              quaternary
-              size="small"
-              @click="toggleVideoMaximized"
-            >
-              <svg
-                v-if="isVideoMaximized"
-                class="video-player-action-icon"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path d="M9 3v6H3" />
-                <path d="M15 21v-6h6" />
-                <path d="M9 9 4 4" />
-                <path d="m15 15 5 5" />
-              </svg>
-              <svg v-else class="video-player-action-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M8 3H3v5" />
-                <path d="M16 3h5v5" />
-                <path d="M21 16v5h-5" />
-                <path d="M3 16v5h5" />
-              </svg>
-            </n-button>
-            <n-button
-              aria-label="关闭视频播放"
-              class="video-player-close"
-              circle
-              quaternary
-              size="small"
-              @click="closeVideoPlayer"
-            >
-              <svg class="video-player-close-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
-            </n-button>
-          </div>
-        </div>
-        <video
-          :key="activeVideo.id"
-          class="video-player"
-          :poster="activeVideo.media?.image_url"
-          :src="activeVideo.media?.video_url"
-          autoplay
-          controls
-          playsinline
-          preload="metadata"
-        ></video>
-      </n-card>
-    </n-modal>
   </div>
 </template>
 

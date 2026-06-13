@@ -1,41 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { GlobalSearchResult, MediaURLs, RemoteSearchItem } from '@/api/types'
+import type { GlobalSearchResult, RemoteSearchItem } from '@/api/types'
 import { telegramChannelHref, telegramMessageHref } from '@/utils/telegramLinks'
-import { vLazyLoad } from '@/directives/lazyLoad'
 
 defineProps<{
   result: GlobalSearchResult | null
   remoteItems?: RemoteSearchItem[]
   loading?: boolean
 }>()
-
-const failedImageThumbs = ref(new Set<string>())
-
-function mediaThumbKey(
-  prefix: string,
-  item: { id?: number | string; telegram_message_id?: number; media?: MediaURLs }
-) {
-  return `${prefix}-${item.id ?? item.telegram_message_id ?? 'item'}-${item.media?.image_url ?? ''}`
-}
-
-function showImageThumb(
-  prefix: string,
-  item: { id?: number | string; telegram_message_id?: number; media?: MediaURLs }
-) {
-  return Boolean(item.media?.image_url && !failedImageThumbs.value.has(mediaThumbKey(prefix, item)))
-}
-
-function showVideoThumb(item: { media?: MediaURLs }) {
-  return Boolean(item.media?.video_url)
-}
-
-function markImageThumbFailed(
-  prefix: string,
-  item: { id?: number | string; telegram_message_id?: number; media?: MediaURLs }
-) {
-  failedImageThumbs.value = new Set(failedImageThumbs.value).add(mediaThumbKey(prefix, item))
-}
 
 function sourceLabel(source?: string) {
   const labels: Record<string, string> = {
@@ -122,31 +93,6 @@ function linkMetaParts(item: {
       <template v-for="item in result?.messages.items ?? []" :key="`m-${item.id}`">
         <article class="result-row">
           <div class="result-content">
-            <span v-if="showImageThumb('message', item)" class="search-thumb-frame">
-              <img
-                v-lazy-load
-                class="search-thumb"
-                :data-src="item.media?.image_url"
-                alt=""
-                @error="markImageThumbFailed('message', item)"
-              />
-              <img
-                v-lazy-load
-                class="search-thumb-preview"
-                :data-src="item.media?.image_url"
-                alt=""
-                aria-hidden="true"
-              />
-            </span>
-            <video
-              v-else-if="showVideoThumb(item)"
-              class="search-thumb"
-              :poster="item.media?.image_url"
-              :src="item.media?.video_url"
-              muted
-              playsinline
-              preload="none"
-            ></video>
             <div class="result-copy">
               <strong>
                 <a
@@ -182,31 +128,6 @@ function linkMetaParts(item: {
       <template v-for="item in remoteItems ?? []" :key="`r-${item.telegram_message_id}`">
         <article class="result-row">
           <div class="result-content">
-            <span v-if="showImageThumb('remote', item)" class="search-thumb-frame">
-              <img
-                v-lazy-load
-                class="search-thumb"
-                :data-src="item.media?.image_url"
-                alt=""
-                @error="markImageThumbFailed('remote', item)"
-              />
-              <img
-                v-lazy-load
-                class="search-thumb-preview"
-                :data-src="item.media?.image_url"
-                alt=""
-                aria-hidden="true"
-              />
-            </span>
-            <video
-              v-else-if="showVideoThumb(item)"
-              class="search-thumb"
-              :poster="item.media?.image_url"
-              :src="item.media?.video_url"
-              muted
-              playsinline
-              preload="none"
-            ></video>
             <div class="result-copy">
               <strong>
                 <a
@@ -260,31 +181,6 @@ function linkMetaParts(item: {
       <template v-for="item in result?.links.items ?? []" :key="`l-${item.id}`">
         <article class="result-row">
           <div class="result-content">
-            <span v-if="showImageThumb('link', item)" class="search-thumb-frame">
-              <img
-                v-lazy-load
-                class="search-thumb"
-                :data-src="item.media?.image_url"
-                alt=""
-                @error="markImageThumbFailed('link', item)"
-              />
-              <img
-                v-lazy-load
-                class="search-thumb-preview"
-                :data-src="item.media?.image_url"
-                alt=""
-                aria-hidden="true"
-              />
-            </span>
-            <video
-              v-else-if="showVideoThumb(item)"
-              class="search-thumb"
-              :poster="item.media?.image_url"
-              :src="item.media?.video_url"
-              muted
-              playsinline
-              preload="none"
-            ></video>
             <div class="result-copy">
               <strong>
                 <a
@@ -326,31 +222,6 @@ function linkMetaParts(item: {
       <template v-for="item in result?.files.items ?? []" :key="`f-${item.id}`">
         <article class="result-row">
           <div class="result-content">
-            <span v-if="showImageThumb('file', item)" class="search-thumb-frame">
-              <img
-                v-lazy-load
-                class="search-thumb"
-                :data-src="item.media?.image_url"
-                alt=""
-                @error="markImageThumbFailed('file', item)"
-              />
-              <img
-                v-lazy-load
-                class="search-thumb-preview"
-                :data-src="item.media?.image_url"
-                alt=""
-                aria-hidden="true"
-              />
-            </span>
-            <video
-              v-else-if="showVideoThumb(item)"
-              class="search-thumb"
-              :poster="item.media?.image_url"
-              :src="item.media?.video_url"
-              muted
-              playsinline
-              preload="none"
-            ></video>
             <div class="result-copy">
               <strong>
                 <a

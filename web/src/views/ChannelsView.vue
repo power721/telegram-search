@@ -517,15 +517,7 @@ async function useGlobalRule() {
           <tr v-for="channel in filteredChannels" :key="channel.id">
             <td class="title-cell">
               <div class="channel-title-row">
-                <img
-                  v-if="channel.avatar_state === 'available'"
-                  class="channel-avatar"
-                  :src="`/api/channels/${channel.id}/avatar`"
-                  alt=""
-                  loading="lazy"
-                  @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span v-else class="channel-avatar-placeholder">
+                <span class="channel-avatar-placeholder">
                   {{ channel.title.charAt(0).toUpperCase() }}
                 </span>
                 <div class="channel-title-text">
@@ -629,15 +621,7 @@ async function useGlobalRule() {
         </div>
         <div v-for="channel in filteredChannels" :key="channel.id" class="mobile-card">
           <div class="mobile-card-header">
-            <img
-              v-if="channel.avatar_state === 'available'"
-              class="channel-avatar"
-              :src="`/api/channels/${channel.id}/avatar`"
-              alt=""
-              loading="lazy"
-              @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            <span v-else class="channel-avatar-placeholder">
+            <span class="channel-avatar-placeholder">
               {{ channel.title.charAt(0).toUpperCase() }}
             </span>
             <div class="mobile-card-title">

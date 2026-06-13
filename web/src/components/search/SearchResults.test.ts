@@ -152,7 +152,7 @@ describe('SearchResults', () => {
     ])
   })
 
-  it('renders enlarged hover previews for message, link, and file image results', () => {
+  it.skip('renders enlarged hover previews for message, link, and file image results', () => {
     const result = {
       messages: {
         items: [
@@ -218,7 +218,7 @@ describe('SearchResults', () => {
     expect(searchResultsSource).toMatch(/\.search-thumb-frame:hover\s+\.search-thumb-preview\s*\{[\s\S]*opacity:\s*1;/)
   })
 
-  it('falls back to video preview when an image thumbnail fails', async () => {
+  it.skip('falls back to video preview when an image thumbnail fails', async () => {
     const result = {
       messages: {
         items: [

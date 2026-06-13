@@ -320,13 +320,7 @@ onBeforeUnmount(() => {
           </tr>
           <tr v-for="account in pagedAccounts" :key="account.id">
             <td>
-              <img
-                v-if="account.photo_id"
-                :src="`/api/accounts/${account.id}/avatar`"
-                alt="头像"
-                class="account-avatar"
-              />
-              <div v-else class="account-avatar-placeholder">
+              <div class="account-avatar-placeholder">
                 {{ (account.first_name || account.username || '?')[0].toUpperCase() }}
               </div>
             </td>
@@ -388,13 +382,7 @@ onBeforeUnmount(() => {
         </div>
         <div v-for="account in pagedAccounts" :key="account.id" class="mobile-card">
           <div class="mobile-card-header">
-            <img
-              v-if="account.photo_id"
-              :src="`/api/accounts/${account.id}/avatar`"
-              alt="头像"
-              class="account-avatar"
-            />
-            <div v-else class="account-avatar-placeholder">
+            <div class="account-avatar-placeholder">
               {{ (account.first_name || account.username || '?')[0].toUpperCase() }}
             </div>
             <div class="mobile-card-title">

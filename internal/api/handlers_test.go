@@ -2269,6 +2269,51 @@ func TestRuntimeSettingsRedactsAIMediaMetadataAPIKeyAndPreservesExistingKey(t *t
 	}
 }
 
+func TestAIModelsEndpointListsProviderModelsFromRequest(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %s, want /v1/models", r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4.1-mini"},{"id":"qwen-plus"}]}`))
+	}))
+	defer server.Close()
+
+	deps := testDeps(t)
+	settings := config.RuntimeSettingsFromConfig(deps.RuntimeConfig)
+	settings.AI.MediaMetadata.APIKey = "stored-key"
+	if err := deps.Settings.SaveRuntimeSettings(context.Background(), settings); err != nil {
+		t.Fatalf("save runtime settings: %v", err)
+	}
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/ai/models", bytes.NewBufferString(`{"base_url":"`+server.URL+`/v1","api_key":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai models code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if gotAuth != "Bearer stored-key" {
+		t.Fatalf("provider authorization = %q, want saved key", gotAuth)
+	}
+	var body struct {
+		Items []string `json:"items"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode ai models response: %v", err)
+	}
+	if !reflect.DeepEqual(body.Items, []string{"gpt-4.1-mini", "qwen-plus"}) {
+		t.Fatalf("items = %#v", body.Items)
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("stored-key")) {
+		t.Fatalf("ai models response leaked api key: %s", w.Body.String())
+	}
+}
+
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

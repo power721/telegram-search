@@ -143,6 +143,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.PUT("/settings/telegram-bot", h.updateTelegramBotSettings)
 	adminOnly.GET("/settings/runtime", h.getRuntimeSettings)
 	adminOnly.PUT("/settings/runtime", h.updateRuntimeSettings)
+	adminOnly.POST("/settings/ai/models", h.aiModels)
 	adminOnly.PUT("/settings/admin", h.updateAdminSettings)
 	adminOnly.GET("/settings/api-key", h.getAPIKeySettings)
 	adminOnly.POST("/settings/api-key/regenerate", h.regenerateAPIKey)

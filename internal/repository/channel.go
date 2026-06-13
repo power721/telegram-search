@@ -43,9 +43,9 @@ func (r *ChannelRepository) Save(ctx context.Context, channel model.Channel) (in
 	var id int64
 	err := r.db.QueryRowContext(ctx, `
 INSERT INTO telegram_channels
-  (account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access_error, created_at, updated_at)
+  (account_id, telegram_channel_id, access_hash, title, username, type, member_count, description, avatar_state, photo_id, sync_state, listen_state, history_sync_enabled, sync_profile, listen_enabled, remote_search_allowed, last_message_id, last_sync_time, web_access_error, created_at, updated_at)
 VALUES
-  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   access_hash = excluded.access_hash,
   title = excluded.title,
@@ -53,9 +53,10 @@ ON CONFLICT(account_id, telegram_channel_id, type) DO UPDATE SET
   member_count = excluded.member_count,
   description = excluded.description,
   avatar_state = excluded.avatar_state,
+  photo_id = excluded.photo_id,
   updated_at = excluded.updated_at
 RETURNING id`,
-		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.SyncState, channel.ListenState, channel.HistorySyncEnabled, channel.SyncProfile, channel.ListenEnabled, channel.RemoteSearchAllowed, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
+		channel.AccountID, channel.TelegramChannelID, channel.AccessHash, channel.Title, channel.Username, channel.Type, channel.MemberCount, channel.Description, channel.AvatarState, channel.PhotoID, channel.SyncState, channel.ListenState, channel.HistorySyncEnabled, channel.SyncProfile, channel.ListenEnabled, channel.RemoteSearchAllowed, channel.LastMessageID, channel.LastSyncTime, channel.WebAccessError, now, now,
 	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("save channel: %w", err)
@@ -314,30 +315,23 @@ WHERE id = ?`, "synced", syncTime, time.Now().UTC(), channelID)
 	return requireRows(res, "channel not found")
 }
 
-func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
-	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
+const channelColumns = `c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.photo_id, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at`
+
+const channelJoin = `
 FROM telegram_channels c
 LEFT JOIN (
   SELECT channel_id, COUNT(*) AS indexed_message_count
   FROM telegram_messages
   WHERE deleted = 0
   GROUP BY channel_id
-) message_counts ON message_counts.channel_id = c.id
-WHERE c.id = ?`, id))
+) message_counts ON message_counts.channel_id = c.id`
+
+func (r *ChannelRepository) FindByID(ctx context.Context, id int64) (model.Channel, error) {
+	return scanChannel(r.db.QueryRowContext(ctx, `SELECT `+channelColumns+channelJoin+` WHERE c.id = ?`, id))
 }
 
 func (r *ChannelRepository) FindByTelegramID(ctx context.Context, accountID int64, telegramChannelID int64) (model.Channel, error) {
-	return scanChannel(r.db.QueryRowContext(ctx, `
-SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
-FROM telegram_channels c
-LEFT JOIN (
-  SELECT channel_id, COUNT(*) AS indexed_message_count
-  FROM telegram_messages
-  WHERE deleted = 0
-  GROUP BY channel_id
-) message_counts ON message_counts.channel_id = c.id
-WHERE c.account_id = ? AND c.telegram_channel_id = ?`, accountID, telegramChannelID))
+	return scanChannel(r.db.QueryRowContext(ctx, `SELECT `+channelColumns+channelJoin+` WHERE c.account_id = ? AND c.telegram_channel_id = ?`, accountID, telegramChannelID))
 }
 
 func (r *ChannelRepository) FindAll(ctx context.Context) ([]model.Channel, error) {
@@ -349,16 +343,7 @@ func (r *ChannelRepository) FindByAccountID(ctx context.Context, accountID int64
 }
 
 func (r *ChannelRepository) find(ctx context.Context, where string, args []any) ([]model.Channel, error) {
-	query := `
-SELECT c.id, c.account_id, c.telegram_channel_id, c.access_hash, c.title, c.username, c.type, c.member_count, c.description, c.avatar_state, c.sync_state, c.listen_state, c.history_sync_enabled, c.sync_profile, c.listen_enabled, c.remote_search_allowed, c.last_message_id, c.last_sync_time, c.web_access, c.web_access_checked_at, c.web_access_error, COALESCE(message_counts.indexed_message_count, 0), c.created_at, c.updated_at
-FROM telegram_channels c
-LEFT JOIN (
-  SELECT channel_id, COUNT(*) AS indexed_message_count
-  FROM telegram_messages
-  WHERE deleted = 0
-  GROUP BY channel_id
-) message_counts ON message_counts.channel_id = c.id
-` + where + ` ORDER BY c.title, c.id`
+	query := `SELECT ` + channelColumns + channelJoin + ` ` + where + ` ORDER BY c.title, c.id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("find channels: %w", err)
@@ -414,6 +399,7 @@ func scanChannelRows(row interface {
 		&channel.MemberCount,
 		&channel.Description,
 		&channel.AvatarState,
+		&channel.PhotoID,
 		&channel.SyncState,
 		&channel.ListenState,
 		&channel.HistorySyncEnabled,

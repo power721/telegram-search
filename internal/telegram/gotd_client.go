@@ -150,6 +150,12 @@ func channelFromTG(channel *tg.Channel) Channel {
 	if channel.Megagroup {
 		typ = "supergroup"
 	}
+	avatarState := "none"
+	var photoID int64
+	if photo, ok := channel.Photo.(*tg.ChatPhoto); ok {
+		photoID = photo.PhotoID
+		avatarState = "available"
+	}
 	return Channel{
 		TelegramChannelID: channel.ID,
 		AccessHash:        accessHash,
@@ -157,7 +163,8 @@ func channelFromTG(channel *tg.Channel) Channel {
 		Username:          username,
 		Type:              typ,
 		MemberCount:       int64(participants),
-		AvatarState:       "unknown",
+		AvatarState:       avatarState,
+		PhotoID:           photoID,
 	}
 }
 
@@ -233,6 +240,16 @@ func (g *GotdClient) SearchMessages(ctx context.Context, account AccountSession,
 			out = append(out, convertMessage(message))
 		}
 		return nil
+	})
+	return out, err
+}
+
+func (g *GotdClient) DownloadChannelAvatar(ctx context.Context, session AccountSession, channelID int64, accessHash int64, photoID int64) (ImageFile, error) {
+	var out ImageFile
+	err := g.withClient(ctx, session.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		var err error
+		out, err = downloadChatPhoto(ctx, client.API(), channelID, accessHash, photoID)
+		return err
 	})
 	return out, err
 }

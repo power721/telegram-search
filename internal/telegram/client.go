@@ -68,6 +68,7 @@ type Channel struct {
 	MemberCount       int64
 	Description       string
 	AvatarState       string
+	PhotoID           int64
 }
 
 type ChannelRef struct {
@@ -121,6 +122,7 @@ type Client interface {
 	VideoFile(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (VideoFile, error)
 	StreamVideoRange(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int, file VideoFile, offset int64, length int64, w io.Writer) error
 	DownloadMessageImage(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (ImageFile, error)
+	DownloadChannelAvatar(ctx context.Context, session AccountSession, channelID int64, accessHash int64, photoID int64) (ImageFile, error)
 }
 
 type Credentials struct {
@@ -215,5 +217,9 @@ func (NopClient) StreamVideoRange(context.Context, AccountSession, MediaChannelR
 }
 
 func (NopClient) DownloadMessageImage(context.Context, AccountSession, MediaChannelRef, int) (ImageFile, error) {
+	return ImageFile{}, ErrUnavailable
+}
+
+func (NopClient) DownloadChannelAvatar(context.Context, AccountSession, int64, int64, int64) (ImageFile, error) {
 	return ImageFile{}, ErrUnavailable
 }

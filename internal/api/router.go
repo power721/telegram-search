@@ -174,6 +174,8 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.POST("/channels/:id/clear", h.clearChannel)
 	adminOnly.POST("/channels/:id/analyze", h.analyzeChannel)
 	adminOnly.POST("/channels/:id/sync", h.syncChannel)
+	adminOnly.GET("/channels/:id/avatar", h.serveChannelAvatar)
+	adminOnly.HEAD("/channels/:id/avatar", h.serveChannelAvatar)
 	adminOnly.GET("/watch-rules", h.watchRules)
 	adminOnly.POST("/watch-rules", h.createWatchRule)
 	adminOnly.GET("/watch-rules/:id", h.watchRule)

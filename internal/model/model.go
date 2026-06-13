@@ -139,6 +139,7 @@ type Channel struct {
 	MemberCount         int64      `json:"member_count"`
 	Description         string     `json:"description"`
 	AvatarState         string     `json:"avatar_state"`
+	PhotoID             int64      `json:"photo_id"`
 	SyncState           string     `json:"sync_state"`
 	ListenState         string     `json:"listen_state"`
 	HistorySyncEnabled  bool       `json:"history_sync_enabled"`

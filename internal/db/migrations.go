@@ -418,8 +418,16 @@ CREATE TABLE IF NOT EXISTS telegram_bot_chats (
 
 CREATE INDEX IF NOT EXISTS idx_telegram_bot_chats_last_seen_at ON telegram_bot_chats(last_seen_at);
 `,
-	},
-}
+		},
+		{
+			version: 11,
+			name:    "channel_avatar_photo_id",
+			sql: `
+ALTER TABLE telegram_channels ADD COLUMN photo_id INTEGER NOT NULL DEFAULT 0;
+`,
+		},
+	}
+
 
 func Migrate(ctx context.Context, conn *sql.DB) error {
 	if _, err := conn.ExecContext(ctx, `

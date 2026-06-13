@@ -195,8 +195,12 @@ describe('ChannelsView', () => {
   }
 
   function rowTitle(row: ReturnType<ReturnType<typeof mount>['findAll']>[number]) {
+    const titleLink = row.find('.channel-title-link')
+    if (titleLink.exists()) return titleLink.text()
     const titleWithDescription = row.find('.title-with-description')
     if (titleWithDescription.exists()) return titleWithDescription.text()
+    const titleText = row.find('.channel-title-text')
+    if (titleText.exists()) return titleText.text()
     return row.findAll('td').at(0)?.text() ?? ''
   }
 
@@ -397,7 +401,7 @@ describe('ChannelsView', () => {
     const moviesButtons = channelRow(wrapper, 'Movies').findAll('button')
     expect(moviesButtons.find((button) => button.text() === '同步')?.attributes('data-loading')).toBe('false')
     expect(moviesButtons.find((button) => button.text() === '检测')?.attributes('data-loading')).toBe('false')
-    expect(moviesButtons.find((button) => button.text() === '监听')?.attributes('data-loading')).toBe('false')
+    expect(moviesButtons.find((button) => button.text() === '开启监听')?.attributes('data-loading')).toBe('false')
   })
 
   it('syncs history and toggles listening from row actions', async () => {
@@ -413,7 +417,7 @@ describe('ChannelsView', () => {
     await wrapper.findAll('button').find((button) => button.text() === '开始同步')?.trigger('click')
     await channelRow(wrapper, 'Movies')
       .findAll('button')
-      .find((button) => button.text() === '监听')
+      .find((button) => button.text() === '开启监听')
       ?.trigger('click')
     await channelRow(wrapper, 'Anime')
       .findAll('button')

@@ -348,7 +348,10 @@ function mountAccountsView() {
           template: '<div v-if="show"><slot /></div>'
         },
         NCard: {
-          template: '<section><slot /></section>'
+          props: { closable: Boolean },
+          emits: ['close'],
+          template:
+            '<section><slot name="header" /><button v-if="closable" type="button" aria-label="关闭 Telegram 登录" @click="$emit(\'close\')" /><slot /></section>'
         },
         NTag: {
           template: '<span><slot /></span>'

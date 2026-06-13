@@ -112,6 +112,68 @@ func TestResourceIndexListSearchesFTSAndFiltersProvider(t *testing.T) {
 	}
 }
 
+func TestResourceIndexListSupportsORResourceFilters(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	index := NewResourceIndexRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "VIP", Type: model.ChannelTypeChannel})
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu quark", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu magnet", RawJSON: "{}", Date: now.Add(-time.Minute)},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "ubuntu baidu", RawJSON: "{}", Date: now.Add(-2 * time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu Quark"}}); err != nil {
+		t.Fatalf("save quark link: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "magnet", Category: "magnet", URL: "magnet:?xt=urn:btih:ubuntu", Note: "Ubuntu Magnet"}}); err != nil {
+		t.Fatalf("save magnet link: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[2].ID, []model.Link{{Type: "baidu", Category: "cloud_drive", URL: "https://pan.baidu.com/s/ubuntu", Note: "Ubuntu Baidu"}}); err != nil {
+		t.Fatalf("save baidu link: %v", err)
+	}
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("Rebuild returned error: %v", err)
+	}
+
+	result, err := index.List(ctx, model.ResourceIndexQuery{
+		Keyword: "ubuntu",
+		Filters: []model.ResourceIndexFilter{
+			{Category: "cloud_drive", Type: "quark"},
+			{Category: "magnet"},
+		},
+		Limit: 10,
+	})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 2 || len(result.Items) != 2 {
+		t.Fatalf("result = %+v, want quark and magnet only", result)
+	}
+	got := map[string]bool{}
+	for _, item := range result.Items {
+		got[item.Type] = true
+	}
+	if !got["quark"] || !got["magnet"] || got["baidu"] {
+		t.Fatalf("types = %+v, want quark and magnet without baidu", got)
+	}
+}
+
 func TestResourceIndexRefreshAfterSoftDeleteSelectsNextNewestLink(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

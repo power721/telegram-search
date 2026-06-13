@@ -51,6 +51,7 @@ type ResourceIndexQuery struct {
 	Types      []string
 	Category   string
 	Categories []string
+	Filters    []ResourceIndexFilter
 	AccountID  int64
 	ChannelID  int64
 	Extension  string
@@ -60,6 +61,11 @@ type ResourceIndexQuery struct {
 	Limit      int
 	Offset     int
 	MaxLimit   int
+}
+
+type ResourceIndexFilter struct {
+	Category string
+	Type     string
 }
 
 type ResourceIndexListResult struct {

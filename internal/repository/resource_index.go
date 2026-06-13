@@ -509,6 +509,27 @@ func resourceIndexWhere(query model.ResourceIndexQuery) ([]string, []any, bool) 
 			args = append(args, value)
 		}
 	}
+	if len(query.Filters) > 0 {
+		filterWhere := make([]string, 0, len(query.Filters))
+		for _, filter := range query.Filters {
+			filterParts := []string{}
+			if filter.Category != "" {
+				filterParts = append(filterParts, "ri.category = ?")
+				args = append(args, filter.Category)
+			}
+			if filter.Type != "" {
+				filterParts = append(filterParts, "ri.type = ?")
+				args = append(args, filter.Type)
+			}
+			if len(filterParts) == 0 {
+				continue
+			}
+			filterWhere = append(filterWhere, "("+strings.Join(filterParts, " AND ")+")")
+		}
+		if len(filterWhere) > 0 {
+			where = append(where, "("+strings.Join(filterWhere, " OR ")+")")
+		}
+	}
 	if query.AccountID > 0 {
 		where = append(where, "ri.account_id = ?")
 		args = append(args, query.AccountID)

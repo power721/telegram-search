@@ -236,6 +236,22 @@ func itemFromIndex(indexed model.ResourceIndexItem, now time.Time) Item {
 	return item
 }
 
+func (s *Service) ListIndexed(ctx context.Context, query model.ResourceIndexQuery) (ListResult, bool, error) {
+	if s.index == nil {
+		return ListResult{}, false, nil
+	}
+	result, err := s.index.List(ctx, query)
+	if err != nil {
+		return ListResult{}, true, err
+	}
+	items := make([]Item, 0, len(result.Items))
+	now := time.Now().UTC()
+	for _, indexed := range result.Items {
+		items = append(items, itemFromIndex(indexed, now))
+	}
+	return ListResult{Items: items, Total: result.Total, Grouped: normalizeGrouped(result.Grouped)}, true, nil
+}
+
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	if result, ok, err := s.indexedList(ctx, query); ok || err != nil {
 		return result, err

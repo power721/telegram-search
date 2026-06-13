@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 
+	"tg-search/internal/model"
 	"tg-search/internal/resource"
 )
 
@@ -84,6 +85,11 @@ type externalMedia struct {
 type externalResourceFilter struct {
 	category string
 	typ      string
+}
+
+type externalResourceItemsResult struct {
+	Items []resource.Item
+	Total int
 }
 
 type externalSearchAccess struct {
@@ -302,6 +308,12 @@ func normalizeExternalOffset(offset int) int {
 
 func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTypes []string, limit int, offset int, includeImage bool) ([]resource.Item, int, error) {
 	filters := externalResourceFilters(cloudTypes)
+	if result, ok, err := h.externalResourceItemsIndexed(c, keyword, filters, limit, offset, includeImage); ok || err != nil {
+		if err != nil {
+			return nil, 0, err
+		}
+		return result.Items, result.Total, nil
+	}
 	fetchLimit := limit + offset
 	seen := map[string]struct{}{}
 	items := make([]resource.Item, 0, fetchLimit)
@@ -343,6 +355,39 @@ func (h handlers) externalResourceItems(c *gin.Context, keyword string, cloudTyp
 		end = len(items)
 	}
 	return items[offset:end], total, nil
+}
+
+func (h handlers) externalResourceItemsIndexed(c *gin.Context, keyword string, filters []externalResourceFilter, limit int, offset int, includeImage bool) (externalResourceItemsResult, bool, error) {
+	if len(filters) == 0 {
+		return externalResourceItemsResult{Items: []resource.Item{}, Total: 0}, true, nil
+	}
+	indexFilters := make([]model.ResourceIndexFilter, 0, len(filters))
+	for _, filter := range filters {
+		indexFilters = append(indexFilters, model.ResourceIndexFilter{Category: filter.category, Type: filter.typ})
+	}
+	sortOrder := "date_desc"
+	if strings.TrimSpace(keyword) != "" {
+		sortOrder = "hot"
+	}
+	result, ok, err := h.deps.Resources.ListIndexed(c.Request.Context(), model.ResourceIndexQuery{
+		Keyword:  keyword,
+		Filters:  indexFilters,
+		Limit:    limit,
+		Offset:   offset,
+		MaxLimit: externalSearchMaxLimit,
+		Sort:     sortOrder,
+	})
+	if err != nil || !ok {
+		return externalResourceItemsResult{}, ok, err
+	}
+	for i := range result.Items {
+		result.Items[i].ChannelUsername = ""
+	}
+	result.Items, err = h.attachMediaToExternalResourceItems(c.Request.Context(), result.Items, true, includeImage)
+	if err != nil {
+		return externalResourceItemsResult{}, true, err
+	}
+	return externalResourceItemsResult{Items: result.Items, Total: result.Total}, true, nil
 }
 
 func externalResourceFilters(cloudTypes []string) []externalResourceFilter {

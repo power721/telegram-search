@@ -57,6 +57,7 @@ func TestMigrateCreatesFreshFoundationSchema(t *testing.T) {
 		"telegram_files",
 		"telegram_watch_rules",
 		"users",
+		"admin_sessions",
 		"api_keys",
 		"settings",
 	} {
@@ -144,6 +145,8 @@ func TestPerformanceIndexesExist(t *testing.T) {
 		"idx_telegram_messages_account_date_id",
 		"idx_telegram_messages_channel_date_id",
 		"idx_telegram_links_type_message_id",
+		"idx_admin_sessions_expires_at",
+		"idx_admin_sessions_user_id",
 	} {
 		assertIndexExists(t, conn, name)
 	}

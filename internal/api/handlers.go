@@ -253,7 +253,10 @@ func (h handlers) updateAdminSettings(c *gin.Context) {
 		errorJSON(c, http.StatusBadRequest, err)
 		return
 	}
-	h.deps.AdminAuth.UpdateSession(cookie, updated)
+	if err := h.deps.AdminAuth.UpdateSession(c.Request.Context(), cookie, updated); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	updated.PasswordHash = ""
 	c.JSON(http.StatusOK, updated)
 }
@@ -629,7 +632,7 @@ func (h handlers) authLogin(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	token, err := h.deps.AdminAuth.CreateSession(user)
+	token, err := h.deps.AdminAuth.CreateSession(c.Request.Context(), user)
 	if err != nil {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
@@ -642,7 +645,10 @@ func (h handlers) authLogin(c *gin.Context) {
 
 func (h handlers) authLogout(c *gin.Context) {
 	if cookie, err := c.Cookie(adminSessionCookie); err == nil {
-		h.deps.AdminAuth.DeleteSession(cookie)
+		if err := h.deps.AdminAuth.DeleteSession(c.Request.Context(), cookie); err != nil {
+			errorJSON(c, http.StatusInternalServerError, err)
+			return
+		}
 	}
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie(adminSessionCookie, "", -1, "/", "", false, true)
@@ -655,7 +661,7 @@ func (h handlers) authMe(c *gin.Context) {
 		errorText(c, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	user, ok := h.deps.AdminAuth.UserForSession(cookie)
+	user, ok := h.deps.AdminAuth.UserForSession(c.Request.Context(), cookie)
 	if !ok {
 		errorText(c, http.StatusUnauthorized, "not authenticated")
 		return
@@ -709,7 +715,7 @@ func (h handlers) adminSession(c *gin.Context) (string, model.User, bool) {
 	if err != nil {
 		return "", model.User{}, false
 	}
-	user, ok := h.deps.AdminAuth.UserForSession(cookie)
+	user, ok := h.deps.AdminAuth.UserForSession(c.Request.Context(), cookie)
 	return cookie, user, ok
 }
 

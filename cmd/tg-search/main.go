@@ -102,6 +102,7 @@ func run(configPath string) error {
 	maintenance := repository.NewMaintenanceRepository(conn)
 	status := repository.NewStatusRepository(conn)
 	users := repository.NewUserRepository(conn)
+	adminSessions := repository.NewAdminSessionRepository(conn)
 	apiKeys := repository.NewAPIKeyRepository(conn)
 	settings := repository.NewSettingsRepository(conn)
 	runtimeSettings, err := settings.LoadRuntimeSettings(ctx, cfg)
@@ -124,7 +125,7 @@ func run(configPath string) error {
 	taskRepository := taskpkg.NewRepository(conn)
 	taskService := taskpkg.NewService(taskRepository)
 	eventBroker := taskpkg.NewEventBroker()
-	adminAuth := adminauth.NewService(users)
+	adminAuth := adminauth.NewService(users, adminSessions)
 	storageUsage := storage.NewUsageService(cfg)
 	imageCache := storage.NewMediaCache(cfg)
 	sessions := session.NewManager(filepath.Join(cfg.Storage.Path, "sessions"))
@@ -235,6 +236,7 @@ func run(configPath string) error {
 		Interval: time.Hour,
 		Jobs: []scheduler.Job{
 			scheduler.CleanupJob{Logger: logs.App, MediaCache: imageCache},
+			adminauth.SessionCleanupJob{Service: adminAuth},
 		},
 		Logger: logs.App,
 	})

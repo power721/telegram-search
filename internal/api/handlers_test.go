@@ -1938,11 +1938,23 @@ func createAdminSession(t *testing.T, router *gin.Engine) *http.Cookie {
 
 func withAdminSession(t *testing.T, deps Dependencies, req *http.Request) *http.Request {
 	t.Helper()
-	token, err := deps.AdminAuth.CreateSession(model.User{
-		ID:       1,
-		Username: "admin",
-		Role:     model.UserRoleAdmin,
-	})
+	ctx := context.Background()
+	user, err := deps.Users.FindByID(ctx, 1)
+	if errors.Is(err, sql.ErrNoRows) {
+		userID, createErr := deps.Users.Create(ctx, model.User{
+			Username:     "admin",
+			PasswordHash: "hash",
+			Role:         model.UserRoleAdmin,
+		})
+		if createErr != nil {
+			t.Fatalf("create admin user: %v", createErr)
+		}
+		user, err = deps.Users.FindByID(ctx, userID)
+	}
+	if err != nil {
+		t.Fatalf("find admin user: %v", err)
+	}
+	token, err := deps.AdminAuth.CreateSession(ctx, user)
 	if err != nil {
 		t.Fatalf("create admin session: %v", err)
 	}
@@ -5351,6 +5363,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	taskRepository := taskpkg.NewRepository(conn)
 	taskService := taskpkg.NewService(taskRepository)
 	users := repository.NewUserRepository(conn)
+	adminSessions := repository.NewAdminSessionRepository(conn)
 	apiKeys := repository.NewAPIKeyRepository(conn)
 	settings := repository.NewSettingsRepository(conn)
 	sessions := session.NewManager(filepath.Join(t.TempDir(), "sessions"))
@@ -5372,7 +5385,7 @@ func testDepsWithDB(t *testing.T) (Dependencies, *sql.DB) {
 	channelService := channel.NewService(channels, client, sessions)
 	channelWebAccessService := channel.NewWebAccessService(channels, nil)
 	return Dependencies{
-		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users),
+		Users: users, APIKeys: apiKeys, Settings: settings, AdminAuth: adminauth.NewService(users, adminSessions),
 		Accounts: accounts, Channels: channels, Messages: messages, Links: links, Files: files, WatchRules: watchRules, RemoteSearch: remoteSearch, SavedSearches: savedSearches, BotSubscriptions: botSubscriptions, Webhooks: webhooks, Deliveries: deliveries, Maintenance: maintenance, Status: status,
 		BackupDB: conn, BackupDir: filepath.Join(t.TempDir(), "backup"),
 		RuntimeConfig: runtimeConfig,

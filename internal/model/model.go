@@ -49,6 +49,13 @@ type User struct {
 	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
+type AdminSession struct {
+	Token     string    `json:"token"`
+	UserID    int64     `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type APIKey struct {
 	ID            int64      `json:"id"`
 	Name          string     `json:"name"`

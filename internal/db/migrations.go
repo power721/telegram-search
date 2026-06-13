@@ -418,23 +418,38 @@ CREATE TABLE IF NOT EXISTS telegram_bot_chats (
 
 CREATE INDEX IF NOT EXISTS idx_telegram_bot_chats_last_seen_at ON telegram_bot_chats(last_seen_at);
 `,
-		},
-		{
-			version: 11,
-			name:    "channel_avatar_photo_id",
-			sql: `
+	},
+	{
+		version: 11,
+		name:    "channel_avatar_photo_id",
+		sql: `
 ALTER TABLE telegram_channels ADD COLUMN photo_id INTEGER NOT NULL DEFAULT 0;
 `,
-		},
-		{
-			version: 12,
-			name:    "account_avatar_photo_id",
-			sql: `
+	},
+	{
+		version: 12,
+		name:    "account_avatar_photo_id",
+		sql: `
 ALTER TABLE telegram_accounts ADD COLUMN photo_id INTEGER NOT NULL DEFAULT 0;
 `,
-		},
-	}
+	},
+	{
+		version: 13,
+		name:    "admin_sessions",
+		sql: `
+CREATE TABLE IF NOT EXISTS admin_sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  expires_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_user_id ON admin_sessions(user_id);
+`,
+	},
+}
 
 func Migrate(ctx context.Context, conn *sql.DB) error {
 	if _, err := conn.ExecContext(ctx, `

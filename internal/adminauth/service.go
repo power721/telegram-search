@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -23,21 +22,19 @@ const DefaultSessionTTL = 24 * time.Hour
 
 type Service struct {
 	users      *repository.UserRepository
-	mu         sync.Mutex
-	sessions   map[string]sessionEntry
+	sessions   *repository.AdminSessionRepository
 	sessionTTL time.Duration
 	now        func() time.Time
 }
 
-type sessionEntry struct {
-	user      model.User
-	expiresAt time.Time
-}
-
-func NewService(users *repository.UserRepository) *Service {
+func NewService(users *repository.UserRepository, sessions ...*repository.AdminSessionRepository) *Service {
+	var sessionRepo *repository.AdminSessionRepository
+	if len(sessions) > 0 {
+		sessionRepo = sessions[0]
+	}
 	return &Service{
 		users:      users,
-		sessions:   map[string]sessionEntry{},
+		sessions:   sessionRepo,
 		sessionTTL: DefaultSessionTTL,
 		now:        func() time.Time { return time.Now().UTC() },
 	}
@@ -102,52 +99,87 @@ func (s *Service) Authenticate(ctx context.Context, username string, password st
 	return user, nil
 }
 
-func (s *Service) CreateSession(user model.User) (string, error) {
+func (s *Service) CreateSession(ctx context.Context, user model.User) (string, error) {
+	if s.sessions == nil {
+		return "", fmt.Errorf("admin session repository is required")
+	}
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return "", fmt.Errorf("generate session token: %w", err)
 	}
 	token := hex.EncodeToString(tokenBytes)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sweepExpiredLocked()
-	s.sessions[token] = sessionEntry{user: user, expiresAt: s.sessionExpiresAt()}
+	now := s.now()
+	if _, err := s.sessions.PruneExpired(ctx, now); err != nil {
+		return "", err
+	}
+	if err := s.sessions.Create(ctx, model.AdminSession{
+		Token:     token,
+		UserID:    user.ID,
+		ExpiresAt: s.sessionExpiresAt(),
+		CreatedAt: now,
+	}); err != nil {
+		return "", err
+	}
 	return token, nil
 }
 
-func (s *Service) UpdateSession(token string, user model.User) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry, ok := s.sessions[token]
-	if !ok {
-		return
+func (s *Service) UpdateSession(ctx context.Context, token string, user model.User) error {
+	if s.sessions == nil {
+		return fmt.Errorf("admin session repository is required")
 	}
-	if s.expired(entry) {
-		delete(s.sessions, token)
-		return
+	if err := s.sessions.UpdateUser(ctx, token, user.ID, s.now()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
 	}
-	entry.user = user
-	s.sessions[token] = entry
+	return nil
 }
 
-func (s *Service) UserForSession(token string) (model.User, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	entry, ok := s.sessions[token]
-	if !ok {
+func (s *Service) UserForSession(ctx context.Context, token string) (model.User, bool) {
+	if s.sessions == nil {
 		return model.User{}, false
 	}
-	if s.expired(entry) {
-		delete(s.sessions, token)
+	now := s.now()
+	user, err := s.sessions.FindUser(ctx, token, now)
+	if errors.Is(err, sql.ErrNoRows) {
+		_, _ = s.sessions.PruneExpired(ctx, now)
 		return model.User{}, false
 	}
-	return entry.user, true
+	if err != nil {
+		return model.User{}, false
+	}
+	return user, true
 }
 
-func (s *Service) DeleteSession(token string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.sessions, token)
+func (s *Service) DeleteSession(ctx context.Context, token string) error {
+	if s.sessions == nil {
+		return fmt.Errorf("admin session repository is required")
+	}
+	return s.sessions.Delete(ctx, token)
+}
+
+func (s *Service) PruneExpiredSessions(ctx context.Context) (int64, error) {
+	if s.sessions == nil {
+		return 0, fmt.Errorf("admin session repository is required")
+	}
+	return s.sessions.PruneExpired(ctx, s.now())
+}
+
+type SessionCleanupJob struct {
+	Service *Service
+}
+
+func (j SessionCleanupJob) Name() string {
+	return "admin_session_cleanup"
+}
+
+func (j SessionCleanupJob) Run(ctx context.Context) error {
+	if j.Service == nil {
+		return nil
+	}
+	_, err := j.Service.PruneExpiredSessions(ctx)
+	return err
 }
 
 func (s *Service) sessionExpiresAt() time.Time {
@@ -156,16 +188,4 @@ func (s *Service) sessionExpiresAt() time.Time {
 		ttl = DefaultSessionTTL
 	}
 	return s.now().Add(ttl)
-}
-
-func (s *Service) expired(entry sessionEntry) bool {
-	return !entry.expiresAt.IsZero() && !s.now().Before(entry.expiresAt)
-}
-
-func (s *Service) sweepExpiredLocked() {
-	for token, entry := range s.sessions {
-		if s.expired(entry) {
-			delete(s.sessions, token)
-		}
-	}
 }

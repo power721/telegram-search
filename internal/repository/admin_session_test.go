@@ -1,0 +1,108 @@
+package repository
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"tg-search/internal/db"
+	"tg-search/internal/model"
+)
+
+func TestAdminSessionRepositoryPersistsSessionsWithUsers(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	users := NewUserRepository(conn)
+	userID, err := users.Create(ctx, model.User{
+		Username:     "admin",
+		PasswordHash: "hash",
+		Role:         model.UserRoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	user, err := users.FindByID(ctx, userID)
+	if err != nil {
+		t.Fatalf("find user: %v", err)
+	}
+
+	sessions := NewAdminSessionRepository(conn)
+	expiresAt := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	if err := sessions.Create(ctx, model.AdminSession{
+		Token:     "session-token",
+		UserID:    user.ID,
+		ExpiresAt: expiresAt,
+		CreatedAt: expiresAt.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	got, err := sessions.FindUser(ctx, "session-token", expiresAt.Add(-time.Minute))
+	if err != nil {
+		t.Fatalf("find session user: %v", err)
+	}
+	if got.ID != user.ID || got.Username != "admin" || got.PasswordHash != "hash" || got.Role != model.UserRoleAdmin {
+		t.Fatalf("session user = %+v, want persisted admin", got)
+	}
+}
+
+func TestAdminSessionRepositoryDeletesAndPrunesSessions(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "tg-search.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	users := NewUserRepository(conn)
+	userID, err := users.Create(ctx, model.User{
+		Username:     "admin",
+		PasswordHash: "hash",
+		Role:         model.UserRoleAdmin,
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	sessions := NewAdminSessionRepository(conn)
+	now := time.Date(2026, 6, 13, 12, 0, 0, 0, time.UTC)
+	for _, session := range []model.AdminSession{
+		{Token: "expired", UserID: userID, ExpiresAt: now.Add(-time.Second), CreatedAt: now.Add(-time.Hour)},
+		{Token: "active", UserID: userID, ExpiresAt: now.Add(time.Hour), CreatedAt: now.Add(-time.Hour)},
+		{Token: "delete-me", UserID: userID, ExpiresAt: now.Add(time.Hour), CreatedAt: now.Add(-time.Hour)},
+	} {
+		if err := sessions.Create(ctx, session); err != nil {
+			t.Fatalf("create session %s: %v", session.Token, err)
+		}
+	}
+
+	if _, err := sessions.PruneExpired(ctx, now); err != nil {
+		t.Fatalf("prune expired: %v", err)
+	}
+	if _, err := sessions.FindUser(ctx, "expired", now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expired session error = %v, want sql.ErrNoRows", err)
+	}
+	if err := sessions.Delete(ctx, "delete-me"); err != nil {
+		t.Fatalf("delete session: %v", err)
+	}
+	if _, err := sessions.FindUser(ctx, "delete-me", now); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleted session error = %v, want sql.ErrNoRows", err)
+	}
+	if got, err := sessions.FindUser(ctx, "active", now); err != nil || got.ID != userID {
+		t.Fatalf("active session lookup = %+v err=%v, want user %d", got, err, userID)
+	}
+}

@@ -264,6 +264,16 @@ func (g *GotdClient) DownloadChannelAvatar(ctx context.Context, session AccountS
 	return out, err
 }
 
+func (g *GotdClient) DownloadUserAvatar(ctx context.Context, session AccountSession, userID int64, photoID int64) (ImageFile, error) {
+	var out ImageFile
+	err := g.withClient(ctx, session.SessionPath, func(ctx context.Context, client *gotdtelegram.Client) error {
+		var err error
+		out, err = downloadUserPhoto(ctx, client.API(), userID, photoID)
+		return err
+	})
+	return out, err
+}
+
 func (g *GotdClient) withClient(ctx context.Context, sessionPath string, fn func(context.Context, *gotdtelegram.Client) error) error {
 	credentials, err := g.credentials.TelegramCredentials(ctx)
 	if err != nil {
@@ -300,12 +310,19 @@ func profileFromUser(user *tg.User) Profile {
 	if phone != "" && phone[0] != '+' {
 		phone = "+" + phone
 	}
+	var photoID int64
+	if photo, ok := user.GetPhoto(); ok {
+		if userPhoto, ok := photo.(*tg.UserProfilePhoto); ok {
+			photoID = userPhoto.PhotoID
+		}
+	}
 	return Profile{
 		TelegramUserID: user.ID,
 		Phone:          phone,
 		FirstName:      first,
 		LastName:       last,
 		Username:       username,
+		PhotoID:        photoID,
 	}
 }
 

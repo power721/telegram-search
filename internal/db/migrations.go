@@ -426,6 +426,13 @@ CREATE INDEX IF NOT EXISTS idx_telegram_bot_chats_last_seen_at ON telegram_bot_c
 ALTER TABLE telegram_channels ADD COLUMN photo_id INTEGER NOT NULL DEFAULT 0;
 `,
 		},
+		{
+			version: 12,
+			name:    "account_avatar_photo_id",
+			sql: `
+ALTER TABLE telegram_accounts ADD COLUMN photo_id INTEGER NOT NULL DEFAULT 0;
+`,
+		},
 	}
 
 

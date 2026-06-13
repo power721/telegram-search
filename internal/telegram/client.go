@@ -34,6 +34,7 @@ type Profile struct {
 	FirstName      string
 	LastName       string
 	Username       string
+	PhotoID        int64
 }
 
 type QRLoginToken struct {
@@ -123,6 +124,7 @@ type Client interface {
 	StreamVideoRange(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int, file VideoFile, offset int64, length int64, w io.Writer) error
 	DownloadMessageImage(ctx context.Context, session AccountSession, channel MediaChannelRef, messageID int) (ImageFile, error)
 	DownloadChannelAvatar(ctx context.Context, session AccountSession, channelID int64, accessHash int64, photoID int64) (ImageFile, error)
+	DownloadUserAvatar(ctx context.Context, session AccountSession, userID int64, photoID int64) (ImageFile, error)
 }
 
 type Credentials struct {
@@ -221,5 +223,9 @@ func (NopClient) DownloadMessageImage(context.Context, AccountSession, MediaChan
 }
 
 func (NopClient) DownloadChannelAvatar(context.Context, AccountSession, int64, int64, int64) (ImageFile, error) {
+	return ImageFile{}, ErrUnavailable
+}
+
+func (NopClient) DownloadUserAvatar(context.Context, AccountSession, int64, int64) (ImageFile, error) {
 	return ImageFile{}, ErrUnavailable
 }

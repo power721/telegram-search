@@ -2714,6 +2714,7 @@ func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, pr
 	account.FirstName = profile.FirstName
 	account.LastName = profile.LastName
 	account.Username = profile.Username
+	account.PhotoID = profile.PhotoID
 	account.Status = model.AccountStatusOnline
 	account.SessionPath = h.sessionPath(account.ID)
 	now := time.Now().UTC()
@@ -2738,6 +2739,7 @@ func (h handlers) saveQRProfile(ctx context.Context, profile telegram.Profile, t
 		FirstName:      profile.FirstName,
 		LastName:       profile.LastName,
 		Username:       profile.Username,
+		PhotoID:        profile.PhotoID,
 		Status:         model.AccountStatusOnline,
 		SessionPath:    tempSessionPath,
 		LastOnlineAt:   &now,

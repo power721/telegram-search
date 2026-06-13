@@ -109,6 +109,61 @@ func (r *LinkRepository) ReplaceForMessageTx(ctx context.Context, tx *sql.Tx, me
 	return r.SaveBatchTx(ctx, tx, messageID, links)
 }
 
+func (r *LinkRepository) ListByMessage(ctx context.Context, messageID int64) ([]model.Link, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, message_id, type, url, COALESCE(password, ''), COALESCE(note, ''),
+       COALESCE(source_snippet, ''), COALESCE(category, ''),
+       COALESCE(media_title, ''), COALESCE(media_year, ''), COALESCE(media_season, ''), COALESCE(media_episode, ''),
+       COALESCE(media_quality, ''), COALESCE(media_size, ''), COALESCE(media_tmdb_id, ''), COALESCE(media_category, ''), COALESCE(media_tags, ''),
+       created_at
+FROM telegram_links
+WHERE message_id = ?
+ORDER BY id ASC`, messageID)
+	if err != nil {
+		return nil, fmt.Errorf("list links by message: %w", err)
+	}
+	defer rows.Close()
+	out := []model.Link{}
+	for rows.Next() {
+		var link model.Link
+		if err := rows.Scan(&link.ID, &link.MessageID, &link.Type, &link.URL, &link.Password, &link.Note, &link.SourceSnippet, &link.Category, &link.MediaTitle, &link.MediaYear, &link.MediaSeason, &link.MediaEpisode, &link.MediaQuality, &link.MediaSize, &link.MediaTMDBID, &link.MediaCategory, &link.MediaTags, &link.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, link)
+	}
+	return out, rows.Err()
+}
+
+func (r *LinkRepository) UpdateMediaMetadata(ctx context.Context, link model.Link) error {
+	res, err := r.db.ExecContext(ctx, `
+UPDATE telegram_links
+SET media_title = ?,
+    media_year = ?,
+    media_season = ?,
+    media_episode = ?,
+    media_quality = ?,
+    media_size = ?,
+    media_tmdb_id = ?,
+    media_category = ?,
+    media_tags = ?
+WHERE id = ?`,
+		link.MediaTitle,
+		link.MediaYear,
+		link.MediaSeason,
+		link.MediaEpisode,
+		link.MediaQuality,
+		link.MediaSize,
+		link.MediaTMDBID,
+		link.MediaCategory,
+		link.MediaTags,
+		link.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update link media metadata: %w", err)
+	}
+	return requireRows(res, "link not found")
+}
+
 func (r *LinkRepository) Search(ctx context.Context, params LinkSearchParams) ([]model.LinkResult, error) {
 	limit := clampLimit(params.Limit, 50)
 	where, args := linkSearchWhere(params)

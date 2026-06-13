@@ -213,6 +213,81 @@ func TestRepositoriesKeepAccountDataIsolated(t *testing.T) {
 	}
 }
 
+func TestRepositoriesLoadMessageLinksAndUpdateMediaMetadata(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+
+	accountID, err := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	if err != nil {
+		t.Fatalf("save account: %v", err)
+	}
+	channelID, err := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "Movies", Type: model.ChannelTypeChannel})
+	if err != nil {
+		t.Fatalf("save channel: %v", err)
+	}
+	stored, err := messages.SaveBatch(ctx, []model.Message{{
+		AccountID:         accountID,
+		ChannelID:         channelID,
+		TelegramMessageID: 1,
+		MessageType:       "text",
+		MediaSummary:      "plain",
+		Text:              "A https://pan.quark.cn/s/a B https://www.alipan.com/s/b",
+		RawJSON:           `{"id":1}`,
+		Date:              time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{
+		{Type: "quark", URL: "https://pan.quark.cn/s/a", Category: "cloud_drive", MediaTitle: "Rule A"},
+		{Type: "aliyun", URL: "https://www.alipan.com/s/b", Category: "cloud_drive", MediaTitle: "Rule B"},
+	}); err != nil {
+		t.Fatalf("save links: %v", err)
+	}
+
+	found, err := messages.FindByID(ctx, stored[0].ID)
+	if err != nil {
+		t.Fatalf("find message: %v", err)
+	}
+	if found.Text != stored[0].Text || found.RawJSON != `{"id":1}` || found.MediaSummary != "plain" {
+		t.Fatalf("found message = %+v", found)
+	}
+	messageLinks, err := links.ListByMessage(ctx, stored[0].ID)
+	if err != nil {
+		t.Fatalf("list links by message: %v", err)
+	}
+	if len(messageLinks) != 2 {
+		t.Fatalf("message links length = %d, want 2", len(messageLinks))
+	}
+	messageLinks[0].MediaTitle = "AI A"
+	messageLinks[0].MediaYear = "2026"
+	if err := links.UpdateMediaMetadata(ctx, messageLinks[0]); err != nil {
+		t.Fatalf("update media metadata: %v", err)
+	}
+
+	updated, err := links.ListByMessage(ctx, stored[0].ID)
+	if err != nil {
+		t.Fatalf("list updated links by message: %v", err)
+	}
+	if updated[0].MediaTitle != "AI A" || updated[0].MediaYear != "2026" {
+		t.Fatalf("updated first link = %+v", updated[0])
+	}
+	if updated[1].MediaTitle != "Rule B" || updated[1].MediaYear != "" {
+		t.Fatalf("second link should not change: %+v", updated[1])
+	}
+}
+
 func TestChannelRepositoryUpdatesWebAccess(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

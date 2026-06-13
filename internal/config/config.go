@@ -149,6 +149,7 @@ func RuntimeDirs(cfg Config) []string {
 		filepath.Join(root, "uploads"),
 		filepath.Join(root, "index"),
 		filepath.Join(root, "thumbnails"),
+		filepath.Join(root, "avatars"),
 	}
 }
 

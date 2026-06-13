@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,7 @@ type Dependencies struct {
 	RuntimeConfig    config.Config
 	StorageUsage     *storage.UsageService
 	ImageCache       *storage.MediaCache
+	AvatarCache      *storage.MediaCache
 	Accounts         *repository.AccountRepository
 	Channels         *repository.ChannelRepository
 	Messages         *repository.MessageRepository
@@ -103,6 +105,13 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	}
 	if h.deps.ImageCache == nil && h.deps.RuntimeConfig.Storage.Path != "" {
 		h.deps.ImageCache = storage.NewMediaCache(h.deps.RuntimeConfig)
+	}
+	if h.deps.AvatarCache == nil && h.deps.RuntimeConfig.Storage.Path != "" {
+		h.deps.AvatarCache = storage.NewMediaCacheWithOptions(storage.MediaCacheOptions{
+			Root:     filepath.Join(h.deps.RuntimeConfig.Storage.Path, "avatars"),
+			MaxBytes: int64(h.deps.RuntimeConfig.Storage.MaxMediaCache),
+			TTL:      30 * 24 * time.Hour,
+		})
 	}
 	api := router.Group("/api")
 	api.GET("/health", h.health)

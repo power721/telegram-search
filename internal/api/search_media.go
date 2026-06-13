@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -69,8 +70,66 @@ func (h handlers) attachMediaToRemoteSearchResults(ctx context.Context, result m
 }
 
 func (h handlers) attachMediaToResourceItems(ctx context.Context, items []resource.Item, signed bool) ([]resource.Item, error) {
+	if len(items) == 0 || h.deps.Files == nil {
+		return items, nil
+	}
+
+	// Collect all message references that need file lookups
+	type msgRef struct {
+		ChannelID int64
+		MessageID int64
+	}
+	refs := make([]struct{ ChannelID, MessageID int64 }, 0, len(items))
+	refMap := make(map[string]int) // key -> item index
+
 	for i := range items {
-		media, err := h.resourceItemMedia(ctx, items[i], signed)
+		// Skip items that already have file info inline
+		if items[i].Kind == "file" && items[i].TelegramFileID > 0 {
+			continue
+		}
+		// Need to fetch files from database
+		if items[i].ChannelID > 0 && items[i].TelegramMessageID > 0 {
+			key := fmt.Sprintf("%d:%d", items[i].ChannelID, items[i].TelegramMessageID)
+			if _, exists := refMap[key]; !exists {
+				refs = append(refs, struct{ ChannelID, MessageID int64 }{
+					ChannelID: items[i].ChannelID,
+					MessageID: items[i].TelegramMessageID,
+				})
+				refMap[key] = i
+			}
+		}
+	}
+
+	// Batch-fetch all files in one query
+	var filesMap map[string][]model.File
+	if len(refs) > 0 {
+		var err error
+		filesMap, err = h.deps.Files.FindByMessageRefs(ctx, refs)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Attach media to each item
+	for i := range items {
+		var files []model.File
+		if items[i].Kind == "file" && items[i].TelegramFileID > 0 {
+			// Inline file info
+			files = []model.File{{
+				TelegramFileID: items[i].TelegramFileID,
+				FileName:       items[i].FileName,
+				Extension:      items[i].Extension,
+				MimeType:       items[i].MimeType,
+				SizeBytes:      items[i].SizeBytes,
+				Category:       items[i].Category,
+			}}
+		} else if filesMap != nil {
+			// Files fetched from database
+			key := fmt.Sprintf("%d:%d", items[i].ChannelID, items[i].TelegramMessageID)
+			files = filesMap[key]
+		}
+
+		media, err := h.searchResultMedia(ctx, 0, items[i].MessageType, files, signed)
 		if err != nil {
 			return nil, err
 		}

@@ -145,6 +145,55 @@ ORDER BY f.id`, channelID, telegramMessageID)
 	return out, rows.Err()
 }
 
+// FindByMessageRefs batch-fetches files for multiple message references
+func (r *FileRepository) FindByMessageRefs(ctx context.Context, refs []struct{ ChannelID, MessageID int64 }) (map[string][]model.File, error) {
+	if len(refs) == 0 {
+		return make(map[string][]model.File), nil
+	}
+
+	// Build query with IN clause for batch fetch
+	query := `
+SELECT f.id, f.message_id, f.telegram_file_id, f.file_name, f.extension, f.mime_type, f.size_bytes, f.category, f.created_at, f.updated_at,
+       m.channel_id, m.telegram_message_id
+FROM telegram_files f
+JOIN telegram_messages m ON m.id = f.message_id
+WHERE m.deleted = 0 AND (m.channel_id, m.telegram_message_id) IN (`
+
+	args := make([]interface{}, 0, len(refs)*2)
+	for i, ref := range refs {
+		if i > 0 {
+			query += ", "
+		}
+		query += "(?, ?)"
+		args = append(args, ref.ChannelID, ref.MessageID)
+	}
+	query += ") ORDER BY m.channel_id, m.telegram_message_id, f.id"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("find files by message refs: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string][]model.File)
+	for rows.Next() {
+		var file model.File
+		var channelID, messageID int64
+		err := rows.Scan(
+			&file.ID, &file.MessageID, &file.TelegramFileID, &file.FileName,
+			&file.Extension, &file.MimeType, &file.SizeBytes, &file.Category,
+			&file.CreatedAt, &file.UpdatedAt,
+			&channelID, &messageID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan file: %w", err)
+		}
+		key := fmt.Sprintf("%d:%d", channelID, messageID)
+		result[key] = append(result[key], file)
+	}
+	return result, rows.Err()
+}
+
 func (r *FileRepository) FindMediaByTelegramFileID(ctx context.Context, telegramFileID int64) (model.FileResult, error) {
 	var item model.FileResult
 	err := r.db.QueryRowContext(ctx, `

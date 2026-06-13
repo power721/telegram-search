@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -55,11 +56,7 @@ func NewService(opts ServiceOptions) *Service {
 	}
 	if service.newEnhancer == nil {
 		service.newEnhancer = func(settings config.AIMediaMetadataSettings) Enhancer {
-			return NewClient(ClientOptions{
-				BaseURL: settings.BaseURL,
-				APIKey:  settings.APIKey,
-				Model:   settings.Model,
-			})
+			return NewEngine(settings)
 		}
 	}
 	return service
@@ -143,6 +140,7 @@ func isCloudDriveType(typ string) bool {
 }
 
 func buildEnhancementRequest(message model.Message, links []model.Link) EnhancementRequest {
+	preprocessor := NewPreProcessor()
 	req := EnhancementRequest{
 		Message: EnhancementMessage{
 			ID:           message.ID,
@@ -152,8 +150,22 @@ func buildEnhancementRequest(message model.Message, links []model.Link) Enhancem
 			MediaSummary: message.MediaSummary,
 		},
 		Links: make([]EnhancementLink, 0, len(links)),
+		Context: preprocessor.Extract(strings.Join([]string{
+			message.Text,
+			message.MediaSummary,
+		}, "\n")),
 	}
 	for _, link := range links {
+		rawHint := strings.TrimSpace(strings.Join([]string{
+			link.Note,
+			link.SourceSnippet,
+			link.MediaTitle,
+			link.MediaYear,
+			link.MediaSeason,
+			link.MediaEpisode,
+			link.MediaQuality,
+			link.MediaSize,
+		}, " "))
 		req.Links = append(req.Links, EnhancementLink{
 			LinkID:        link.ID,
 			Type:          link.Type,
@@ -161,6 +173,7 @@ func buildEnhancementRequest(message model.Message, links []model.Link) Enhancem
 			Password:      link.Password,
 			Note:          link.Note,
 			SourceSnippet: link.SourceSnippet,
+			RawHint:       rawHint,
 			Media: MediaMetadata{
 				Title:    link.MediaTitle,
 				Year:     link.MediaYear,

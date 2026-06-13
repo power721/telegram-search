@@ -40,6 +40,43 @@ vi.mock('@/api/client', () => ({
     if (path === '/api/settings/telegram-bot') {
       return Promise.resolve({ enabled: false, configured: false, token_set: false, poll_interval: '3s' })
     }
+    if (path === '/api/settings/ai/providers') {
+      return Promise.resolve({
+        items: [
+          {
+            id: 'openai_compatible',
+            name: 'OpenAI Compatible',
+            base_url: '',
+            default_model: 'qwen2.5-7b-instruct',
+            website: 'https://platform.openai.com/docs/api-reference/chat',
+            free: false,
+            local: false,
+            requires_api_key: true
+          },
+          {
+            id: 'groq',
+            name: 'Groq',
+            base_url: 'https://api.groq.com/openai/v1',
+            default_model: 'llama-3.3-70b-versatile',
+            api_key_env: 'GROQ_API_KEY',
+            website: 'https://console.groq.com/keys',
+            free: true,
+            local: false,
+            requires_api_key: true
+          },
+          {
+            id: 'ollama',
+            name: 'Ollama',
+            base_url: 'http://localhost:11434/v1',
+            default_model: 'qwen2.5:7b',
+            website: 'https://ollama.com/download',
+            free: true,
+            local: true,
+            requires_api_key: false
+          }
+        ]
+      })
+    }
     if (path === '/api/saved-searches') {
       return Promise.resolve({
         items: [
@@ -142,9 +179,11 @@ vi.mock('@/api/client', () => ({
         ai: {
           media_metadata: {
             enabled: true,
+            provider: 'openai_compatible',
             base_url: 'https://api.example.com/v1',
             api_key_set: true,
-            model: 'media-model'
+            model: 'media-model',
+            fallback_enabled: true
           }
         }
       })
@@ -253,14 +292,16 @@ vi.mock('@/api/client', () => ({
             concurrency: 3
           }
         },
-        ai: {
-          media_metadata: {
-            enabled: true,
-            base_url: 'https://api.example.com/v1',
-            api_key_set: true,
-            model: 'media-model'
-          }
+      ai: {
+        media_metadata: {
+          enabled: true,
+          provider: 'openai_compatible',
+          base_url: 'https://api.example.com/v1',
+          api_key_set: true,
+          model: 'media-model',
+          fallback_enabled: true
         }
+      }
       })
     }
     if (path === '/api/settings/telegram-bot') {
@@ -736,9 +777,11 @@ describe('SettingsView', () => {
       ai: {
         media_metadata: {
           enabled: true,
+          provider: 'openai_compatible',
           base_url: 'https://api.example.com/v1',
           api_key: '',
-          model: 'media-model'
+          model: 'media-model',
+          fallback_enabled: true
         }
       }
     })
@@ -754,16 +797,24 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(wrapper.get<HTMLInputElement>('[data-testid="ai-media-enabled-input"]').element.checked).toBe(true)
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-provider-input"]').element.value).toBe('openai_compatible')
     expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input"]').element.value).toBe('https://api.example.com/v1')
     expect(wrapper.get<HTMLInputElement>('[data-testid="ai-api-key-input"]').element.value).toBe('')
     expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input"]').element.value).toBe('media-model')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-fallback-enabled-input"]').element.checked).toBe(true)
+
+    await wrapper.get('[data-testid="ai-provider-input"]').setValue('groq')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input"]').element.value).toBe('https://api.groq.com/openai/v1')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input"]').element.value).toBe('llama-3.3-70b-versatile')
+    expect(wrapper.get('[data-testid="ai-provider-website"]').attributes('href')).toBe('https://console.groq.com/keys')
 
     await wrapper.get('[data-testid="ai-api-key-input"]').setValue('new-secret')
     await wrapper.get('[data-testid="fetch-ai-models"]').trigger('click')
     await flushPromises()
 
     expect(apiPost).toHaveBeenCalledWith('/api/settings/ai/models', {
-      base_url: 'https://api.example.com/v1',
+      provider: 'groq',
+      base_url: 'https://api.groq.com/openai/v1',
       api_key: 'new-secret'
     })
     await wrapper.get('[data-testid="ai-model-input"]').setValue('qwen-plus')
@@ -774,9 +825,11 @@ describe('SettingsView', () => {
       ai: {
         media_metadata: {
           enabled: true,
-          base_url: 'https://api.example.com/v1',
+          provider: 'groq',
+          base_url: 'https://api.groq.com/openai/v1',
           api_key: 'new-secret',
-          model: 'qwen-plus'
+          model: 'qwen-plus',
+          fallback_enabled: true
         }
       }
     }))

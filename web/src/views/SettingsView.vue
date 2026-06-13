@@ -3,6 +3,8 @@ import { useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type {
+  AIProviderPreset,
+  AIProvidersResponse,
   AIModelsResponse,
   ChannelsResponse,
   NotificationDeliveriesResponse,
@@ -56,6 +58,7 @@ const activeTab = ref('security')
 const runtimeLoading = ref(false)
 const aiModels = ref<string[]>([])
 const aiModelsLoading = ref(false)
+const aiProviders = ref<AIProviderPreset[]>([])
 const savedSearches = ref<SavedSearch[]>([])
 const savedSearchLoading = ref(false)
 const savedSearchSaving = ref(false)
@@ -183,12 +186,23 @@ const runtimeForm = ref({
   streamChunkTimeout: '',
   mediaConcurrency: '',
   aiMediaEnabled: false,
+  aiProvider: 'openai_compatible',
   aiBaseURL: '',
   aiAPIKey: '',
-  aiModel: ''
+  aiModel: '',
+  aiFallbackEnabled: false
 })
+const aiProviderOptions = computed(() => aiProviders.value.map((provider) => ({
+  label: provider.name,
+  value: provider.id
+})))
+const selectedAIProvider = computed(() => aiProviders.value.find((provider) => provider.id === runtimeForm.value.aiProvider))
 const aiModelOptions = computed(() => {
   const values = new Set<string>()
+  const preset = selectedAIProvider.value
+  if (preset?.default_model) {
+    values.add(preset.default_model)
+  }
   if (runtimeForm.value.aiModel.trim()) {
     values.add(runtimeForm.value.aiModel.trim())
   }
@@ -231,6 +245,7 @@ onMounted(() => {
   loadTelegramSettings()
   loadTelegramBotSettings()
   loadRuntimeSettings()
+  loadAIProviders()
   loadAccounts()
   loadChannels()
   loadTelegramBotChats()
@@ -398,6 +413,15 @@ async function loadRuntimeSettings() {
     fillRuntimeForm(settings)
   } catch (error) {
     message.error(error instanceof Error ? error.message : '无法加载运行参数')
+  }
+}
+
+async function loadAIProviders() {
+  try {
+    const data = await apiGet<AIProvidersResponse>('/api/settings/ai/providers')
+    aiProviders.value = Array.isArray(data.items) ? data.items : []
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法加载 AI Provider')
   }
 }
 
@@ -766,6 +790,7 @@ async function loadAIModels() {
   aiModelsLoading.value = true
   try {
     const data = await apiPost<AIModelsResponse>('/api/settings/ai/models', {
+      provider: runtimeForm.value.aiProvider,
       base_url: baseURL,
       api_key: runtimeForm.value.aiAPIKey.trim()
     })
@@ -779,6 +804,18 @@ async function loadAIModels() {
   } finally {
     aiModelsLoading.value = false
   }
+}
+
+function applyAIProviderPreset(providerID: string) {
+  const preset = aiProviders.value.find((item) => item.id === providerID)
+  if (!preset) return
+  runtimeForm.value.aiProvider = preset.id
+  runtimeForm.value.aiBaseURL = preset.base_url
+  runtimeForm.value.aiModel = preset.default_model
+  if (!preset.requires_api_key) {
+    runtimeForm.value.aiAPIKey = ''
+  }
+  aiModels.value = preset.default_model ? [preset.default_model] : []
 }
 
 async function regenerate() {
@@ -841,9 +878,11 @@ function fillRuntimeForm(settings: RuntimeSettings) {
     streamChunkTimeout: settings.telegram.stream.chunk_timeout,
     mediaConcurrency: String(settings.telegram.media.concurrency),
     aiMediaEnabled: Boolean(aiMedia?.enabled),
+    aiProvider: aiMedia?.provider || 'openai_compatible',
     aiBaseURL: aiMedia?.base_url ?? '',
     aiAPIKey: '',
-    aiModel: aiMedia?.model ?? ''
+    aiModel: aiMedia?.model ?? '',
+    aiFallbackEnabled: Boolean(aiMedia?.fallback_enabled)
   }
   aiModels.value = aiMedia?.model ? [aiMedia.model] : []
 }
@@ -880,9 +919,11 @@ function runtimePayload(): RuntimeSettings {
     ai: {
       media_metadata: {
         enabled: runtimeForm.value.aiMediaEnabled,
+        provider: runtimeForm.value.aiProvider,
         base_url: runtimeForm.value.aiBaseURL.trim(),
         api_key: runtimeForm.value.aiAPIKey.trim(),
-        model: runtimeForm.value.aiModel.trim()
+        model: runtimeForm.value.aiModel.trim(),
+        fallback_enabled: runtimeForm.value.aiFallbackEnabled
       }
     }
   }
@@ -1214,6 +1255,14 @@ function versionStatusText() {
                 启用 AI 识别
               </label>
               <div class="runtime-grid">
+                <n-form-item label="Provider">
+                  <n-select
+                    v-model:value="runtimeForm.aiProvider"
+                    data-testid="ai-provider-input"
+                    :options="aiProviderOptions"
+                    @update:value="applyAIProviderPreset"
+                  />
+                </n-form-item>
                 <n-form-item label="Base URL">
                   <n-input v-model:value="runtimeForm.aiBaseURL" data-testid="ai-base-url-input" placeholder="https://api.openai.com/v1" />
                 </n-form-item>
@@ -1236,6 +1285,27 @@ function versionStatusText() {
                   />
                 </n-form-item>
               </div>
+              <div class="ai-provider-meta" v-if="selectedAIProvider">
+                <a
+                  data-testid="ai-provider-website"
+                  :href="selectedAIProvider.website"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  官网 / API Key
+                </a>
+                <span v-if="selectedAIProvider.api_key_env">环境变量：{{ selectedAIProvider.api_key_env }}</span>
+                <span v-if="selectedAIProvider.free">免费模型可用</span>
+                <span v-if="selectedAIProvider.local">本地服务</span>
+              </div>
+              <label class="checkbox-row">
+                <input
+                  v-model="runtimeForm.aiFallbackEnabled"
+                  data-testid="ai-fallback-enabled-input"
+                  type="checkbox"
+                />
+                启用 Provider fallback
+              </label>
               <div class="form-actions compact-actions">
                 <n-button data-testid="fetch-ai-models" secondary :loading="aiModelsLoading" @click="loadAIModels">
                   拉取模型
@@ -1754,6 +1824,25 @@ function versionStatusText() {
 .restart-note {
   color: var(--app-text-muted);
   font-size: 13px;
+}
+
+.ai-provider-meta {
+  align-items: center;
+  color: var(--app-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 8px 14px;
+}
+
+.ai-provider-meta a {
+  color: var(--app-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ai-provider-meta a:hover {
+  text-decoration: underline;
 }
 
 .checkbox-row {

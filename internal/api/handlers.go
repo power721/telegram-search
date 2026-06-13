@@ -506,8 +506,9 @@ func (h handlers) updateRuntimeSettings(c *gin.Context) {
 
 func (h handlers) aiModels(c *gin.Context) {
 	var req struct {
-		BaseURL string `json:"base_url"`
-		APIKey  string `json:"api_key"`
+		Provider string `json:"provider"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key"`
 	}
 	if !bindJSON(c, &req) {
 		return
@@ -517,9 +518,17 @@ func (h handlers) aiModels(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
+	providerID := aipkg.NormalizeProvider(req.Provider)
+	if req.Provider == "" {
+		providerID = aipkg.NormalizeProvider(settings.AI.MediaMetadata.Provider)
+	}
+	preset, hasPreset := aipkg.LookupProvider(providerID)
 	baseURL := strings.TrimSpace(req.BaseURL)
 	if baseURL == "" {
 		baseURL = settings.AI.MediaMetadata.BaseURL
+	}
+	if baseURL == "" && hasPreset {
+		baseURL = preset.BaseURL
 	}
 	apiKey := strings.TrimSpace(req.APIKey)
 	if apiKey == "" {
@@ -529,13 +538,18 @@ func (h handlers) aiModels(c *gin.Context) {
 		errorText(c, http.StatusBadRequest, "base_url is required")
 		return
 	}
-	if apiKey == "" {
+	requiresAPIKey := true
+	if hasPreset {
+		requiresAPIKey = preset.RequiresAPIKey
+	}
+	if apiKey == "" && requiresAPIKey {
 		errorText(c, http.StatusBadRequest, "api_key is required")
 		return
 	}
 	client := aipkg.NewClient(aipkg.ClientOptions{
-		BaseURL: baseURL,
-		APIKey:  apiKey,
+		BaseURL:            baseURL,
+		APIKey:             apiKey,
+		AllowMissingAPIKey: !requiresAPIKey,
 	})
 	models, err := client.ListModels(c.Request.Context())
 	if err != nil {
@@ -543,6 +557,10 @@ func (h handlers) aiModels(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": models})
+}
+
+func (h handlers) aiProviders(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": aipkg.ProviderPresets()})
 }
 
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {

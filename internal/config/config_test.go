@@ -228,10 +228,12 @@ func TestRuntimeSettingsPreserveAIMediaMetadataAPIKey(t *testing.T) {
 	applyDefaults(&defaults)
 	existing := RuntimeSettingsFromConfig(defaults)
 	existing.AI.MediaMetadata = AIMediaMetadataSettings{
-		Enabled: true,
-		BaseURL: "https://api.example.com/v1",
-		APIKey:  "stored-key",
-		Model:   "movie-model",
+		Enabled:         true,
+		Provider:        "groq",
+		BaseURL:         "https://api.example.com/v1",
+		APIKey:          "stored-key",
+		Model:           "movie-model",
+		FallbackEnabled: true,
 	}
 	incoming := existing
 	incoming.AI.MediaMetadata.APIKey = ""
@@ -240,6 +242,12 @@ func TestRuntimeSettingsPreserveAIMediaMetadataAPIKey(t *testing.T) {
 
 	if merged.AI.MediaMetadata.APIKey != "stored-key" {
 		t.Fatalf("api key = %q, want stored-key", merged.AI.MediaMetadata.APIKey)
+	}
+	if merged.AI.MediaMetadata.Provider != "groq" {
+		t.Fatalf("provider = %q, want groq", merged.AI.MediaMetadata.Provider)
+	}
+	if !merged.AI.MediaMetadata.FallbackEnabled {
+		t.Fatal("fallback_enabled = false, want true")
 	}
 }
 
@@ -264,6 +272,21 @@ func TestApplyRuntimeSettingsRejectsEnabledAIMediaMetadataWithoutRequiredFields(
 	_, err = ApplyRuntimeSettings(cfg, settings)
 	if err == nil || !strings.Contains(err.Error(), "ai.media_metadata.model") {
 		t.Fatalf("ApplyRuntimeSettings error = %v, want model validation", err)
+	}
+}
+
+func TestApplyRuntimeSettingsAllowsOllamaAIMediaMetadataWithoutAPIKey(t *testing.T) {
+	cfg := defaultConfig()
+	settings := RuntimeSettingsFromConfig(cfg)
+	settings.AI.MediaMetadata.Enabled = true
+	settings.AI.MediaMetadata.Provider = "ollama"
+	settings.AI.MediaMetadata.BaseURL = "http://localhost:11434/v1"
+	settings.AI.MediaMetadata.Model = "qwen2.5:7b"
+	settings.AI.MediaMetadata.APIKey = ""
+
+	_, err := ApplyRuntimeSettings(cfg, settings)
+	if err != nil {
+		t.Fatalf("ApplyRuntimeSettings error = %v, want nil", err)
 	}
 }
 

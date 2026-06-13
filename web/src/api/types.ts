@@ -135,16 +135,34 @@ export interface RuntimeSettings {
   ai: {
     media_metadata: {
       enabled: boolean
+      provider?: string
       base_url: string
       api_key?: string
       api_key_set?: boolean
       model: string
+      fallback_enabled?: boolean
     }
   }
 }
 
 export interface AIModelsResponse {
   items: string[]
+}
+
+export interface AIProviderPreset {
+  id: string
+  name: string
+  base_url: string
+  default_model: string
+  api_key_env?: string
+  website: string
+  free: boolean
+  local: boolean
+  requires_api_key: boolean
+}
+
+export interface AIProvidersResponse {
+  items: AIProviderPreset[]
 }
 
 export interface TelegramAccount {

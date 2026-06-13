@@ -196,7 +196,7 @@ watch(
         @click="selectCategory(type.key)"
       >
         <span>{{ type.label }}</span>
-        <strong>{{ type.count }}</strong>
+        <!-- <strong>{{ type.count }}</strong> -->
       </button>
     </div>
 

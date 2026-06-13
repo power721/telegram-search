@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -150,6 +151,8 @@ func (r *FileRepository) FindByMessageRefs(ctx context.Context, refs []struct{ C
 	if len(refs) == 0 {
 		return make(map[string][]model.File), nil
 	}
+
+	log.Printf("[DEBUG] FindByMessageRefs: batch fetching %d refs", len(refs))
 
 	// Build query with IN clause for batch fetch
 	query := `

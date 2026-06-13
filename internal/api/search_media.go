@@ -74,6 +74,8 @@ func (h handlers) attachMediaToResourceItems(ctx context.Context, items []resour
 		return items, nil
 	}
 
+	h.deps.Logger.Info(fmt.Sprintf("[DEBUG] attachMediaToResourceItems: processing %d items", len(items)))
+
 	// Collect all message references that need file lookups
 	type msgRef struct {
 		ChannelID int64

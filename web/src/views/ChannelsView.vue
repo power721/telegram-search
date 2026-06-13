@@ -508,13 +508,28 @@ async function useGlobalRule() {
           </tr>
           <tr v-for="channel in filteredChannels" :key="channel.id">
             <td class="title-cell">
-              <n-tooltip v-if="channel.description" trigger="hover" :content-style="descriptionTooltipStyle">
-                <template #trigger>
-                  <span class="title-with-description">{{ channel.title }}</span>
-                </template>
-                {{ channel.description }}
-              </n-tooltip>
-              <span v-else>{{ channel.title }}</span>
+              <div class="channel-title-row">
+                <img
+                  v-if="channel.avatar_state === 'available'"
+                  class="channel-avatar"
+                  :src="`/api/channels/${channel.id}/avatar`"
+                  alt=""
+                  loading="lazy"
+                  @error="($event.target as HTMLImageElement).style.display = 'none'"
+                />
+                <span v-else class="channel-avatar-placeholder">
+                  {{ channel.title.charAt(0).toUpperCase() }}
+                </span>
+                <div class="channel-title-text">
+                  <n-tooltip v-if="channel.description" trigger="hover" :content-style="descriptionTooltipStyle">
+                    <template #trigger>
+                      <span class="title-with-description">{{ channel.title }}</span>
+                    </template>
+                    {{ channel.description }}
+                  </n-tooltip>
+                  <span v-else>{{ channel.title }}</span>
+                </div>
+              </div>
             </td>
             <td>
               <a
@@ -676,7 +691,42 @@ table {
 }
 
 .title-cell {
-  max-width: 220px;
+  max-width: 260px;
+}
+
+.channel-title-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.channel-avatar {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 32px;
+  object-fit: cover;
+  width: 32px;
+}
+
+.channel-avatar-placeholder {
+  align-items: center;
+  background: var(--app-border-strong, #e0e0e0);
+  border-radius: 50%;
+  color: var(--app-muted, #888);
+  display: flex;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.channel-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .title-with-description {

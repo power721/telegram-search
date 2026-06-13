@@ -47,17 +47,18 @@ func (s *Service) SyncAccountWithProgress(ctx context.Context, account model.Acc
 			return out, err
 		}
 		channel := model.Channel{
-			AccountID:         account.ID,
-			TelegramChannelID: item.TelegramChannelID,
-			AccessHash:        item.AccessHash,
-			Title:             item.Title,
-			Username:          item.Username,
-			Type:              item.Type,
-			MemberCount:       item.MemberCount,
-			Description:       item.Description,
-			AvatarState:       firstNonEmpty(item.AvatarState, "unknown"),
-			SyncState:         "metadata_only",
-			ListenState:       "disabled",
+			AccountID:          account.ID,
+			TelegramChannelID:  item.TelegramChannelID,
+			AccessHash:         item.AccessHash,
+			Title:              item.Title,
+			Username:           item.Username,
+			Type:               item.Type,
+			MemberCount:        item.MemberCount,
+			Description:        item.Description,
+			AvatarState:        firstNonEmpty(item.AvatarState, "unknown"),
+			PhotoID:            item.PhotoID,
+			SyncState:          "metadata_only",
+			ListenState:        "disabled",
 		}
 		id, err := s.channels.Save(ctx, channel)
 		if err != nil {

@@ -420,6 +420,20 @@ func imageMIME(data []byte, fallback string) string {
 	return detected
 }
 
+func downloadChatPhoto(ctx context.Context, api *tg.Client, channelID int64, accessHash int64, photoID int64) (ImageFile, error) {
+	data, err := downloadSmallFile(ctx, api, &tg.InputPeerPhotoFileLocation{
+		Peer: &tg.InputPeerChannel{
+			ChannelID:  channelID,
+			AccessHash: accessHash,
+		},
+		PhotoID: photoID,
+	})
+	if err != nil {
+		return ImageFile{}, err
+	}
+	return ImageFile{Data: data, MIMEType: imageMIME(data, "")}, nil
+}
+
 func isFileReferenceError(err error) bool {
 	if err == nil {
 		return false

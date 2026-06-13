@@ -884,6 +884,36 @@ function toggleAPIKeyVisibility() {
   showAPIKey.value = !showAPIKey.value
 }
 
+async function copyAPIKey() {
+  if (!apiKey.current?.key) return
+  try {
+    // 尝试使用现代 Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(apiKey.current.key)
+      message.success('API 密钥已复制到剪贴板')
+      return
+    }
+
+    // 降级方案：使用传统的 execCommand
+    const textarea = document.createElement('textarea')
+    textarea.value = apiKey.current.key
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const successful = document.execCommand('copy')
+    document.body.removeChild(textarea)
+
+    if (successful) {
+      message.success('API 密钥已复制到剪贴板')
+    } else {
+      message.error('复制失败，请手动复制')
+    }
+  } catch (error) {
+    message.error('复制失败，请手动复制')
+  }
+}
+
 function formatTime(value?: string) {
   return value ? new Date(value).toLocaleString() : '-'
 }
@@ -1143,6 +1173,14 @@ function versionStatusText() {
                   @click="toggleAPIKeyVisibility"
                 >
                   {{ showAPIKey ? '隐藏' : '显示' }}
+                </n-button>
+                <n-button
+                  data-testid="copy-api-key"
+                  size="small"
+                  secondary
+                  @click="copyAPIKey"
+                >
+                  复制
                 </n-button>
               </div>
               <div v-else class="loading-stack" aria-label="正在加载 API 密钥">
@@ -2014,7 +2052,7 @@ dd {
   border-radius: var(--app-radius);
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   padding: 8px;
 }
 

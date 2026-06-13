@@ -9,6 +9,7 @@ const (
 	ProviderCompatible  Provider = "openai_compatible"
 	ProviderOllama      Provider = "ollama"
 	ProviderZhipu       Provider = "zhipu"
+	ProviderDashScope   Provider = "dashscope"
 	ProviderGroq        Provider = "groq"
 	ProviderCerebras    Provider = "cerebras"
 	ProviderSiliconFlow Provider = "siliconflow"
@@ -69,6 +70,16 @@ var providerPresets = []ProviderPreset{
 		RequiresAPIKey: true,
 	},
 	{
+		ID:             ProviderDashScope,
+		Name:           "阿里云百炼",
+		BaseURL:        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+		DefaultModel:   "qwen3.6-flash",
+		APIKeyEnv:      "DASHSCOPE_API_KEY",
+		Website:        "https://bailian.console.aliyun.com/cn-beijing?tab=model#/api-key",
+		Free:           true,
+		RequiresAPIKey: true,
+	},
+	{
 		ID:             ProviderGroq,
 		Name:           "Groq",
 		BaseURL:        "https://api.groq.com/openai/v1",
@@ -82,7 +93,7 @@ var providerPresets = []ProviderPreset{
 		ID:             ProviderCerebras,
 		Name:           "Cerebras Systems",
 		BaseURL:        "https://api.cerebras.ai/v1",
-		DefaultModel:   "llama3.1-8b",
+		DefaultModel:   "gpt-oss-120b",
 		APIKeyEnv:      "CEREBRAS_API_KEY",
 		Website:        "https://cloud.cerebras.ai/platform",
 		Free:           true,

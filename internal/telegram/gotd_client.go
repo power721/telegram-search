@@ -180,6 +180,16 @@ func (g *GotdClient) enrichChannels(ctx context.Context, api *tg.Client, channel
 			continue
 		}
 		channels[i] = applyFullChannelMetadata(channels[i], channelFull)
+		// Extract photo from the updated Chat objects returned alongside FullChat
+		for _, chat := range full.Chats {
+			if ch, ok := chat.(*tg.Channel); ok && ch.ID == channels[i].TelegramChannelID {
+				if photo, ok := ch.Photo.(*tg.ChatPhoto); ok {
+					channels[i].PhotoID = photo.PhotoID
+					channels[i].AvatarState = "available"
+				}
+				break
+			}
+		}
 	}
 	return channels
 }

@@ -296,5 +296,21 @@ watch(isWideContent, (enabled) => {
   .app-main {
     padding: 16px;
   }
+
+  @media (max-width: 760px) {
+    .nav-item {
+      min-width: 64px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .nav-item small {
+      display: none;
+    }
+
+    .toolbar-kicker {
+      display: none;
+    }
+  }
 }
 </style>

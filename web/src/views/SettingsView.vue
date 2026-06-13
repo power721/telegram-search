@@ -1736,4 +1736,19 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 760px) {
+  .settings-table {
+    min-width: auto;
+  }
+
+  .checkbox-row input {
+    height: 20px;
+    width: 20px;
+  }
+
+  .checkbox-row {
+    min-height: 44px;
+  }
+}
 </style>

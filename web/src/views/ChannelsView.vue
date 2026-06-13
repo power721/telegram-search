@@ -618,6 +618,61 @@ async function useGlobalRule() {
           </tr>
         </tbody>
       </table>
+
+      <div class="mobile-cards">
+        <div v-if="channels.loading && channels.items.length === 0" class="mobile-loading">
+          <div class="loading-stack" aria-label="正在加载频道">
+            <span class="skeleton-line" />
+            <span class="skeleton-line" />
+            <span class="skeleton-line short" />
+          </div>
+        </div>
+        <div v-for="channel in filteredChannels" :key="channel.id" class="mobile-card">
+          <div class="mobile-card-header">
+            <img
+              v-if="channel.avatar_state === 'available'"
+              class="channel-avatar"
+              :src="`/api/channels/${channel.id}/avatar`"
+              alt=""
+              loading="lazy"
+              @error="($event.target as HTMLImageElement).style.display = 'none'"
+            />
+            <span v-else class="channel-avatar-placeholder">
+              {{ channel.title.charAt(0).toUpperCase() }}
+            </span>
+            <div class="mobile-card-title">
+              <a v-if="channelDeepLink(channel)" class="channel-title-link" :href="channelDeepLink(channel)">{{ channel.title }}</a>
+              <span v-else>{{ channel.title }}</span>
+              <span class="mobile-card-sub">{{ username(channel) }} · {{ channelTypeLabel(channel.type) }} · {{ channel.member_count }} 成员</span>
+            </div>
+          </div>
+          <div class="mobile-card-badges">
+            <span class="status-pill" :class="syncStateClass(channel.sync_state)">
+              {{ syncStateLabel(channel.sync_state) }}
+            </span>
+            <span class="status-pill" :class="listenStateClass(channel.listen_state)">
+              {{ listenStateLabel(channel.listen_state) }}
+            </span>
+            <WebAccessBadge :value="channel.web_access" :error="channel.web_access_error" />
+          </div>
+          <div class="mobile-card-meta">
+            <span>{{ channel.indexed_message_count }} 已索引</span>
+          </div>
+          <div class="mobile-card-actions">
+            <n-button size="small" :loading="syncingChannelIds.has(channel.id)" @click="syncHistory(channel)">同步</n-button>
+            <n-button size="small" :disabled="!canCheckWebAccess(channel)" :loading="checkingWebAccessChannelIds.has(channel.id)" @click="checkWebAccess(channel)">检测</n-button>
+            <n-button size="small" :type="isListeningEnabled(channel) ? '' : 'primary'" :loading="listeningChannelIds.has(channel.id)" @click="toggleListening(channel)">
+              {{ isListeningEnabled(channel) ? '取消监听' : '开启监听' }}
+            </n-button>
+            <n-button size="small" :loading="ruleLoading && ruleTarget?.id === channel.id" @click="openChannelRules(channel)">规则</n-button>
+            <n-button size="small" type="error" :loading="clearingChannelIds.has(channel.id)" @click="confirmClearChannel(channel)">清空</n-button>
+          </div>
+        </div>
+        <div v-if="!channels.loading && filteredChannels.length === 0" class="empty-state">
+          <strong>暂无频道</strong>
+          <span>调整筛选条件，或刷新 Telegram 元数据。</span>
+        </div>
+      </div>
     </div>
 
     <n-modal v-model:show="showSyncModal">
@@ -840,6 +895,72 @@ table {
 @media (max-width: 640px) {
   .channel-toolbar {
     grid-template-columns: 1fr;
+  }
+}
+
+.mobile-cards {
+  display: none;
+}
+
+.mobile-card {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mobile-card-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.mobile-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-card-sub {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.mobile-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-card-meta {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.mobile-card-actions {
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .table-panel table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-card {
+    display: flex;
   }
 }
 </style>

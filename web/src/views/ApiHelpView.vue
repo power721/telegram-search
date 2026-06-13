@@ -645,5 +645,13 @@ pre {
   .code-grid {
     grid-template-columns: 1fr;
   }
+
+  .table-panel td {
+    min-width: auto;
+  }
+
+  .table-panel td:last-child {
+    min-width: auto;
+  }
 }
 </style>

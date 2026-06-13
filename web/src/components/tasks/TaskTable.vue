@@ -223,6 +223,57 @@ function sortAria(activeKey: TaskSortKey, sortKey?: TaskSortKey | null, sortDire
         </tr>
       </tbody>
     </table>
+
+    <div class="mobile-cards">
+      <div v-if="loading" class="mobile-loading">
+        <div class="loading-stack" aria-label="正在加载任务">
+          <span class="skeleton-line" />
+          <span class="skeleton-line" />
+          <span class="skeleton-line short" />
+        </div>
+      </div>
+      <div v-for="task in tasks" :key="task.id" class="mobile-card">
+        <div class="mobile-card-header">
+          <label class="mobile-card-check">
+            <input
+              :aria-label="`选择任务 ${task.id}`"
+              :checked="isSelected(task, selectedIds)"
+              type="checkbox"
+              @change="emit('toggleSelect', task, ($event.target as HTMLInputElement).checked)"
+            />
+          </label>
+          <div class="mobile-card-title">
+            <span>#{{ task.id }} · {{ taskTypeLabel(task.type) }}</span>
+          </div>
+          <span class="status-pill" :class="statusClass(task.status)">{{ statusLabel(task.status) }}</span>
+        </div>
+        <div v-if="task.total > 0" class="mobile-card-progress">
+          <div class="progress-bar">
+            <div class="progress-fill" :style="{ width: `${task.total > 0 ? (task.progress / task.total * 100) : 0}%` }"></div>
+          </div>
+          <span class="progress-text">{{ progressLabel(task) }}</span>
+        </div>
+        <div class="mobile-card-meta">
+          <span>创建：{{ formatDate(task.created_at) }}</span>
+          <span>重试：{{ task.retry_count }} · 下次运行：{{ formatDate(task.next_run_at) }}</span>
+        </div>
+        <div v-if="task.error_message || task.message" class="mobile-card-message">
+          {{ task.error_message || task.message }}
+        </div>
+        <div class="mobile-card-actions">
+          <n-button size="small" @click="emit('select', task)">详情</n-button>
+          <n-button v-if="canRetry(task)" size="small" @click="emit('retry', task)">重试</n-button>
+          <n-button v-if="canCancel(task)" size="small" @click="emit('cancel', task)">取消</n-button>
+          <n-button v-if="canPause(task)" size="small" @click="emit('pause', task)">暂停</n-button>
+          <n-button v-if="canResume(task)" size="small" @click="emit('resume', task)">恢复</n-button>
+          <n-button v-if="canDelete(task)" size="small" type="error" ghost @click="emit('delete', task)">删除</n-button>
+        </div>
+      </div>
+      <div v-if="!loading && tasks.length === 0" class="empty-state">
+        <strong>暂无任务</strong>
+        <span>同步、检测、清理等后台任务会显示在这里。</span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -259,5 +310,100 @@ table {
 
 .loading-stack .short {
   width: 58%;
+}
+
+.mobile-cards {
+  display: none;
+}
+
+.mobile-card {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mobile-card-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.mobile-card-check {
+  align-items: center;
+  display: flex;
+}
+
+.mobile-card-title {
+  flex: 1;
+  font-weight: 600;
+  min-width: 0;
+}
+
+.mobile-card-progress {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.progress-bar {
+  background: var(--app-border);
+  border-radius: 3px;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: var(--app-accent);
+  border-radius: 3px;
+  height: 100%;
+  transition: width 0.2s;
+}
+
+.progress-text {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.mobile-card-meta {
+  color: var(--app-text-muted);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 2px;
+}
+
+.mobile-card-message {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.mobile-card-actions {
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+@media (max-width: 760px) {
+  table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-card {
+    display: flex;
+  }
 }
 </style>

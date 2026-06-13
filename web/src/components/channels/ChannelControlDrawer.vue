@@ -23,6 +23,8 @@ const form = ref<ChannelControlPayload>({
 
 const title = computed(() => props.channel?.title ?? '频道控制')
 
+const drawerWidth = computed(() => Math.min(420, window.innerWidth * 0.9))
+
 watch(
   () => props.channel,
   (channel) => {
@@ -46,7 +48,7 @@ function save() {
 </script>
 
 <template>
-  <n-drawer :show="show" width="420" @update:show="emit('update:show', $event)">
+  <n-drawer :show="show" :width="drawerWidth" @update:show="emit('update:show', $event)">
     <n-drawer-content :title="title">
       <div class="control-form">
         <label>

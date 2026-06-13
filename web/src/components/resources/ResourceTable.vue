@@ -654,6 +654,11 @@ function formatDate(value?: string) {
     justify-content: flex-start;
   }
 
+  .select-cell input {
+    height: 20px;
+    width: 20px;
+  }
+
   .resource-actions {
     justify-content: flex-start;
   }

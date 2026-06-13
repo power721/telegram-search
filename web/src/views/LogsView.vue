@@ -343,4 +343,27 @@ onMounted(() => {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 760px) {
+  .time-col {
+    min-width: auto;
+  }
+
+  .message-cell {
+    max-width: none;
+  }
+
+  .raw-line {
+    max-width: none;
+  }
+
+  th:nth-child(2),
+  td:nth-child(2),
+  th:nth-child(5),
+  td:nth-child(5),
+  th:nth-child(6),
+  td:nth-child(6) {
+    display: none;
+  }
+}
 </style>

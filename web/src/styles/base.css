@@ -572,3 +572,10 @@ a {
     align-self: flex-start;
   }
 }
+
+@media (max-width: 760px) {
+  input[type="checkbox"] {
+    height: 20px;
+    width: 20px;
+  }
+}

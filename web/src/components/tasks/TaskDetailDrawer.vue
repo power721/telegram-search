@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Task } from '@/api/types'
 
 defineProps<{
@@ -9,6 +10,8 @@ defineProps<{
 const emit = defineEmits<{
   'update:show': [value: boolean]
 }>()
+
+const drawerWidth = computed(() => Math.min(520, window.innerWidth * 0.9))
 
 function taskTypeLabel(type: string) {
   const labels: Record<string, string> = {
@@ -51,7 +54,7 @@ function formatDate(value?: string) {
 </script>
 
 <template>
-  <n-drawer :show="show" width="520" @update:show="emit('update:show', $event)">
+  <n-drawer :show="show" :width="drawerWidth" @update:show="emit('update:show', $event)">
     <n-drawer-content title="任务详情">
       <n-descriptions v-if="task" :column="1" bordered>
         <n-descriptions-item label="ID">{{ task.id }}</n-descriptions-item>

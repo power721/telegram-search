@@ -378,6 +378,55 @@ onBeforeUnmount(() => {
           </tr>
         </tbody>
       </table>
+
+      <div class="mobile-cards">
+        <div v-if="telegram.loading && telegram.accounts.length === 0" class="mobile-loading">
+          <div class="loading-stack" aria-label="正在加载账号">
+            <span class="skeleton-line" />
+            <span class="skeleton-line short" />
+          </div>
+        </div>
+        <div v-for="account in pagedAccounts" :key="account.id" class="mobile-card">
+          <div class="mobile-card-header">
+            <img
+              v-if="account.photo_id"
+              :src="`/api/accounts/${account.id}/avatar`"
+              alt="头像"
+              class="account-avatar"
+            />
+            <div v-else class="account-avatar-placeholder">
+              {{ (account.first_name || account.username || '?')[0].toUpperCase() }}
+            </div>
+            <div class="mobile-card-title">
+              <span class="mobile-card-name">{{ displayName(account.first_name, account.last_name, account.username) }}</span>
+              <span class="mobile-card-sub">{{ account.phone }}</span>
+            </div>
+            <span class="status-pill" :class="statusClass(account.status)">{{ statusLabel(account.status) }}</span>
+          </div>
+          <div class="mobile-card-meta">
+            <span>最后在线：{{ formatDate(account.last_online_at) }}</span>
+            <span v-if="account.last_error" class="mobile-card-error">错误：{{ account.last_error }}</span>
+          </div>
+          <p v-if="needsLogin(account)" class="status-help">
+            点击登录后发送验证码，并在 Telegram 官方消息中查看验证码。
+          </p>
+          <div class="mobile-card-actions">
+            <n-button v-if="needsLogin(account)" size="small" type="primary" @click="openTelegramLogin(account)">登录</n-button>
+            <n-button v-else size="small" :loading="telegram.loading" @click="logoutAccount(account)">登出</n-button>
+            <n-button
+              v-if="!needsLogin(account)"
+              size="small"
+              :loading="syncingAccountIds.has(account.id)"
+              @click="syncAccountChannels(account)"
+            >同步频道</n-button>
+            <n-button size="small" type="error" ghost :loading="telegram.loading" @click="confirmDeleteAccount(account)">删除</n-button>
+          </div>
+        </div>
+        <div v-if="!telegram.loading && telegram.accounts.length === 0" class="empty-state">
+          <strong>暂无账号</strong>
+          <span>添加 Telegram 账号后即可同步频道元数据。</span>
+        </div>
+      </div>
     </div>
 
     <AppPagination
@@ -618,5 +667,76 @@ table {
 
 .loading-stack .short {
   width: 58%;
+}
+
+.mobile-cards {
+  display: none;
+}
+
+.mobile-card {
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.mobile-card-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.mobile-card-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-card-name {
+  font-weight: 600;
+}
+
+.mobile-card-sub {
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.mobile-card-meta {
+  color: var(--app-text-muted);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 2px;
+}
+
+.mobile-card-error {
+  color: var(--app-danger);
+}
+
+.mobile-card-actions {
+  border-top: 1px solid var(--app-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+@media (max-width: 760px) {
+  .table-panel table {
+    display: none;
+  }
+
+  .mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .mobile-card {
+    display: flex;
+  }
 }
 </style>

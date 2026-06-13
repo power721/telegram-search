@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiPost, setAPIKey } from '@/api/client'
+import { apiPost } from '@/api/client'
 import { useSetupStore } from './setup'
 
 vi.mock('@/api/client', () => ({
@@ -20,8 +20,7 @@ vi.mock('@/api/client', () => ({
       })
     }
     return Promise.resolve({ ok: true })
-  }),
-  setAPIKey: vi.fn()
+  })
 }))
 
 describe('setup store', () => {
@@ -55,7 +54,6 @@ describe('setup store', () => {
     })
 
     expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key')
-    expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
     expect(apiPost).toHaveBeenCalledWith('/api/setup/listen-rules', {
       includes: ['电影'],
       excludes: ['预告'],

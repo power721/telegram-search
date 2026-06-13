@@ -82,17 +82,40 @@ type RuntimeAISettingsResponse struct {
 }
 
 type AIMediaMetadataSettingsResponse struct {
-	Enabled         bool   `json:"enabled"`
-	Provider        string `json:"provider"`
-	BaseURL         string `json:"base_url"`
-	Model           string `json:"model"`
-	FallbackEnabled bool   `json:"fallback_enabled"`
-	APIKeySet       bool   `json:"api_key_set"`
+	Enabled         bool                                      `json:"enabled"`
+	Provider        string                                    `json:"provider"`
+	BaseURL         string                                    `json:"base_url"`
+	Model           string                                    `json:"model"`
+	FallbackEnabled bool                                      `json:"fallback_enabled"`
+	APIKeySet       bool                                      `json:"api_key_set"`
+	Providers       []AIMediaMetadataProviderSettingsResponse `json:"providers"`
+}
+
+type AIMediaMetadataProviderSettingsResponse struct {
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	Provider  string `json:"provider"`
+	BaseURL   string `json:"base_url"`
+	Model     string `json:"model"`
+	Enabled   bool   `json:"enabled"`
+	APIKeySet bool   `json:"api_key_set"`
 }
 
 func PreserveRuntimeSecrets(incoming RuntimeSettings, existing RuntimeSettings) RuntimeSettings {
 	if incoming.AI.MediaMetadata.APIKey == "" {
 		incoming.AI.MediaMetadata.APIKey = existing.AI.MediaMetadata.APIKey
+	}
+	existingProviderKeys := map[string]string{}
+	for _, provider := range existing.AI.MediaMetadata.EffectiveProviders() {
+		if provider.ID != "" && provider.APIKey != "" {
+			existingProviderKeys[provider.ID] = provider.APIKey
+		}
+	}
+	for i := range incoming.AI.MediaMetadata.Providers {
+		provider := &incoming.AI.MediaMetadata.Providers[i]
+		if provider.APIKey == "" && provider.ID != "" {
+			provider.APIKey = existingProviderKeys[provider.ID]
+		}
 	}
 	return incoming
 }
@@ -110,7 +133,24 @@ func RedactRuntimeSettings(settings RuntimeSettings) RuntimeSettingsResponse {
 				Model:           settings.AI.MediaMetadata.Model,
 				FallbackEnabled: settings.AI.MediaMetadata.FallbackEnabled,
 				APIKeySet:       settings.AI.MediaMetadata.APIKey != "",
+				Providers:       redactAIMediaMetadataProviders(settings.AI.MediaMetadata.EffectiveProviders()),
 			},
 		},
 	}
+}
+
+func redactAIMediaMetadataProviders(providers []AIMediaMetadataProviderSettings) []AIMediaMetadataProviderSettingsResponse {
+	out := make([]AIMediaMetadataProviderSettingsResponse, 0, len(providers))
+	for _, provider := range providers {
+		out = append(out, AIMediaMetadataProviderSettingsResponse{
+			ID:        provider.ID,
+			Name:      provider.Name,
+			Provider:  provider.Provider,
+			BaseURL:   provider.BaseURL,
+			Model:     provider.Model,
+			Enabled:   provider.Enabled,
+			APIKeySet: provider.APIKey != "",
+		})
+	}
+	return out
 }

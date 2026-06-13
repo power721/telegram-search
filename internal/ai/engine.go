@@ -44,6 +44,9 @@ func (e *Engine) Enhance(ctx context.Context, req EnhancementRequest) (Enhanceme
 }
 
 func buildProviderChain(settings config.AIMediaMetadataSettings) []providerEnhancer {
+	if providers := settings.EffectiveProviders(); len(settings.Providers) > 0 && len(providers) > 0 {
+		return buildConfiguredProviderChain(settings, providers)
+	}
 	primaryID := NormalizeProvider(settings.Provider)
 	ids := []Provider{primaryID}
 	if settings.FallbackEnabled {
@@ -76,6 +79,51 @@ func buildProviderChain(settings config.AIMediaMetadataSettings) []providerEnhan
 			apiKey = strings.TrimSpace(os.Getenv(preset.APIKeyEnv))
 		}
 		if strings.TrimSpace(baseURL) == "" || strings.TrimSpace(model) == "" {
+			continue
+		}
+		if preset.RequiresAPIKey && apiKey == "" {
+			continue
+		}
+		chain = append(chain, providerEnhancer{
+			name: id,
+			enhancer: NewClient(ClientOptions{
+				BaseURL:            baseURL,
+				APIKey:             apiKey,
+				Model:              model,
+				AllowMissingAPIKey: !preset.RequiresAPIKey,
+			}),
+		})
+	}
+	return chain
+}
+
+func buildConfiguredProviderChain(settings config.AIMediaMetadataSettings, providers []config.AIMediaMetadataProviderSettings) []providerEnhancer {
+	chain := make([]providerEnhancer, 0, len(providers))
+	for _, provider := range providers {
+		if !provider.Enabled {
+			continue
+		}
+		if len(chain) > 0 && !settings.FallbackEnabled {
+			break
+		}
+		id := NormalizeProvider(provider.Provider)
+		preset, ok := LookupProvider(id)
+		if !ok {
+			continue
+		}
+		baseURL := strings.TrimSpace(provider.BaseURL)
+		model := strings.TrimSpace(provider.Model)
+		apiKey := strings.TrimSpace(provider.APIKey)
+		if baseURL == "" {
+			baseURL = preset.BaseURL
+		}
+		if model == "" {
+			model = preset.DefaultModel
+		}
+		if apiKey == "" && preset.APIKeyEnv != "" {
+			apiKey = strings.TrimSpace(os.Getenv(preset.APIKeyEnv))
+		}
+		if baseURL == "" || model == "" {
 			continue
 		}
 		if preset.RequiresAPIKey && apiKey == "" {

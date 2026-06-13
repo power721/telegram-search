@@ -251,6 +251,57 @@ func TestRuntimeSettingsPreserveAIMediaMetadataAPIKey(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettingsPreserveAIMediaMetadataProviderAPIKeys(t *testing.T) {
+	defaults := Config{}
+	applyDefaults(&defaults)
+	existing := RuntimeSettingsFromConfig(defaults)
+	existing.AI.MediaMetadata = AIMediaMetadataSettings{
+		Enabled:         true,
+		FallbackEnabled: true,
+		Providers: []AIMediaMetadataProviderSettings{
+			{ID: "groq-main", Provider: "groq", BaseURL: "https://api.groq.com/openai/v1", APIKey: "groq-key", Model: "llama-3.3-70b-versatile", Enabled: true},
+			{ID: "ollama-local", Provider: "ollama", BaseURL: "http://localhost:11434/v1", Model: "qwen2.5:7b", Enabled: true},
+		},
+	}
+	incoming := RuntimeSettingsFromConfig(defaults)
+	incoming.AI.MediaMetadata = AIMediaMetadataSettings{
+		Enabled:         true,
+		FallbackEnabled: true,
+		Providers: []AIMediaMetadataProviderSettings{
+			{ID: "groq-main", Provider: "groq", BaseURL: "https://api.groq.com/openai/v1", Model: "llama-3.3-70b-versatile", Enabled: true},
+			{ID: "ollama-local", Provider: "ollama", BaseURL: "http://localhost:11434/v1", Model: "qwen2.5:7b", Enabled: true},
+		},
+	}
+
+	merged := PreserveRuntimeSecrets(incoming, existing)
+
+	if merged.AI.MediaMetadata.Providers[0].APIKey != "groq-key" {
+		t.Fatalf("provider api key = %q, want groq-key", merged.AI.MediaMetadata.Providers[0].APIKey)
+	}
+	if merged.AI.MediaMetadata.Providers[1].APIKey != "" {
+		t.Fatalf("ollama api key = %q, want empty", merged.AI.MediaMetadata.Providers[1].APIKey)
+	}
+}
+
+func TestAIMediaMetadataEffectiveProvidersBackfillsLegacySettings(t *testing.T) {
+	settings := AIMediaMetadataSettings{
+		Enabled:  true,
+		Provider: "groq",
+		BaseURL:  "https://api.groq.com/openai/v1",
+		APIKey:   "secret",
+		Model:    "llama-3.3-70b-versatile",
+	}
+
+	providers := settings.EffectiveProviders()
+
+	if len(providers) != 1 {
+		t.Fatalf("providers len = %d, want 1", len(providers))
+	}
+	if providers[0].ID != "groq" || providers[0].Provider != "groq" || providers[0].APIKey != "secret" || !providers[0].Enabled {
+		t.Fatalf("provider = %+v", providers[0])
+	}
+}
+
 func TestApplyRuntimeSettingsRejectsEnabledAIMediaMetadataWithoutRequiredFields(t *testing.T) {
 	cfg := defaultConfig()
 	settings := RuntimeSettingsFromConfig(cfg)

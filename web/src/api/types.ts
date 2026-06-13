@@ -141,12 +141,30 @@ export interface RuntimeSettings {
       api_key_set?: boolean
       model: string
       fallback_enabled?: boolean
+      providers?: AIMediaMetadataProviderSettings[]
     }
   }
 }
 
+export interface AIMediaMetadataProviderSettings {
+  id: string
+  name?: string
+  provider: string
+  base_url: string
+  api_key?: string
+  api_key_set?: boolean
+  model: string
+  enabled: boolean
+}
+
 export interface AIModelsResponse {
   items: string[]
+}
+
+export interface AITestResponse {
+  ok: boolean
+  model: string
+  latency_ms: number
 }
 
 export interface AIProviderPreset {

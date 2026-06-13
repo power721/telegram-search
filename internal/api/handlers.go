@@ -563,6 +563,61 @@ func (h handlers) aiProviders(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": aipkg.ProviderPresets()})
 }
 
+func (h handlers) aiTest(c *gin.Context) {
+	var req struct {
+		Provider string `json:"provider"`
+		BaseURL  string `json:"base_url"`
+		APIKey   string `json:"api_key"`
+		Model    string `json:"model"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	providerID := aipkg.NormalizeProvider(req.Provider)
+	preset, hasPreset := aipkg.LookupProvider(providerID)
+	baseURL := strings.TrimSpace(req.BaseURL)
+	if baseURL == "" && hasPreset {
+		baseURL = preset.BaseURL
+	}
+	modelName := strings.TrimSpace(req.Model)
+	if modelName == "" && hasPreset {
+		modelName = preset.DefaultModel
+	}
+	apiKey := strings.TrimSpace(req.APIKey)
+	if baseURL == "" {
+		errorText(c, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if modelName == "" {
+		errorText(c, http.StatusBadRequest, "model is required")
+		return
+	}
+	requiresAPIKey := true
+	if hasPreset {
+		requiresAPIKey = preset.RequiresAPIKey
+	}
+	if apiKey == "" && requiresAPIKey {
+		errorText(c, http.StatusBadRequest, "api_key is required")
+		return
+	}
+	client := aipkg.NewClient(aipkg.ClientOptions{
+		BaseURL:            baseURL,
+		APIKey:             apiKey,
+		Model:              modelName,
+		AllowMissingAPIKey: !requiresAPIKey,
+	})
+	started := time.Now()
+	if _, err := client.Ping(c.Request.Context()); err != nil {
+		errorJSON(c, http.StatusBadGateway, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":         true,
+		"model":      modelName,
+		"latency_ms": time.Since(started).Milliseconds(),
+	})
+}
+
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {
 	var req struct {
 		AppID   int    `json:"app_id"`

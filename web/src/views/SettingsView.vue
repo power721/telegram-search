@@ -3,9 +3,11 @@ import { useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type {
+  AIMediaMetadataProviderSettings,
   AIProviderPreset,
   AIProvidersResponse,
   AIModelsResponse,
+  AITestResponse,
   ChannelsResponse,
   NotificationDeliveriesResponse,
   NotificationDelivery,
@@ -190,27 +192,25 @@ const runtimeForm = ref({
   aiBaseURL: '',
   aiAPIKey: '',
   aiModel: '',
-  aiFallbackEnabled: false
+  aiFallbackEnabled: false,
+  aiProviders: [] as AIMediaMetadataProviderSettings[]
 })
 const aiProviderOptions = computed(() => aiProviders.value.map((provider) => ({
   label: provider.name,
   value: provider.id
 })))
-const selectedAIProvider = computed(() => aiProviders.value.find((provider) => provider.id === runtimeForm.value.aiProvider))
-const aiModelOptions = computed(() => {
+const enabledAIProviders = computed(() => runtimeForm.value.aiProviders.filter((provider) => provider.enabled))
+
+function aiProviderModelOptions(provider: AIMediaMetadataProviderSettings) {
   const values = new Set<string>()
-  const preset = selectedAIProvider.value
-  if (preset?.default_model) {
-    values.add(preset.default_model)
-  }
-  if (runtimeForm.value.aiModel.trim()) {
-    values.add(runtimeForm.value.aiModel.trim())
-  }
+  const preset = aiProviders.value.find((item) => item.id === provider.provider)
+  if (preset?.default_model) values.add(preset.default_model)
+  if (provider.model.trim()) values.add(provider.model.trim())
   for (const model of aiModels.value) {
     if (model.trim()) values.add(model.trim())
   }
   return Array.from(values).map((model) => ({ label: model, value: model }))
-})
+}
 const accountOptions = computed(() => [
   { label: '全部账号', value: 0 },
   ...accounts.value.map((account) => ({
@@ -781,8 +781,8 @@ async function updateRuntimeSettings() {
   }
 }
 
-async function loadAIModels() {
-  const baseURL = runtimeForm.value.aiBaseURL.trim()
+async function loadAIModels(provider?: AIMediaMetadataProviderSettings) {
+  const baseURL = (provider?.base_url ?? runtimeForm.value.aiBaseURL).trim()
   if (!baseURL) {
     message.error('请输入 AI Base URL')
     return
@@ -790,12 +790,14 @@ async function loadAIModels() {
   aiModelsLoading.value = true
   try {
     const data = await apiPost<AIModelsResponse>('/api/settings/ai/models', {
-      provider: runtimeForm.value.aiProvider,
+      provider: provider?.provider ?? runtimeForm.value.aiProvider,
       base_url: baseURL,
-      api_key: runtimeForm.value.aiAPIKey.trim()
+      api_key: (provider?.api_key ?? runtimeForm.value.aiAPIKey).trim()
     })
     aiModels.value = Array.isArray(data.items) ? data.items : []
-    if (!runtimeForm.value.aiModel.trim() && aiModels.value.length > 0) {
+    if (provider && !provider.model.trim() && aiModels.value.length > 0) {
+      provider.model = aiModels.value[0]
+    } else if (!provider && !runtimeForm.value.aiModel.trim() && aiModels.value.length > 0) {
       runtimeForm.value.aiModel = aiModels.value[0]
     }
     message.success('AI 模型列表已更新')
@@ -806,16 +808,65 @@ async function loadAIModels() {
   }
 }
 
-function applyAIProviderPreset(providerID: string) {
+function applyAIProviderRowPreset(provider: AIMediaMetadataProviderSettings, providerID: string) {
   const preset = aiProviders.value.find((item) => item.id === providerID)
+  provider.provider = providerID
   if (!preset) return
-  runtimeForm.value.aiProvider = preset.id
-  runtimeForm.value.aiBaseURL = preset.base_url
-  runtimeForm.value.aiModel = preset.default_model
+  provider.base_url = preset.base_url
+  provider.model = preset.default_model
+  provider.name = preset.name
   if (!preset.requires_api_key) {
-    runtimeForm.value.aiAPIKey = ''
+    provider.api_key = ''
   }
-  aiModels.value = preset.default_model ? [preset.default_model] : []
+}
+
+function addAIProvider() {
+  const preset = aiProviders.value[0]
+  const id = `provider-${Date.now()}`
+  runtimeForm.value.aiProviders.push({
+    id,
+    name: preset?.name ?? '',
+    provider: preset?.id ?? 'openai_compatible',
+    base_url: preset?.base_url ?? '',
+    api_key: '',
+    model: preset?.default_model ?? '',
+    enabled: true
+  })
+}
+
+function removeAIProvider(index: number) {
+  runtimeForm.value.aiProviders.splice(index, 1)
+}
+
+function moveAIProvider(index: number, direction: -1 | 1) {
+  const next = index + direction
+  if (next < 0 || next >= runtimeForm.value.aiProviders.length) return
+  const items = runtimeForm.value.aiProviders
+  const [item] = items.splice(index, 1)
+  items.splice(next, 0, item)
+}
+
+async function testAIProvider(provider: AIMediaMetadataProviderSettings) {
+  const baseURL = provider.base_url.trim()
+  if (!baseURL) {
+    message.error('请输入 AI Base URL')
+    return
+  }
+  if (!provider.model.trim()) {
+    message.error('请输入 AI 模型')
+    return
+  }
+  try {
+    const data = await apiPost<AITestResponse>('/api/settings/ai/test', {
+      provider: provider.provider,
+      base_url: baseURL,
+      api_key: (provider.api_key ?? '').trim(),
+      model: provider.model.trim()
+    })
+    message.success(`AI Provider 有回复，耗时 ${data.latency_ms}ms`)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'AI Provider 无回复')
+  }
 }
 
 async function regenerate() {
@@ -882,12 +933,39 @@ function fillRuntimeForm(settings: RuntimeSettings) {
     aiBaseURL: aiMedia?.base_url ?? '',
     aiAPIKey: '',
     aiModel: aiMedia?.model ?? '',
-    aiFallbackEnabled: Boolean(aiMedia?.fallback_enabled)
+    aiFallbackEnabled: Boolean(aiMedia?.fallback_enabled),
+    aiProviders: normalizeAIProviderRows(aiMedia)
   }
   aiModels.value = aiMedia?.model ? [aiMedia.model] : []
 }
 
+function normalizeAIProviderRows(aiMedia: RuntimeSettings['ai']['media_metadata'] | undefined): AIMediaMetadataProviderSettings[] {
+  if (Array.isArray(aiMedia?.providers) && aiMedia.providers.length > 0) {
+    return aiMedia.providers.map((provider, index) => ({
+      id: provider.id || `${provider.provider || 'provider'}-${index}`,
+      name: provider.name ?? '',
+      provider: provider.provider || 'openai_compatible',
+      base_url: provider.base_url ?? '',
+      api_key: '',
+      api_key_set: provider.api_key_set,
+      model: provider.model ?? '',
+      enabled: provider.enabled !== false
+    }))
+  }
+  if (!aiMedia) return []
+  return [{
+    id: aiMedia.provider || 'openai_compatible',
+    provider: aiMedia.provider || 'openai_compatible',
+    base_url: aiMedia.base_url ?? '',
+    api_key: '',
+    api_key_set: aiMedia.api_key_set,
+    model: aiMedia.model ?? '',
+    enabled: true
+  }]
+}
+
 function runtimePayload(): RuntimeSettings {
+  const firstProvider = runtimeForm.value.aiProviders[0]
   return {
     sync: {
       workers: positiveInteger(runtimeForm.value.workers),
@@ -919,11 +997,20 @@ function runtimePayload(): RuntimeSettings {
     ai: {
       media_metadata: {
         enabled: runtimeForm.value.aiMediaEnabled,
-        provider: runtimeForm.value.aiProvider,
-        base_url: runtimeForm.value.aiBaseURL.trim(),
-        api_key: runtimeForm.value.aiAPIKey.trim(),
-        model: runtimeForm.value.aiModel.trim(),
-        fallback_enabled: runtimeForm.value.aiFallbackEnabled
+        provider: firstProvider?.provider ?? runtimeForm.value.aiProvider,
+        base_url: firstProvider?.base_url.trim() ?? runtimeForm.value.aiBaseURL.trim(),
+        api_key: firstProvider?.api_key?.trim() ?? runtimeForm.value.aiAPIKey.trim(),
+        model: firstProvider?.model.trim() ?? runtimeForm.value.aiModel.trim(),
+        fallback_enabled: runtimeForm.value.aiFallbackEnabled,
+        providers: runtimeForm.value.aiProviders.map((provider) => ({
+          id: provider.id,
+          name: provider.name,
+          provider: provider.provider,
+          base_url: provider.base_url.trim(),
+          api_key: (provider.api_key ?? '').trim(),
+          model: provider.model.trim(),
+          enabled: provider.enabled
+        }))
       }
     }
   }
@@ -1255,48 +1342,64 @@ function versionStatusText() {
                 启用 AI 识别
               </label>
               <div class="runtime-grid">
-                <n-form-item label="Provider">
-                  <n-select
-                    v-model:value="runtimeForm.aiProvider"
-                    data-testid="ai-provider-input"
-                    :options="aiProviderOptions"
-                    @update:value="applyAIProviderPreset"
-                  />
-                </n-form-item>
-                <n-form-item label="Base URL">
-                  <n-input v-model:value="runtimeForm.aiBaseURL" data-testid="ai-base-url-input" placeholder="https://api.openai.com/v1" />
-                </n-form-item>
-                <n-form-item label="API Key">
-                  <n-input
-                    v-model:value="runtimeForm.aiAPIKey"
-                    data-testid="ai-api-key-input"
-                    type="password"
-                    autocomplete="off"
-                    :placeholder="currentRuntimeSettings?.ai?.media_metadata?.api_key_set ? '已设置，留空则保留' : '请输入 API Key'"
-                  />
-                </n-form-item>
-                <n-form-item label="模型">
-                  <n-select
-                    v-model:value="runtimeForm.aiModel"
-                    data-testid="ai-model-input"
-                    filterable
-                    tag
-                    :options="aiModelOptions"
-                  />
+                <n-form-item label="启用 Provider">
+                  <span data-testid="ai-enabled-provider-count">{{ enabledAIProviders.length }}</span>
                 </n-form-item>
               </div>
-              <div class="ai-provider-meta" v-if="selectedAIProvider">
-                <a
-                  data-testid="ai-provider-website"
-                  :href="selectedAIProvider.website"
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  官网 / API Key
-                </a>
-                <span v-if="selectedAIProvider.api_key_env">环境变量：{{ selectedAIProvider.api_key_env }}</span>
-                <span v-if="selectedAIProvider.free">免费模型可用</span>
-                <span v-if="selectedAIProvider.local">本地服务</span>
+              <div class="ai-provider-list">
+                <div v-for="(provider, index) in runtimeForm.aiProviders" :key="provider.id" class="ai-provider-row">
+                  <label class="checkbox-row">
+                    <input v-model="provider.enabled" :data-testid="`ai-provider-enabled-${index}`" type="checkbox" />
+                    启用
+                  </label>
+                  <n-form-item label="Provider">
+                    <n-select
+                      v-model:value="provider.provider"
+                      :data-testid="`ai-provider-input-${index}`"
+                      :options="aiProviderOptions"
+                      @update:value="(value: string) => applyAIProviderRowPreset(provider, value)"
+                    />
+                  </n-form-item>
+                  <n-form-item label="Base URL">
+                    <n-input v-model:value="provider.base_url" :data-testid="`ai-base-url-input-${index}`" placeholder="https://api.openai.com/v1" />
+                  </n-form-item>
+                  <n-form-item label="API Key">
+                    <n-input
+                      v-model:value="provider.api_key"
+                      :data-testid="`ai-api-key-input-${index}`"
+                      type="password"
+                      autocomplete="off"
+                      :placeholder="provider.api_key_set ? '已设置，留空则保留' : '请输入 API Key'"
+                    />
+                  </n-form-item>
+                  <n-form-item label="模型">
+                    <n-select
+                      v-model:value="provider.model"
+                      :data-testid="`ai-model-input-${index}`"
+                      filterable
+                      tag
+                      :options="aiProviderModelOptions(provider)"
+                    />
+                  </n-form-item>
+                  <div class="ai-provider-row-actions">
+                    <n-button :data-testid="`test-ai-provider-${index}`" secondary @click="testAIProvider(provider)">测试 Provider</n-button>
+                    <n-button :data-testid="`fetch-ai-models-${index}`" secondary :loading="aiModelsLoading" @click="loadAIModels(provider)">模型</n-button>
+                    <n-button :data-testid="`move-ai-provider-up-${index}`" secondary :disabled="index === 0" @click="moveAIProvider(index, -1)">上移</n-button>
+                    <n-button :data-testid="`move-ai-provider-down-${index}`" secondary :disabled="index === runtimeForm.aiProviders.length - 1" @click="moveAIProvider(index, 1)">下移</n-button>
+                    <n-button :data-testid="`remove-ai-provider-${index}`" secondary @click="removeAIProvider(index)">移除 Provider</n-button>
+                  </div>
+                  <div class="ai-provider-meta" v-if="aiProviders.find((item) => item.id === provider.provider)">
+                    <a
+                      :data-testid="`ai-provider-website-${index}`"
+                      :href="aiProviders.find((item) => item.id === provider.provider)?.website"
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      官网 / API Key
+                    </a>
+                    <span v-if="aiProviders.find((item) => item.id === provider.provider)?.api_key_env">环境变量：{{ aiProviders.find((item) => item.id === provider.provider)?.api_key_env }}</span>
+                  </div>
+                </div>
               </div>
               <label class="checkbox-row">
                 <input
@@ -1307,8 +1410,8 @@ function versionStatusText() {
                 启用 Provider fallback
               </label>
               <div class="form-actions compact-actions">
-                <n-button data-testid="fetch-ai-models" secondary :loading="aiModelsLoading" @click="loadAIModels">
-                  拉取模型
+                <n-button data-testid="add-ai-provider" secondary @click="addAIProvider">
+                  添加 Provider
                 </n-button>
               </div>
             </div>
@@ -1843,6 +1946,25 @@ function versionStatusText() {
 
 .ai-provider-meta a:hover {
   text-decoration: underline;
+}
+
+.ai-provider-list {
+  display: grid;
+  gap: 14px;
+}
+
+.ai-provider-row {
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ai-provider-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .checkbox-row {

@@ -75,12 +75,51 @@ type AIConfig struct {
 }
 
 type AIMediaMetadataSettings struct {
-	Enabled         bool   `yaml:"enabled" json:"enabled"`
-	Provider        string `yaml:"provider" json:"provider,omitempty"`
-	BaseURL         string `yaml:"base_url" json:"base_url"`
-	APIKey          string `yaml:"api_key" json:"api_key,omitempty"`
-	Model           string `yaml:"model" json:"model"`
-	FallbackEnabled bool   `yaml:"fallback_enabled" json:"fallback_enabled"`
+	Enabled         bool                              `yaml:"enabled" json:"enabled"`
+	Provider        string                            `yaml:"provider" json:"provider,omitempty"`
+	BaseURL         string                            `yaml:"base_url" json:"base_url"`
+	APIKey          string                            `yaml:"api_key" json:"api_key,omitempty"`
+	Model           string                            `yaml:"model" json:"model"`
+	FallbackEnabled bool                              `yaml:"fallback_enabled" json:"fallback_enabled"`
+	Providers       []AIMediaMetadataProviderSettings `yaml:"providers" json:"providers,omitempty"`
+}
+
+type AIMediaMetadataProviderSettings struct {
+	ID       string `yaml:"id" json:"id"`
+	Name     string `yaml:"name" json:"name,omitempty"`
+	Provider string `yaml:"provider" json:"provider"`
+	BaseURL  string `yaml:"base_url" json:"base_url"`
+	APIKey   string `yaml:"api_key" json:"api_key,omitempty"`
+	Model    string `yaml:"model" json:"model"`
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+}
+
+func (s AIMediaMetadataSettings) EffectiveProviders() []AIMediaMetadataProviderSettings {
+	if len(s.Providers) > 0 {
+		out := make([]AIMediaMetadataProviderSettings, 0, len(s.Providers))
+		for _, provider := range s.Providers {
+			if provider.ID == "" {
+				provider.ID = provider.Provider
+			}
+			out = append(out, provider)
+		}
+		return out
+	}
+	if strings.TrimSpace(s.Provider) == "" && strings.TrimSpace(s.BaseURL) == "" && strings.TrimSpace(s.Model) == "" {
+		return nil
+	}
+	id := strings.TrimSpace(s.Provider)
+	if id == "" {
+		id = "openai_compatible"
+	}
+	return []AIMediaMetadataProviderSettings{{
+		ID:       id,
+		Provider: s.Provider,
+		BaseURL:  s.BaseURL,
+		APIKey:   s.APIKey,
+		Model:    s.Model,
+		Enabled:  true,
+	}}
 }
 
 type BotConfig struct {
@@ -354,14 +393,30 @@ func validate(cfg Config) error {
 		return errors.New("telegram.media.concurrency must be greater than zero")
 	}
 	if cfg.AI.MediaMetadata.Enabled {
-		if strings.TrimSpace(cfg.AI.MediaMetadata.BaseURL) == "" {
-			return errors.New("ai.media_metadata.base_url is required when ai.media_metadata.enabled is true")
+		if len(cfg.AI.MediaMetadata.Providers) == 0 {
+			if strings.TrimSpace(cfg.AI.MediaMetadata.BaseURL) == "" {
+				return errors.New("ai.media_metadata.base_url is required when ai.media_metadata.enabled is true")
+			}
+			if aiMediaMetadataRequiresAPIKey(cfg.AI.MediaMetadata) && strings.TrimSpace(cfg.AI.MediaMetadata.APIKey) == "" {
+				return errors.New("ai.media_metadata.api_key is required when ai.media_metadata.enabled is true")
+			}
+			if strings.TrimSpace(cfg.AI.MediaMetadata.Model) == "" {
+				return errors.New("ai.media_metadata.model is required when ai.media_metadata.enabled is true")
+			}
 		}
-		if aiMediaMetadataRequiresAPIKey(cfg.AI.MediaMetadata) && strings.TrimSpace(cfg.AI.MediaMetadata.APIKey) == "" {
-			return errors.New("ai.media_metadata.api_key is required when ai.media_metadata.enabled is true")
-		}
-		if strings.TrimSpace(cfg.AI.MediaMetadata.Model) == "" {
-			return errors.New("ai.media_metadata.model is required when ai.media_metadata.enabled is true")
+		for i, provider := range cfg.AI.MediaMetadata.Providers {
+			if !provider.Enabled {
+				continue
+			}
+			if strings.TrimSpace(provider.BaseURL) == "" {
+				return fmt.Errorf("ai.media_metadata.providers[%d].base_url is required when ai.media_metadata.enabled is true", i)
+			}
+			if aiMediaMetadataProviderRequiresAPIKey(provider) && strings.TrimSpace(provider.APIKey) == "" {
+				return fmt.Errorf("ai.media_metadata.providers[%d].api_key is required when ai.media_metadata.enabled is true", i)
+			}
+			if strings.TrimSpace(provider.Model) == "" {
+				return fmt.Errorf("ai.media_metadata.providers[%d].model is required when ai.media_metadata.enabled is true", i)
+			}
 		}
 	}
 	if cfg.Bot.Enabled && cfg.Bot.Token == "" {
@@ -374,6 +429,10 @@ func validate(cfg Config) error {
 }
 
 func aiMediaMetadataRequiresAPIKey(settings AIMediaMetadataSettings) bool {
+	return strings.TrimSpace(settings.Provider) != "ollama"
+}
+
+func aiMediaMetadataProviderRequiresAPIKey(settings AIMediaMetadataProviderSettings) bool {
 	return strings.TrimSpace(settings.Provider) != "ollama"
 }
 

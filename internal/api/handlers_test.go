@@ -2445,6 +2445,48 @@ func TestAIModelsEndpointAllowsOllamaWithoutAPIKey(t *testing.T) {
 	}
 }
 
+func TestAITestEndpointReturnsOKForNonEmptyReply(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %s, want /v1/chat/completions", r.URL.Path)
+		}
+		gotAuth = r.Header.Get("Authorization")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer server.Close()
+
+	deps := testDeps(t)
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/ai/test", bytes.NewBufferString(`{"provider":"groq","base_url":"`+server.URL+`/v1","api_key":"secret","model":"media-model"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ai test code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if gotAuth != "Bearer secret" {
+		t.Fatalf("provider authorization = %q, want saved key", gotAuth)
+	}
+	var body struct {
+		OK        bool   `json:"ok"`
+		Model     string `json:"model"`
+		LatencyMS int64  `json:"latency_ms"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode ai test response: %v", err)
+	}
+	if !body.OK || body.Model != "media-model" || body.LatencyMS < 0 {
+		t.Fatalf("ai test response = %+v", body)
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("secret")) {
+		t.Fatalf("ai test response leaked api key: %s", w.Body.String())
+	}
+}
+
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

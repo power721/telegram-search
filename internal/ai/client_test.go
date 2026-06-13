@@ -76,6 +76,35 @@ func TestClientEnhanceParsesChatCompletionJSON(t *testing.T) {
 	}
 }
 
+func TestClientPingAcceptsAnyNonEmptyChatCompletionReply(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("path = %s, want /v1/chat/completions", r.URL.Path)
+		}
+		var req struct {
+			Model    string        `json:"model"`
+			Messages []chatMessage `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Model != "media-model" {
+			t.Fatalf("model = %q, want media-model", req.Model)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"pong"}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(ClientOptions{BaseURL: server.URL + "/v1", APIKey: "test-key", Model: "media-model", HTTPClient: server.Client()})
+	result, err := client.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	if strings.TrimSpace(result.Content) != "pong" {
+		t.Fatalf("content = %q, want pong", result.Content)
+	}
+}
+
 func TestClientChatPayloadUsesStrictSchemaAndInstructionEnvelope(t *testing.T) {
 	client := NewClient(ClientOptions{BaseURL: "https://api.example.com/v1", APIKey: "test-key", Model: "media-model"})
 	payload, err := client.chatPayload(EnhancementRequest{

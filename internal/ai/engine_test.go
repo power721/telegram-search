@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"tg-search/internal/config"
 )
 
 func TestEngineFallsBackToFirstValidProvider(t *testing.T) {
@@ -47,6 +49,27 @@ func TestEngineSkipsInvalidProviderResponse(t *testing.T) {
 	}
 	if resp.Items[0].Media.Title != "good" {
 		t.Fatalf("response = %+v", resp)
+	}
+}
+
+func TestBuildProviderChainUsesConfiguredProviderListOrder(t *testing.T) {
+	settings := config.AIMediaMetadataSettings{
+		Enabled:         true,
+		FallbackEnabled: true,
+		Providers: []config.AIMediaMetadataProviderSettings{
+			{ID: "ollama-local", Provider: "ollama", BaseURL: "http://localhost:11434/v1", Model: "qwen2.5:7b", Enabled: true},
+			{ID: "groq-main", Provider: "groq", BaseURL: "https://api.groq.com/openai/v1", APIKey: "secret", Model: "llama-3.3-70b-versatile", Enabled: true},
+			{ID: "disabled", Provider: "openai", BaseURL: "https://api.openai.com/v1", APIKey: "secret", Model: "gpt-4o-mini", Enabled: false},
+		},
+	}
+
+	chain := buildProviderChain(settings)
+
+	if len(chain) != 2 {
+		t.Fatalf("chain len = %d, want 2", len(chain))
+	}
+	if chain[0].name != ProviderOllama || chain[1].name != ProviderGroq {
+		t.Fatalf("chain names = %q, %q; want ollama, groq", chain[0].name, chain[1].name)
 	}
 }
 

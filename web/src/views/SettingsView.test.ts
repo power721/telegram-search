@@ -183,7 +183,17 @@ vi.mock('@/api/client', () => ({
             base_url: 'https://api.example.com/v1',
             api_key_set: true,
             model: 'media-model',
-            fallback_enabled: true
+            fallback_enabled: true,
+            providers: [
+              {
+                id: 'compatible-main',
+                provider: 'openai_compatible',
+                base_url: 'https://api.example.com/v1',
+                api_key_set: true,
+                model: 'media-model',
+                enabled: true
+              }
+            ]
           }
         }
       })
@@ -224,6 +234,9 @@ vi.mock('@/api/client', () => ({
   apiPost: vi.fn((path: string) => {
     if (path === '/api/settings/ai/models') {
       return Promise.resolve({ items: ['gpt-4.1-mini', 'qwen-plus'] })
+    }
+    if (path === '/api/settings/ai/test') {
+      return Promise.resolve({ ok: true, model: 'media-model', latency_ms: 12 })
     }
     if (path === '/api/saved-searches') {
       return Promise.resolve({
@@ -299,7 +312,17 @@ vi.mock('@/api/client', () => ({
           base_url: 'https://api.example.com/v1',
           api_key_set: true,
           model: 'media-model',
-          fallback_enabled: true
+          fallback_enabled: true,
+          providers: [
+            {
+              id: 'compatible-main',
+              provider: 'openai_compatible',
+              base_url: 'https://api.example.com/v1',
+              api_key_set: true,
+              model: 'media-model',
+              enabled: true
+            }
+          ]
         }
       }
       })
@@ -781,7 +804,18 @@ describe('SettingsView', () => {
           base_url: 'https://api.example.com/v1',
           api_key: '',
           model: 'media-model',
-          fallback_enabled: true
+          fallback_enabled: true,
+          providers: [
+            {
+              id: 'compatible-main',
+              name: '',
+              provider: 'openai_compatible',
+              base_url: 'https://api.example.com/v1',
+              api_key: '',
+              model: 'media-model',
+              enabled: true
+            }
+          ]
         }
       }
     })
@@ -797,19 +831,28 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(wrapper.get<HTMLInputElement>('[data-testid="ai-media-enabled-input"]').element.checked).toBe(true)
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-provider-input"]').element.value).toBe('openai_compatible')
-    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input"]').element.value).toBe('https://api.example.com/v1')
-    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-api-key-input"]').element.value).toBe('')
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input"]').element.value).toBe('media-model')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-provider-input-0"]').element.value).toBe('openai_compatible')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input-0"]').element.value).toBe('https://api.example.com/v1')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-api-key-input-0"]').element.value).toBe('')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input-0"]').element.value).toBe('media-model')
     expect(wrapper.get<HTMLInputElement>('[data-testid="ai-fallback-enabled-input"]').element.checked).toBe(true)
 
-    await wrapper.get('[data-testid="ai-provider-input"]').setValue('groq')
-    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input"]').element.value).toBe('https://api.groq.com/openai/v1')
-    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input"]').element.value).toBe('llama-3.3-70b-versatile')
-    expect(wrapper.get('[data-testid="ai-provider-website"]').attributes('href')).toBe('https://console.groq.com/keys')
+    await wrapper.get('[data-testid="ai-provider-input-0"]').setValue('groq')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="ai-base-url-input-0"]').element.value).toBe('https://api.groq.com/openai/v1')
+    expect(wrapper.get<HTMLSelectElement>('[data-testid="ai-model-input-0"]').element.value).toBe('llama-3.3-70b-versatile')
+    expect(wrapper.get('[data-testid="ai-provider-website-0"]').attributes('href')).toBe('https://console.groq.com/keys')
 
-    await wrapper.get('[data-testid="ai-api-key-input"]').setValue('new-secret')
-    await wrapper.get('[data-testid="fetch-ai-models"]').trigger('click')
+    await wrapper.get('[data-testid="ai-api-key-input-0"]').setValue('new-secret')
+    await wrapper.get('[data-testid="test-ai-provider-0"]').trigger('click')
+    await flushPromises()
+    expect(apiPost).toHaveBeenCalledWith('/api/settings/ai/test', {
+      provider: 'groq',
+      base_url: 'https://api.groq.com/openai/v1',
+      api_key: 'new-secret',
+      model: 'llama-3.3-70b-versatile'
+    })
+
+    await wrapper.get('[data-testid="fetch-ai-models-0"]').trigger('click')
     await flushPromises()
 
     expect(apiPost).toHaveBeenCalledWith('/api/settings/ai/models', {
@@ -817,7 +860,7 @@ describe('SettingsView', () => {
       base_url: 'https://api.groq.com/openai/v1',
       api_key: 'new-secret'
     })
-    await wrapper.get('[data-testid="ai-model-input"]').setValue('qwen-plus')
+    await wrapper.get('[data-testid="ai-model-input-0"]').setValue('qwen-plus')
     await wrapper.get('[data-testid="save-runtime-settings"]').trigger('click')
     await flushPromises()
 
@@ -829,7 +872,16 @@ describe('SettingsView', () => {
           base_url: 'https://api.groq.com/openai/v1',
           api_key: 'new-secret',
           model: 'qwen-plus',
-          fallback_enabled: true
+          fallback_enabled: true,
+          providers: [
+            expect.objectContaining({
+              provider: 'groq',
+              base_url: 'https://api.groq.com/openai/v1',
+              api_key: 'new-secret',
+              model: 'qwen-plus',
+              enabled: true
+            })
+          ]
         }
       }
     }))

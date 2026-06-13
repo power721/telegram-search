@@ -28,6 +28,10 @@ type Client struct {
 	httpClient         *http.Client
 }
 
+type PingResult struct {
+	Content string
+}
+
 type EnhancementRequest struct {
 	Message EnhancementMessage `json:"message"`
 	Links   []EnhancementLink  `json:"links"`
@@ -237,6 +241,56 @@ func (c *Client) Enhance(ctx context.Context, input EnhancementRequest) (Enhance
 		return EnhancementResponse{}, err
 	}
 	return out, nil
+}
+
+func (c *Client) Ping(ctx context.Context) (PingResult, error) {
+	if err := c.validateBase(); err != nil {
+		return PingResult{}, err
+	}
+	if c.model == "" {
+		return PingResult{}, errors.New("ai model is required")
+	}
+	payload, err := json.Marshal(struct {
+		Model    string        `json:"model"`
+		Messages []chatMessage `json:"messages"`
+	}{
+		Model: c.model,
+		Messages: []chatMessage{
+			{Role: "system", Content: "Reply with a short plain text acknowledgement."},
+			{Role: "user", Content: "ping"},
+		},
+	})
+	if err != nil {
+		return PingResult{}, fmt.Errorf("encode ping request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return PingResult{}, fmt.Errorf("create ping request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	c.authorize(req)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return PingResult{}, fmt.Errorf("ping request: %w", err)
+	}
+	defer resp.Body.Close()
+	if err := checkStatus(resp); err != nil {
+		return PingResult{}, err
+	}
+	var body struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return PingResult{}, fmt.Errorf("decode ping response: %w", err)
+	}
+	if len(body.Choices) == 0 || strings.TrimSpace(body.Choices[0].Message.Content) == "" {
+		return PingResult{}, errors.New("ping response has no content")
+	}
+	return PingResult{Content: body.Choices[0].Message.Content}, nil
 }
 
 func (c *Client) validateBase() error {

@@ -3,6 +3,7 @@ import { useMessage } from 'naive-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import type {
+  AIModelsResponse,
   ChannelsResponse,
   NotificationDeliveriesResponse,
   NotificationDelivery,
@@ -53,6 +54,8 @@ const systemInfo = ref<SystemInfoResponse | null>(null)
 const currentRuntimeSettings = ref<RuntimeSettings | null>(null)
 const activeTab = ref('security')
 const runtimeLoading = ref(false)
+const aiModels = ref<string[]>([])
+const aiModelsLoading = ref(false)
 const savedSearches = ref<SavedSearch[]>([])
 const savedSearchLoading = ref(false)
 const savedSearchSaving = ref(false)
@@ -178,7 +181,21 @@ const runtimeForm = ref({
   streamConcurrency: '',
   streamBuffers: '',
   streamChunkTimeout: '',
-  mediaConcurrency: ''
+  mediaConcurrency: '',
+  aiMediaEnabled: false,
+  aiBaseURL: '',
+  aiAPIKey: '',
+  aiModel: ''
+})
+const aiModelOptions = computed(() => {
+  const values = new Set<string>()
+  if (runtimeForm.value.aiModel.trim()) {
+    values.add(runtimeForm.value.aiModel.trim())
+  }
+  for (const model of aiModels.value) {
+    if (model.trim()) values.add(model.trim())
+  }
+  return Array.from(values).map((model) => ({ label: model, value: model }))
 })
 const accountOptions = computed(() => [
   { label: '全部账号', value: 0 },
@@ -740,6 +757,30 @@ async function updateRuntimeSettings() {
   }
 }
 
+async function loadAIModels() {
+  const baseURL = runtimeForm.value.aiBaseURL.trim()
+  if (!baseURL) {
+    message.error('请输入 AI Base URL')
+    return
+  }
+  aiModelsLoading.value = true
+  try {
+    const data = await apiPost<AIModelsResponse>('/api/settings/ai/models', {
+      base_url: baseURL,
+      api_key: runtimeForm.value.aiAPIKey.trim()
+    })
+    aiModels.value = Array.isArray(data.items) ? data.items : []
+    if (!runtimeForm.value.aiModel.trim() && aiModels.value.length > 0) {
+      runtimeForm.value.aiModel = aiModels.value[0]
+    }
+    message.success('AI 模型列表已更新')
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '无法拉取 AI 模型列表')
+  } finally {
+    aiModelsLoading.value = false
+  }
+}
+
 async function regenerate() {
   try {
     await apiKey.regenerate()
@@ -780,6 +821,7 @@ function fillRuntimeForm(settings: RuntimeSettings) {
   currentRuntimeSettings.value = settings
   const maxDBSize = splitSizeForInput(settings.storage.max_db_size)
   const maxMediaCache = splitSizeForInput(settings.storage.max_media_cache)
+  const aiMedia = settings.ai?.media_metadata
   runtimeForm.value = {
     workers: String(settings.sync.workers),
     historyBatchSize: String(settings.sync.history_batch_size),
@@ -797,8 +839,13 @@ function fillRuntimeForm(settings: RuntimeSettings) {
     streamConcurrency: String(settings.telegram.stream.concurrency),
     streamBuffers: String(settings.telegram.stream.buffers),
     streamChunkTimeout: settings.telegram.stream.chunk_timeout,
-    mediaConcurrency: String(settings.telegram.media.concurrency)
+    mediaConcurrency: String(settings.telegram.media.concurrency),
+    aiMediaEnabled: Boolean(aiMedia?.enabled),
+    aiBaseURL: aiMedia?.base_url ?? '',
+    aiAPIKey: '',
+    aiModel: aiMedia?.model ?? ''
   }
+  aiModels.value = aiMedia?.model ? [aiMedia.model] : []
 }
 
 function runtimePayload(): RuntimeSettings {
@@ -828,6 +875,14 @@ function runtimePayload(): RuntimeSettings {
       },
       media: {
         concurrency: positiveInteger(runtimeForm.value.mediaConcurrency)
+      }
+    },
+    ai: {
+      media_metadata: {
+        enabled: runtimeForm.value.aiMediaEnabled,
+        base_url: runtimeForm.value.aiBaseURL.trim(),
+        api_key: runtimeForm.value.aiAPIKey.trim(),
+        model: runtimeForm.value.aiModel.trim()
       }
     }
   }
@@ -1131,6 +1186,46 @@ function versionStatusText() {
                 <n-form-item label="媒体下载并发（立即生效）">
                   <n-input v-model:value="runtimeForm.mediaConcurrency" data-testid="runtime-media-concurrency-input" inputmode="numeric" />
                 </n-form-item>
+              </div>
+            </div>
+
+            <div class="runtime-section">
+              <h3>AI 媒体元数据</h3>
+              <label class="checkbox-row">
+                <input
+                  v-model="runtimeForm.aiMediaEnabled"
+                  data-testid="ai-media-enabled-input"
+                  type="checkbox"
+                />
+                启用 AI 识别
+              </label>
+              <div class="runtime-grid">
+                <n-form-item label="Base URL">
+                  <n-input v-model:value="runtimeForm.aiBaseURL" data-testid="ai-base-url-input" placeholder="https://api.openai.com/v1" />
+                </n-form-item>
+                <n-form-item label="API Key">
+                  <n-input
+                    v-model:value="runtimeForm.aiAPIKey"
+                    data-testid="ai-api-key-input"
+                    type="password"
+                    autocomplete="off"
+                    :placeholder="currentRuntimeSettings?.ai?.media_metadata?.api_key_set ? '已设置，留空则保留' : '请输入 API Key'"
+                  />
+                </n-form-item>
+                <n-form-item label="模型">
+                  <n-select
+                    v-model:value="runtimeForm.aiModel"
+                    data-testid="ai-model-input"
+                    filterable
+                    tag
+                    :options="aiModelOptions"
+                  />
+                </n-form-item>
+              </div>
+              <div class="form-actions compact-actions">
+                <n-button data-testid="fetch-ai-models" secondary :loading="aiModelsLoading" @click="loadAIModels">
+                  拉取模型
+                </n-button>
               </div>
             </div>
 

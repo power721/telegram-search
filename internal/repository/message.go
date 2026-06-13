@@ -180,6 +180,20 @@ WHERE ` + strings.Join(where, " AND ")
 	return total, nil
 }
 
+func (r *MessageRepository) FindByID(ctx context.Context, id int64) (model.Message, error) {
+	query := `
+SELECT m.id, m.account_id, m.channel_id, m.telegram_message_id, m.sender_id, m.message_type, m.media_summary,
+       mc.text, mc.raw_json, m.date, m.edit_date, m.deleted, m.created_at, m.updated_at
+FROM telegram_messages m
+JOIN telegram_message_contents mc ON mc.message_id = m.id
+WHERE m.id = ?`
+	item, err := scanMessage(r.db.QueryRowContext(ctx, query, id))
+	if err != nil {
+		return model.Message{}, fmt.Errorf("find message by id: %w", err)
+	}
+	return item, nil
+}
+
 func messageSearchWhere(params SearchParams) ([]string, []any) {
 	where := []string{`telegram_messages_fts MATCH ?`, `m.deleted = 0`}
 	args := []any{fts5Query(params.Query)}
@@ -307,6 +321,37 @@ WHERE channel_id = ? AND telegram_message_id = ?`, time.Now().UTC(), channelID, 
 		return fmt.Errorf("mark message deleted: %w", err)
 	}
 	return requireRows(res, "message not found")
+}
+
+func scanMessage(row interface {
+	Scan(...any) error
+}) (model.Message, error) {
+	var item model.Message
+	var editDate sql.NullTime
+	var deleted int
+	if err := row.Scan(
+		&item.ID,
+		&item.AccountID,
+		&item.ChannelID,
+		&item.TelegramMessageID,
+		&item.SenderID,
+		&item.MessageType,
+		&item.MediaSummary,
+		&item.Text,
+		&item.RawJSON,
+		&item.Date,
+		&editDate,
+		&deleted,
+		&item.CreatedAt,
+		&item.UpdatedAt,
+	); err != nil {
+		return model.Message{}, err
+	}
+	if editDate.Valid {
+		item.EditDate = &editDate.Time
+	}
+	item.Deleted = deleted != 0
+	return item, nil
 }
 
 func scanSearchResult(row interface {

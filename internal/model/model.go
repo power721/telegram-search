@@ -314,6 +314,7 @@ const (
 	TaskTypeRemoteSearch       = "remote_search"
 	TaskTypeBackup             = "backup"
 	TaskTypeGapRecovery        = "gap_recovery"
+	TaskTypeAIMediaMetadata    = "ai_media_metadata"
 )
 
 type RemoteSearchTask struct {

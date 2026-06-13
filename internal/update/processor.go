@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"tg-search/internal/config"
 	dbpkg "tg-search/internal/db"
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
@@ -18,31 +19,41 @@ import (
 )
 
 type ProcessorOptions struct {
-	DB            *sql.DB
-	Channels      *repository.ChannelRepository
-	Messages      *repository.MessageRepository
-	Links         *repository.LinkRepository
-	Files         *repository.FileRepository
-	Resources     *resource.Service
-	Notifications *notification.Service
-	Cursors       *repository.SyncCursorRepository
-	Tasks         *taskpkg.Service
-	Extractor     *link.Extractor
-	Filter        *messagefilter.Filter
+	DB                   *sql.DB
+	Channels             *repository.ChannelRepository
+	Messages             *repository.MessageRepository
+	Links                *repository.LinkRepository
+	Files                *repository.FileRepository
+	Resources            *resource.Service
+	Notifications        *notification.Service
+	Cursors              *repository.SyncCursorRepository
+	Tasks                *taskpkg.Service
+	Extractor            *link.Extractor
+	Filter               *messagefilter.Filter
+	Settings             *repository.SettingsRepository
+	RuntimeConfig        config.Config
+	AIMediaMetadataTasks taskEnqueuer
+}
+
+type taskEnqueuer interface {
+	Enqueue(context.Context, string, any) (model.Task, error)
 }
 
 type Processor struct {
-	db            *sql.DB
-	channels      *repository.ChannelRepository
-	messages      *repository.MessageRepository
-	links         *repository.LinkRepository
-	files         *repository.FileRepository
-	resources     *resource.Service
-	notifications *notification.Service
-	cursors       *repository.SyncCursorRepository
-	tasks         *taskpkg.Service
-	extractor     *link.Extractor
-	filter        *messagefilter.Filter
+	db                   *sql.DB
+	channels             *repository.ChannelRepository
+	messages             *repository.MessageRepository
+	links                *repository.LinkRepository
+	files                *repository.FileRepository
+	resources            *resource.Service
+	notifications        *notification.Service
+	cursors              *repository.SyncCursorRepository
+	tasks                *taskpkg.Service
+	extractor            *link.Extractor
+	filter               *messagefilter.Filter
+	settings             *repository.SettingsRepository
+	runtimeConfig        config.Config
+	aiMediaMetadataTasks taskEnqueuer
 }
 
 func NewProcessor(opts ProcessorOptions) *Processor {
@@ -50,17 +61,20 @@ func NewProcessor(opts ProcessorOptions) *Processor {
 		opts.Extractor = link.NewExtractor()
 	}
 	return &Processor{
-		db:            opts.DB,
-		channels:      opts.Channels,
-		messages:      opts.Messages,
-		links:         opts.Links,
-		files:         opts.Files,
-		resources:     opts.Resources,
-		notifications: opts.Notifications,
-		cursors:       opts.Cursors,
-		tasks:         opts.Tasks,
-		extractor:     opts.Extractor,
-		filter:        opts.Filter,
+		db:                   opts.DB,
+		channels:             opts.Channels,
+		messages:             opts.Messages,
+		links:                opts.Links,
+		files:                opts.Files,
+		resources:            opts.Resources,
+		notifications:        opts.Notifications,
+		cursors:              opts.Cursors,
+		tasks:                opts.Tasks,
+		extractor:            opts.Extractor,
+		filter:               opts.Filter,
+		settings:             opts.Settings,
+		runtimeConfig:        opts.RuntimeConfig,
+		aiMediaMetadataTasks: opts.AIMediaMetadataTasks,
 	}
 }
 
@@ -146,6 +160,7 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		extracted = result.Links
 	}
 	createdResources := []resource.Item{}
+	var aiMessageID int64
 	if err := dbpkg.WithTx(ctx, p.db, func(tx *sql.Tx) error {
 		date := event.Date
 		if date.IsZero() {
@@ -167,8 +182,12 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		if err != nil {
 			return err
 		}
-		if _, err := p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted); err != nil {
+		savedLinks, err := p.links.ReplaceForMessageTx(ctx, tx, stored[0].ID, extracted)
+		if err != nil {
 			return err
+		}
+		if hasCloudDriveLinks(savedLinks) {
+			aiMessageID = stored[0].ID
 		}
 		if event.Type == EventNewMessage {
 			createdResources = append(createdResources, updateResourceItemsFromMessage(channel, stored[0], extracted, stored[0].Files)...)
@@ -182,7 +201,28 @@ func (p *Processor) storeMessage(ctx context.Context, channel model.Channel, eve
 		return err
 	}
 	p.enqueueCreatedResources(ctx, createdResources)
+	p.enqueueAIMediaMetadataTask(ctx, aiMessageID)
 	return p.refreshResourceStats(ctx)
+}
+
+func (p *Processor) enqueueAIMediaMetadataTask(ctx context.Context, messageID int64) {
+	if p.aiMediaMetadataTasks == nil || messageID <= 0 || !p.aiMediaMetadataEnabled(ctx) {
+		return
+	}
+	if _, err := p.aiMediaMetadataTasks.Enqueue(ctx, model.TaskTypeAIMediaMetadata, taskpkg.AIMediaMetadataPayload{MessageID: messageID}); err != nil {
+		return
+	}
+}
+
+func (p *Processor) aiMediaMetadataEnabled(ctx context.Context) bool {
+	if p.settings == nil {
+		return false
+	}
+	settings, err := p.settings.LoadRuntimeSettings(ctx, p.runtimeConfig)
+	if err != nil {
+		return false
+	}
+	return settings.AI.MediaMetadata.Enabled
 }
 
 func (p *Processor) enqueueCreatedResources(ctx context.Context, items []resource.Item) {
@@ -261,6 +301,24 @@ func updateResourceCategoryFromLink(link model.Link) string {
 		return "http"
 	default:
 		return "cloud_drive"
+	}
+}
+
+func hasCloudDriveLinks(links []model.Link) bool {
+	for _, link := range links {
+		if link.Category == "cloud_drive" || (link.Category == "" && isCloudDriveLinkType(link.Type)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCloudDriveLinkType(typ string) bool {
+	switch typ {
+	case "quark", "aliyun", "baidu", "115", "uc", "xunlei", "tianyi", "mobile", "123", "pikpak", "guangya":
+		return true
+	default:
+		return false
 	}
 }
 

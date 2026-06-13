@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 
 	"tg-search/internal/adminauth"
+	aipkg "tg-search/internal/ai"
 	"tg-search/internal/backup"
 	"tg-search/internal/build"
 	channelpkg "tg-search/internal/channel"
@@ -469,14 +470,20 @@ func (h handlers) getRuntimeSettings(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, config.RedactRuntimeSettings(settings))
 }
 
 func (h handlers) updateRuntimeSettings(c *gin.Context) {
+	existing, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	var settings config.RuntimeSettings
 	if !bindJSON(c, &settings) {
 		return
 	}
+	settings = config.PreserveRuntimeSecrets(settings, existing)
 	if _, err := config.ApplyRuntimeSettings(h.deps.RuntimeConfig, settings); err != nil {
 		errorText(c, http.StatusBadRequest, err.Error())
 		return
@@ -488,7 +495,48 @@ func (h handlers) updateRuntimeSettings(c *gin.Context) {
 	if h.deps.MediaLimiter != nil {
 		h.deps.MediaLimiter.Update(settings.Telegram.Media.Concurrency)
 	}
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, config.RedactRuntimeSettings(settings))
+}
+
+func (h handlers) aiModels(c *gin.Context) {
+	var req struct {
+		BaseURL string `json:"base_url"`
+		APIKey  string `json:"api_key"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	settings, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	baseURL := strings.TrimSpace(req.BaseURL)
+	if baseURL == "" {
+		baseURL = settings.AI.MediaMetadata.BaseURL
+	}
+	apiKey := strings.TrimSpace(req.APIKey)
+	if apiKey == "" {
+		apiKey = settings.AI.MediaMetadata.APIKey
+	}
+	if baseURL == "" {
+		errorText(c, http.StatusBadRequest, "base_url is required")
+		return
+	}
+	if apiKey == "" {
+		errorText(c, http.StatusBadRequest, "api_key is required")
+		return
+	}
+	client := aipkg.NewClient(aipkg.ClientOptions{
+		BaseURL: baseURL,
+		APIKey:  apiKey,
+	})
+	models, err := client.ListModels(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusBadGateway, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": models})
 }
 
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {

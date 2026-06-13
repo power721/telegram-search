@@ -14,3 +14,7 @@ type HistorySyncPayload struct {
 	ChannelIDs  []int64 `json:"channel_ids,omitempty"`
 	MaxMessages int     `json:"max_messages,omitempty"`
 }
+
+type AIMediaMetadataPayload struct {
+	MessageID int64 `json:"message_id"`
+}

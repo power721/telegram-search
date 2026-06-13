@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	channelpkg "tg-search/internal/channel"
+	"tg-search/internal/config"
 	dbpkg "tg-search/internal/db"
 	"tg-search/internal/link"
 	"tg-search/internal/messagefilter"
@@ -28,49 +29,59 @@ import (
 )
 
 type Options struct {
-	DB               *sql.DB
-	Accounts         *repository.AccountRepository
-	Channels         *repository.ChannelRepository
-	Messages         *repository.MessageRepository
-	Links            *repository.LinkRepository
-	Files            *repository.FileRepository
-	Resources        *resource.Service
-	Notifications    *notification.Service
-	Cursors          *repository.SyncCursorRepository
-	Telegram         telegram.Client
-	Sessions         *session.Manager
-	Extractor        *link.Extractor
-	Filter           *messagefilter.Filter
-	HistoryBatchSize int
-	Workers          int
-	RetryPolicy      retry.Policy
-	RequestGovernor  *telegramguard.Governor
-	Logger           *zap.Logger
+	DB                   *sql.DB
+	Accounts             *repository.AccountRepository
+	Channels             *repository.ChannelRepository
+	Messages             *repository.MessageRepository
+	Links                *repository.LinkRepository
+	Files                *repository.FileRepository
+	Resources            *resource.Service
+	Notifications        *notification.Service
+	Cursors              *repository.SyncCursorRepository
+	Telegram             telegram.Client
+	Sessions             *session.Manager
+	Extractor            *link.Extractor
+	Filter               *messagefilter.Filter
+	HistoryBatchSize     int
+	Workers              int
+	RetryPolicy          retry.Policy
+	RequestGovernor      *telegramguard.Governor
+	Logger               *zap.Logger
+	Settings             *repository.SettingsRepository
+	RuntimeConfig        config.Config
+	AIMediaMetadataTasks taskEnqueuer
+}
+
+type taskEnqueuer interface {
+	Enqueue(context.Context, string, any) (model.Task, error)
 }
 
 type Service struct {
-	db               *sql.DB
-	accounts         *repository.AccountRepository
-	channels         *repository.ChannelRepository
-	messages         *repository.MessageRepository
-	links            *repository.LinkRepository
-	files            *repository.FileRepository
-	resources        *resource.Service
-	notifications    *notification.Service
-	cursors          *repository.SyncCursorRepository
-	telegram         telegram.Client
-	sessions         *session.Manager
-	extractor        *link.Extractor
-	filter           *messagefilter.Filter
-	historyBatchSize int
-	workers          int
-	retryPolicy      retry.Policy
-	requestGovernor  *telegramguard.Governor
-	logger           *zap.Logger
-	mu               sync.Mutex
-	runningChannels  map[int64]struct{}
-	backlogCancel    context.CancelFunc
-	backlogWG        sync.WaitGroup
+	db                   *sql.DB
+	accounts             *repository.AccountRepository
+	channels             *repository.ChannelRepository
+	messages             *repository.MessageRepository
+	links                *repository.LinkRepository
+	files                *repository.FileRepository
+	resources            *resource.Service
+	notifications        *notification.Service
+	cursors              *repository.SyncCursorRepository
+	telegram             telegram.Client
+	sessions             *session.Manager
+	extractor            *link.Extractor
+	filter               *messagefilter.Filter
+	historyBatchSize     int
+	workers              int
+	retryPolicy          retry.Policy
+	requestGovernor      *telegramguard.Governor
+	logger               *zap.Logger
+	settings             *repository.SettingsRepository
+	runtimeConfig        config.Config
+	aiMediaMetadataTasks taskEnqueuer
+	mu                   sync.Mutex
+	runningChannels      map[int64]struct{}
+	backlogCancel        context.CancelFunc
+	backlogWG            sync.WaitGroup
 }
 
 type SyncResult struct {
@@ -134,25 +145,28 @@ func NewService(opts Options) *Service {
 		opts.Logger = zap.NewNop()
 	}
 	return &Service{
-		db:               opts.DB,
-		accounts:         opts.Accounts,
-		channels:         opts.Channels,
-		messages:         opts.Messages,
-		links:            opts.Links,
-		files:            opts.Files,
-		resources:        opts.Resources,
-		notifications:    opts.Notifications,
-		cursors:          opts.Cursors,
-		telegram:         opts.Telegram,
-		sessions:         opts.Sessions,
-		extractor:        opts.Extractor,
-		filter:           opts.Filter,
-		historyBatchSize: opts.HistoryBatchSize,
-		workers:          opts.Workers,
-		retryPolicy:      opts.RetryPolicy,
-		requestGovernor:  opts.RequestGovernor,
-		logger:           opts.Logger,
-		runningChannels:  map[int64]struct{}{},
+		db:                   opts.DB,
+		accounts:             opts.Accounts,
+		channels:             opts.Channels,
+		messages:             opts.Messages,
+		links:                opts.Links,
+		files:                opts.Files,
+		resources:            opts.Resources,
+		notifications:        opts.Notifications,
+		cursors:              opts.Cursors,
+		telegram:             opts.Telegram,
+		sessions:             opts.Sessions,
+		extractor:            opts.Extractor,
+		filter:               opts.Filter,
+		historyBatchSize:     opts.HistoryBatchSize,
+		workers:              opts.Workers,
+		retryPolicy:          opts.RetryPolicy,
+		requestGovernor:      opts.RequestGovernor,
+		logger:               opts.Logger,
+		settings:             opts.Settings,
+		runtimeConfig:        opts.RuntimeConfig,
+		aiMediaMetadataTasks: opts.AIMediaMetadataTasks,
+		runningChannels:      map[int64]struct{}{},
 	}
 }
 
@@ -1137,6 +1151,7 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 		}
 	}
 	createdResources := []resource.Item{}
+	aiMessageIDs := []int64{}
 	err := dbpkg.WithTx(ctx, s.db, func(tx *sql.Tx) error {
 		if len(filtered) > 0 {
 			stored, err := s.messages.SaveBatchTx(ctx, tx, filtered)
@@ -1145,9 +1160,12 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 			}
 			for _, msg := range stored {
 				extracted := linksByTelegramID[msg.TelegramMessageID]
-				_, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
+				savedLinks, err := s.links.ReplaceForMessageTx(ctx, tx, msg.ID, extracted)
 				if err != nil {
 					return err
+				}
+				if hasCloudDriveLinks(savedLinks) {
+					aiMessageIDs = append(aiMessageIDs, msg.ID)
 				}
 				if s.files != nil {
 					if _, err := s.files.ReplaceForMessageTx(ctx, tx, msg.ID, msg.Files); err != nil {
@@ -1175,7 +1193,49 @@ func (s *Service) storeBatch(ctx context.Context, accountID int64, channelID int
 		return 0, fmt.Errorf("store history batch: %w", err)
 	}
 	s.enqueueCreatedResources(ctx, createdResources)
+	s.enqueueAIMediaMetadataTasks(ctx, aiMessageIDs)
 	return linkCount, nil
+}
+
+func (s *Service) enqueueAIMediaMetadataTasks(ctx context.Context, messageIDs []int64) {
+	if s.aiMediaMetadataTasks == nil || len(messageIDs) == 0 || !s.aiMediaMetadataEnabled(ctx) {
+		return
+	}
+	for _, messageID := range messageIDs {
+		if _, err := s.aiMediaMetadataTasks.Enqueue(ctx, model.TaskTypeAIMediaMetadata, taskpkg.AIMediaMetadataPayload{MessageID: messageID}); err != nil {
+			s.logger.Warn("enqueue ai media metadata task failed", zap.Int64("message_id", messageID), zap.Error(err))
+		}
+	}
+}
+
+func (s *Service) aiMediaMetadataEnabled(ctx context.Context) bool {
+	if s.settings == nil {
+		return false
+	}
+	settings, err := s.settings.LoadRuntimeSettings(ctx, s.runtimeConfig)
+	if err != nil {
+		s.logger.Warn("load runtime settings for ai media metadata failed", zap.Error(err))
+		return false
+	}
+	return settings.AI.MediaMetadata.Enabled
+}
+
+func hasCloudDriveLinks(links []model.Link) bool {
+	for _, link := range links {
+		if link.Category == "cloud_drive" || (link.Category == "" && isCloudDriveLinkType(link.Type)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isCloudDriveLinkType(typ string) bool {
+	switch typ {
+	case "quark", "aliyun", "baidu", "115", "uc", "xunlei", "tianyi", "mobile", "123", "pikpak", "guangya":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) enqueueCreatedResources(ctx context.Context, items []resource.Item) {

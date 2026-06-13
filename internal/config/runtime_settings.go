@@ -4,6 +4,7 @@ type RuntimeSettings struct {
 	Sync     RuntimeSyncSettings     `json:"sync"`
 	Storage  RuntimeStorageSettings  `json:"storage"`
 	Telegram RuntimeTelegramSettings `json:"telegram"`
+	AI       AIConfig                `json:"ai"`
 }
 
 type RuntimeSyncSettings struct {
@@ -45,6 +46,7 @@ func RuntimeSettingsFromConfig(cfg Config) RuntimeSettings {
 			Stream:           cfg.Telegram.Stream,
 			Media:            cfg.Telegram.Media,
 		},
+		AI: cfg.AI,
 	}
 }
 
@@ -61,8 +63,50 @@ func ApplyRuntimeSettings(cfg Config, settings RuntimeSettings) (Config, error) 
 	cfg.Telegram.RateLimit = settings.Telegram.RateLimit
 	cfg.Telegram.Stream = settings.Telegram.Stream
 	cfg.Telegram.Media = settings.Telegram.Media
+	cfg.AI = settings.AI
 	if err := validate(cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+type RuntimeSettingsResponse struct {
+	Sync     RuntimeSyncSettings       `json:"sync"`
+	Storage  RuntimeStorageSettings    `json:"storage"`
+	Telegram RuntimeTelegramSettings   `json:"telegram"`
+	AI       RuntimeAISettingsResponse `json:"ai"`
+}
+
+type RuntimeAISettingsResponse struct {
+	MediaMetadata AIMediaMetadataSettingsResponse `json:"media_metadata"`
+}
+
+type AIMediaMetadataSettingsResponse struct {
+	Enabled   bool   `json:"enabled"`
+	BaseURL   string `json:"base_url"`
+	Model     string `json:"model"`
+	APIKeySet bool   `json:"api_key_set"`
+}
+
+func PreserveRuntimeSecrets(incoming RuntimeSettings, existing RuntimeSettings) RuntimeSettings {
+	if incoming.AI.MediaMetadata.APIKey == "" {
+		incoming.AI.MediaMetadata.APIKey = existing.AI.MediaMetadata.APIKey
+	}
+	return incoming
+}
+
+func RedactRuntimeSettings(settings RuntimeSettings) RuntimeSettingsResponse {
+	return RuntimeSettingsResponse{
+		Sync:     settings.Sync,
+		Storage:  settings.Storage,
+		Telegram: settings.Telegram,
+		AI: RuntimeAISettingsResponse{
+			MediaMetadata: AIMediaMetadataSettingsResponse{
+				Enabled:   settings.AI.MediaMetadata.Enabled,
+				BaseURL:   settings.AI.MediaMetadata.BaseURL,
+				Model:     settings.AI.MediaMetadata.Model,
+				APIKeySet: settings.AI.MediaMetadata.APIKey != "",
+			},
+		},
+	}
 }

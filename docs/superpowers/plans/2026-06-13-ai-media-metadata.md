@@ -16,7 +16,7 @@
 - Modify `internal/config/runtime_settings.go`: include AI settings, add redacted runtime response and key-preserving merge helper.
 - Modify `internal/repository/settings.go`: keep storing full runtime settings; no key redaction here.
 - Modify `internal/api/handlers.go`: return redacted runtime settings, preserve AI key on update, add model list handler.
-- Modify `internal/api/router.go`: add `GET /api/settings/ai/models` and dependency for AI model listing.
+- Modify `internal/api/router.go`: add `POST /api/settings/ai/models` and dependency for AI model listing.
 - Modify `internal/api/handlers_test.go`: settings/model endpoint coverage.
 - Modify `internal/model/model.go`: add `TaskTypeAIMediaMetadata`.
 - Modify `internal/task/payload.go`: add `AIMediaMetadataPayload`.
@@ -243,7 +243,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Write failing API model endpoint test**
 
-Add `TestAIModelsEndpointListsConfiguredProviderModels`. It saves runtime AI settings with base URL pointing at an `httptest.Server`, then calls authenticated `GET /api/settings/ai/models` and expects:
+Add `TestAIModelsEndpointListsProviderModelsFromRequest`. It saves runtime AI settings with a stored key, then calls authenticated `POST /api/settings/ai/models` with the current form `base_url` and an empty `api_key`. The handler must use the saved key and return:
 
 ```json
 {"items":["gpt-4.1-mini","qwen-plus"]}
@@ -251,7 +251,7 @@ Add `TestAIModelsEndpointListsConfiguredProviderModels`. It saves runtime AI set
 
 - [ ] **Step 6: Run API model endpoint test and verify RED**
 
-Run: `GOCACHE=/tmp/go-build-cache go test ./internal/api -run TestAIModelsEndpointListsConfiguredProviderModels -v`
+Run: `GOCACHE=/tmp/go-build-cache go test ./internal/api -run TestAIModelsEndpointListsProviderModelsFromRequest -v`
 
 Expected: FAIL with 404 because the endpoint is not registered.
 
@@ -260,14 +260,14 @@ Expected: FAIL with 404 because the endpoint is not registered.
 Add route:
 
 ```go
-adminOnly.GET("/settings/ai/models", h.aiModels)
+adminOnly.POST("/settings/ai/models", h.aiModels)
 ```
 
-`aiModels` loads runtime settings, validates AI base URL/key, uses `ai.NewClient`, calls `ListModels`, and returns `gin.H{"items": models}`. The handler must not include the API key in the response or logs.
+`aiModels` binds `{ "base_url": "...", "api_key": "..." }`, loads runtime settings, uses the request `api_key` when present and otherwise falls back to the saved key, validates base URL/key, uses `ai.NewClient`, calls `ListModels`, and returns `gin.H{"items": models}`. The handler must not include the API key in the response or logs.
 
 - [ ] **Step 8: Run model endpoint test and verify GREEN**
 
-Run: `GOCACHE=/tmp/go-build-cache go test ./internal/api -run TestAIModelsEndpointListsConfiguredProviderModels -v`
+Run: `GOCACHE=/tmp/go-build-cache go test ./internal/api -run TestAIModelsEndpointListsProviderModelsFromRequest -v`
 
 Expected: PASS.
 
@@ -508,7 +508,7 @@ export interface AIModelsResponse {
 
 - [ ] **Step 4: Implement SettingsView AI form**
 
-Add `aiModels`, `aiModelsLoading`, and AI fields to `runtimeForm`. Add `loadAIModels()` calling `/api/settings/ai/models`. Add an AI panel under the runtime tab or a dedicated AI section with:
+Add `aiModels`, `aiModelsLoading`, and AI fields to `runtimeForm`. Add `loadAIModels()` calling `apiPost('/api/settings/ai/models', { base_url, api_key })`. Add an AI panel under the runtime tab or a dedicated AI section with:
 
 - Checkbox `data-testid="ai-media-enabled-input"`.
 - Base URL input `data-testid="ai-base-url-input"`.

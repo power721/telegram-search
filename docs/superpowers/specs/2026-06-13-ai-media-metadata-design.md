@@ -18,7 +18,7 @@ Settings adds an AI media metadata section with:
 - Base URL input for OpenAI-compatible APIs.
 - API key password input. Empty values on save preserve the existing key.
 - Model input or select.
-- Button to fetch models from the configured provider.
+- Button to fetch models from the current form values. If the API key field is empty, the backend uses the saved key.
 
 The settings response never returns the API key. It returns `api_key_set` so the UI can show that a key has already been configured.
 
@@ -127,7 +127,7 @@ The persisted runtime setting keeps the API key because the existing settings re
 
 AI task failures do not fail Telegram sync or message persistence. If the provider is unavailable, credentials are invalid, the model is missing, or JSON validation fails, the task fails with the provider or validation error. Existing task retry support can be used from the Tasks page.
 
-The model list endpoint returns a normal API error if configuration is missing or the provider call fails. It does not persist anything.
+The model list endpoint accepts the current form `base_url` and optional `api_key`. If `api_key` is empty, it uses the saved key. It returns a normal API error if configuration is missing or the provider call fails. It does not persist anything.
 
 ## Security
 

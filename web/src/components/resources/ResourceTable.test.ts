@@ -307,7 +307,7 @@ describe('ResourceTable', () => {
     )
   })
 
-  it.skip('renders a video placeholder when only a video URL is available', () => {
+  it('shows a video play icon for resources with a video URL', () => {
     const wrapper = mount(ResourceTable, {
       props: {
         items: [
@@ -324,11 +324,12 @@ describe('ResourceTable', () => {
       }
     })
 
-    expect(wrapper.find('button.resource-thumb-button').exists()).toBe(true)
-    expect(wrapper.find('.resource-video-placeholder').exists()).toBe(true)
-    expect(wrapper.find('video.resource-thumb').exists()).toBe(false)
-    expect(resourceTableSource).toMatch(/\.resource-video-placeholder\s*\{[\s\S]*linear-gradient/)
-    expect(resourceTableSource).toMatch(/\.resource-thumb-button::after\s*\{[\s\S]*border-left:\s*11px solid #fff;/)
+    const button = wrapper.find('button.resource-video-play')
+    expect(button.exists()).toBe(true)
+    expect(button.attributes('aria-label')).toBe('播放视频 clip.mp4')
+    // Icon only — no thumbnail image is loaded for table rows (avoids
+    // the browser connection-pool exhaustion that motivated disabling media).
+    expect(wrapper.find('img.resource-thumb').exists()).toBe(false)
   })
 
   it.skip('renders an enlarged hover preview for video thumbnails with poster images', () => {
@@ -382,7 +383,7 @@ describe('ResourceTable', () => {
     expect(wrapper.find('video.resource-thumb').exists()).toBe(false)
   })
 
-  it.skip('opens a video player dialog when clicking a video resource thumbnail', async () => {
+  it('opens a video player dialog when clicking the video play icon', async () => {
     const wrapper = mount(ResourceTable, {
       props: {
         items: [
@@ -400,7 +401,7 @@ describe('ResourceTable', () => {
       }
     })
 
-    await wrapper.find('button.resource-thumb-button').trigger('click')
+    await wrapper.find('button.resource-video-play').trigger('click')
 
     const player = wrapper.find('video.video-player')
     const dialog = wrapper.find('.video-player-dialog')

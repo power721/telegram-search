@@ -23,6 +23,7 @@ const qrStatus = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const pageSizeOptions = [10, 20, 50]
+const syncingAccountIds = ref(new Set<number>())
 let qrPolling: number | undefined
 
 const totalPages = computed(() => Math.max(1, Math.ceil(telegram.accounts.length / pageSize.value)))
@@ -260,6 +261,22 @@ function confirmDeleteAccount(account: TelegramAccount) {
   })
 }
 
+async function syncAccountChannels(account: TelegramAccount) {
+  const next = new Set(syncingAccountIds.value)
+  next.add(account.id)
+  syncingAccountIds.value = next
+  try {
+    await telegram.syncAccountChannels(account.id)
+    message.success(`${account.phone} 频道同步完成`)
+  } catch {
+    message.error(`${account.phone} 频道同步失败`)
+  } finally {
+    const done = new Set(syncingAccountIds.value)
+    done.delete(account.id)
+    syncingAccountIds.value = done
+  }
+}
+
 onBeforeUnmount(() => {
   stopQRPolling()
 })
@@ -318,6 +335,14 @@ onBeforeUnmount(() => {
                 </n-button>
                 <n-button v-else size="small" :loading="telegram.loading" @click="logoutAccount(account)">
                   登出
+                </n-button>
+                <n-button
+                  v-if="!needsLogin(account)"
+                  size="small"
+                  :loading="syncingAccountIds.has(account.id)"
+                  @click="syncAccountChannels(account)"
+                >
+                  同步频道
                 </n-button>
                 <n-button
                   size="small"

@@ -86,7 +86,7 @@ func serveAvatarData(c *gin.Context, mime string, data []byte) {
 	}
 	c.Header("Content-Type", mime)
 	c.Header("Content-Length", strconv.Itoa(len(data)))
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
 	if c.Request.Method == http.MethodHead {
 		c.Status(http.StatusOK)
 		return
@@ -95,5 +95,5 @@ func serveAvatarData(c *gin.Context, mime string, data []byte) {
 }
 
 func channelAvatarCacheKey(channel model.Channel) string {
-	return fmt.Sprintf("ch-avatar:%d:%d:%d", channel.ID, channel.PhotoID, channel.UpdatedAt.UnixNano())
+	return fmt.Sprintf("ch-avatar:%d:%d", channel.ID, channel.PhotoID)
 }

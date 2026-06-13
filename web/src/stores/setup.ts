@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiGet, apiPost, setAPIKey } from '@/api/client'
+import { apiGet, apiPost } from '@/api/client'
 import type { APIKeySetupResponse, ListenRulesPayload, SetupStatus } from '@/api/types'
 
 export const useSetupStore = defineStore('setup', {
@@ -32,7 +32,6 @@ export const useSetupStore = defineStore('setup', {
     },
     async createAPIKey() {
       this.createdAPIKey = await apiPost<APIKeySetupResponse>('/api/setup/api-key')
-      setAPIKey(this.createdAPIKey.key)
       await this.load()
       return this.createdAPIKey
     },

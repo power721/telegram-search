@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiPost, setAPIKey } from '@/api/client'
+import { apiPost } from '@/api/client'
 import SetupAPIKeyView from './SetupAPIKeyView.vue'
 
 vi.mock('vue-router', () => ({
@@ -23,8 +23,7 @@ vi.mock('@/api/client', () => ({
     name: 'default',
     prefix: '12345678',
     key: '12345678123456781234567812345678'
-  }),
-  setAPIKey: vi.fn()
+  })
 }))
 
 describe('SetupAPIKeyView', () => {
@@ -45,7 +44,6 @@ describe('SetupAPIKeyView', () => {
     await flushPromises()
 
     expect(apiPost).toHaveBeenCalledWith('/api/setup/api-key')
-    expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
     expect(wrapper.text()).toContain('12345678123456781234567812345678')
     expect(wrapper.text()).not.toContain('跳过')
     expect(wrapper.find('input').exists()).toBe(false)

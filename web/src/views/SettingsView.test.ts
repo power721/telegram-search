@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiDelete, apiGet, apiPost, apiPut, setAPIKey } from '@/api/client'
+import { apiDelete, apiGet, apiPost, apiPut } from '@/api/client'
 import SettingsView from './SettingsView.vue'
 
 const messageMocks = vi.hoisted(() => ({
@@ -354,8 +354,7 @@ vi.mock('@/api/client', () => ({
     }
     return Promise.resolve({ id: 1, username: 'root', role: 'admin' })
   }),
-  apiDelete: vi.fn().mockResolvedValue({ deleted: true }),
-  setAPIKey: vi.fn()
+  apiDelete: vi.fn().mockResolvedValue({ deleted: true })
 }))
 
 const stubs = {
@@ -442,7 +441,6 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(apiGet).toHaveBeenCalledWith('/api/settings/api-key')
-    expect(setAPIKey).toHaveBeenCalledWith('12345678123456781234567812345678')
     expect(wrapper.text()).not.toContain('前缀')
     expect(wrapper.text()).not.toContain('12345678123456781234567812345678')
     expect(wrapper.get('[data-testid="api-key-usage-count"]').text()).toBe('7')
@@ -466,7 +464,6 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(apiPost).toHaveBeenCalledWith('/api/settings/api-key/regenerate')
-    expect(setAPIKey).toHaveBeenCalledWith('87654321876543218765432187654321')
     expect(wrapper.text()).not.toContain('87654321876543218765432187654321')
 
     const input = wrapper.get<HTMLInputElement>('[data-testid="api-key-input"]')

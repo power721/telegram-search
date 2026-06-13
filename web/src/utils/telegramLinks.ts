@@ -29,7 +29,7 @@ export function telegramChannelHref(location: TelegramChannelLocation) {
   return `tg://resolve?domain=${encodeURIComponent(username)}`
 }
 
-function normalizePrivateChannelID(value?: number) {
+export function normalizePrivateChannelID(value?: number) {
   if (!value) return ''
   const raw = String(Math.trunc(Math.abs(value)))
   if (raw.startsWith('100') && raw.length > 10) {

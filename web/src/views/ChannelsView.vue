@@ -4,6 +4,7 @@ import { useDialog } from 'naive-ui'
 import type { ListenRulesPayload, TelegramChannel, WatchRule } from '@/api/types'
 import WebAccessBadge from '@/components/channels/WebAccessBadge.vue'
 import { useChannelsStore } from '@/stores/channels'
+import { normalizePrivateChannelID } from '@/utils/telegramLinks'
 
 const channels = useChannelsStore()
 const dialog = useDialog()
@@ -126,6 +127,13 @@ function username(channel: TelegramChannel) {
 function channelWebUrl(channel: TelegramChannel) {
   if (!channel.username) return ''
   return `https://t.me/s/${encodeURIComponent(channel.username)}`
+}
+
+function channelDeepLink(channel: TelegramChannel) {
+  if (channel.username) return `tg://resolve?domain=${encodeURIComponent(channel.username)}`
+  const normalized = normalizePrivateChannelID(channel.telegram_channel_id)
+  if (normalized) return `tg://privatepost?channel=${normalized}`
+  return ''
 }
 
 function channelTypeLabel(type: string) {
@@ -523,11 +531,15 @@ async function useGlobalRule() {
                 <div class="channel-title-text">
                   <n-tooltip v-if="channel.description" trigger="hover" :content-style="descriptionTooltipStyle">
                     <template #trigger>
-                      <span class="title-with-description">{{ channel.title }}</span>
+                      <a v-if="channelDeepLink(channel)" class="channel-title-link" :href="channelDeepLink(channel)">{{ channel.title }}</a>
+                      <span v-else class="title-with-description">{{ channel.title }}</span>
                     </template>
                     {{ channel.description }}
                   </n-tooltip>
-                  <span v-else>{{ channel.title }}</span>
+                  <template v-else>
+                    <a v-if="channelDeepLink(channel)" class="channel-title-link" :href="channelDeepLink(channel)">{{ channel.title }}</a>
+                    <span v-else>{{ channel.title }}</span>
+                  </template>
                 </div>
               </div>
             </td>
@@ -741,6 +753,16 @@ table {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 120px;
+}
+
+.channel-title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.channel-title-link:hover {
+  color: var(--app-accent);
+  text-decoration: underline;
 }
 
 .channel-username-link {

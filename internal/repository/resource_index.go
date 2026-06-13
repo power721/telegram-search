@@ -68,11 +68,16 @@ func (r *ResourceIndexRepository) DeleteMessage(ctx context.Context, messageID i
 
 func (r *ResourceIndexRepository) Stats(ctx context.Context) (model.ResourceIndexStats, error) {
 	var stats model.ResourceIndexStats
+	var updatedAt string
 	err := r.db.QueryRowContext(ctx, `
 SELECT count(*), COALESCE(max(updated_at), '0001-01-01T00:00:00Z')
-FROM resource_index`).Scan(&stats.IndexedRows, &stats.UpdatedAt)
+FROM resource_index`).Scan(&stats.IndexedRows, &updatedAt)
 	if err != nil {
 		return model.ResourceIndexStats{}, fmt.Errorf("resource index stats: %w", err)
+	}
+	stats.UpdatedAt, err = parseResourceIndexTime(updatedAt)
+	if err != nil {
+		return model.ResourceIndexStats{}, fmt.Errorf("resource index stats updated_at: %w", err)
 	}
 	return stats, nil
 }
@@ -651,6 +656,27 @@ func resourceIndexOrder(sort string) string {
 		return "ri.datetime ASC, ri.resource_id ASC"
 	}
 	return "ri.datetime DESC, ri.resource_id DESC"
+}
+
+func parseResourceIndexTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		parsed, err := time.Parse(layout, value)
+		if err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unsupported time %q", value)
 }
 
 func fts5ResourceQuery(query string) string {

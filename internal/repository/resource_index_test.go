@@ -174,6 +174,46 @@ func TestResourceIndexListSupportsORResourceFilters(t *testing.T) {
 	}
 }
 
+func TestResourceIndexStatsAfterRebuild(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	index := NewResourceIndexRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu"}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("Rebuild returned error: %v", err)
+	}
+
+	stats, err := index.Stats(ctx)
+	if err != nil {
+		t.Fatalf("Stats returned error: %v", err)
+	}
+	if stats.IndexedRows != 1 || stats.UpdatedAt.IsZero() {
+		t.Fatalf("stats = %+v, want one indexed row and updated_at", stats)
+	}
+}
+
 func TestResourceIndexRefreshAfterSoftDeleteSelectsNextNewestLink(t *testing.T) {
 	ctx := context.Background()
 	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))

@@ -4131,6 +4131,41 @@ func TestMaintenanceBackupAPI(t *testing.T) {
 	}
 }
 
+func TestResourceIndexMaintenanceRebuild(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	index := repository.NewResourceIndexRepository(deps.BackupDB)
+	deps.Resources = resource.NewService(deps.Links, deps.Files, repository.NewResourceStatsRepository(deps.BackupDB), index)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Public", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu"}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
+
+	router := NewRouter(deps)
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/resource-index/rebuild", nil)
+	withAdminSession(t, deps, req)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	result, err := deps.Resources.List(ctx, resource.Query{Keyword: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("total = %d, want rebuilt resource", result.Total)
+	}
+}
+
 func TestBatchSyncAPIValidatesChannelIDs(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

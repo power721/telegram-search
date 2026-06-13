@@ -137,6 +137,13 @@ func run(configPath string) error {
 	avatarLimiter := medialimit.New(20) // Higher concurrency for small images
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats, resourceIndex)
+	if stats, err := resourceService.IndexStats(ctx); err == nil && stats.IndexedRows == 0 {
+		if err := resourceService.RebuildIndex(ctx); err != nil {
+			logs.App.Warn("resource index rebuild failed", zap.Error(err))
+		}
+	} else if err != nil {
+		logs.App.Warn("resource index stats failed", zap.Error(err))
+	}
 	notificationService := notification.NewService(notification.Options{
 		SavedSearches: savedSearches,
 		Webhooks:      webhooks,

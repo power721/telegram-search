@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,6 +212,44 @@ func TestResourceIndexStatsAfterRebuild(t *testing.T) {
 	}
 	if stats.IndexedRows != 1 || stats.UpdatedAt.IsZero() {
 		t.Fatalf("stats = %+v, want one indexed row and updated_at", stats)
+	}
+}
+
+func TestResourceIndexListQueryPlanAvoidsTelegramLinksWindowScan(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	rows, err := conn.QueryContext(ctx, `EXPLAIN QUERY PLAN
+SELECT ri.id
+FROM resource_index ri
+WHERE ri.category = ?
+ORDER BY ri.datetime DESC, ri.resource_id DESC
+LIMIT 50`, "cloud_drive")
+	if err != nil {
+		t.Fatalf("explain query plan: %v", err)
+	}
+	defer rows.Close()
+	plan := ""
+	for rows.Next() {
+		var id, parent, notUsed int
+		var detail string
+		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
+			t.Fatalf("scan plan: %v", err)
+		}
+		plan += detail + "\n"
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("query plan rows: %v", err)
+	}
+	if strings.Contains(plan, "telegram_links") || strings.Contains(plan, "USE TEMP B-TREE") {
+		t.Fatalf("resource index plan = %s, want indexed resource_index plan without normalized link scan or temp sort", plan)
 	}
 }
 

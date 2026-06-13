@@ -146,6 +146,9 @@ func (h handlers) frontend(c *gin.Context) {
 	if contentType == "" || name == "index.html" {
 		contentType = "text/html; charset=utf-8"
 	}
+	if name == "index.html" {
+		c.Header("Cache-Control", "no-cache")
+	}
 	c.Data(http.StatusOK, contentType, data)
 }
 

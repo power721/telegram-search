@@ -1189,8 +1189,22 @@ function versionStatusText() {
               </div>
             </div>
 
+            <div class="form-actions">
+              <n-button data-testid="save-runtime-settings" type="primary" :loading="runtimeLoading" @click="updateRuntimeSettings">
+                保存
+              </n-button>
+            </div>
+          </n-form>
+        </section>
+      </n-tab-pane>
+
+      <n-tab-pane name="ai" tab="AI">
+        <section class="panel runtime-panel">
+          <div class="panel-header">
+            <h2>AI 媒体元数据</h2>
+          </div>
+          <n-form class="runtime-form" @submit.prevent="updateRuntimeSettings">
             <div class="runtime-section">
-              <h3>AI 媒体元数据</h3>
               <label class="checkbox-row">
                 <input
                   v-model="runtimeForm.aiMediaEnabled"

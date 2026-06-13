@@ -517,9 +517,6 @@ async function useGlobalRule() {
           <tr v-for="channel in filteredChannels" :key="channel.id">
             <td class="title-cell">
               <div class="channel-title-row">
-                <span class="channel-avatar-placeholder">
-                  {{ channel.title.charAt(0).toUpperCase() }}
-                </span>
                 <div class="channel-title-text">
                   <n-tooltip v-if="channel.description" trigger="hover" :content-style="descriptionTooltipStyle">
                     <template #trigger>
@@ -621,9 +618,6 @@ async function useGlobalRule() {
         </div>
         <div v-for="channel in filteredChannels" :key="channel.id" class="mobile-card">
           <div class="mobile-card-header">
-            <span class="channel-avatar-placeholder">
-              {{ channel.title.charAt(0).toUpperCase() }}
-            </span>
             <div class="mobile-card-title">
               <a v-if="channelDeepLink(channel)" class="channel-title-link" :href="channelDeepLink(channel)">{{ channel.title }}</a>
               <span v-else>{{ channel.title }}</span>
@@ -749,28 +743,6 @@ table {
   align-items: center;
   display: flex;
   gap: 10px;
-}
-
-.channel-avatar {
-  border-radius: 50%;
-  flex-shrink: 0;
-  height: 32px;
-  object-fit: cover;
-  width: 32px;
-}
-
-.channel-avatar-placeholder {
-  align-items: center;
-  background: var(--app-border-strong, #e0e0e0);
-  border-radius: 50%;
-  color: var(--app-muted, #888);
-  display: flex;
-  flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 600;
-  height: 32px;
-  justify-content: center;
-  width: 32px;
 }
 
 .channel-title-text {

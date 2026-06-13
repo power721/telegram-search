@@ -1671,6 +1671,9 @@ func TestSearchPathServesFrontend(t *testing.T) {
 	if contentType := w.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
 		t.Fatalf("search page content type = %q, want text/html", contentType)
 	}
+	if cacheControl := w.Header().Get("Cache-Control"); cacheControl != "no-cache" {
+		t.Fatalf("search page cache control = %q, want no-cache", cacheControl)
+	}
 	if strings.Contains(w.Body.String(), `"code":401`) || strings.Contains(w.Body.String(), "X-API-Key") {
 		t.Fatalf("/search returned API response instead of frontend: %s", w.Body.String())
 	}

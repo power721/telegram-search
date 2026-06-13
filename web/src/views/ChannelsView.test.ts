@@ -274,6 +274,7 @@ describe('ChannelsView', () => {
     expect(wrapper.findAll('thead th')).toHaveLength(9)
     expect(wrapper.findAll('thead th').some((header) => header.text() === '描述')).toBe(false)
     expect(wrapper.find('.profile-legend').exists()).toBe(false)
+    expect(wrapper.find('.channel-avatar-placeholder').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('同步档位')
     expect(wrapper.text()).not.toContain('普通')
     expect(wrapper.find('.web-access-text').exists()).toBe(false)

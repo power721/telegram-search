@@ -143,6 +143,7 @@ func TestPerformanceIndexesExist(t *testing.T) {
 	for _, name := range []string{
 		"idx_telegram_messages_account_date_id",
 		"idx_telegram_messages_channel_date_id",
+		"idx_telegram_links_url",
 		"idx_telegram_links_type_message_id",
 	} {
 		assertIndexExists(t, conn, name)

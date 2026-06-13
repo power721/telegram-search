@@ -858,6 +858,7 @@ async function testAIProvider(provider: AIMediaMetadataProviderSettings) {
   }
   try {
     const data = await apiPost<AITestResponse>('/api/settings/ai/test', {
+      id: provider.id,
       provider: provider.provider,
       base_url: baseURL,
       api_key: (provider.api_key ?? '').trim(),

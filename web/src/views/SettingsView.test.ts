@@ -843,6 +843,7 @@ describe('SettingsView', () => {
     await wrapper.get('[data-testid="test-ai-provider-0"]').trigger('click')
     await flushPromises()
     expect(apiPost).toHaveBeenCalledWith('/api/settings/ai/test', {
+      id: 'compatible-main',
       provider: 'groq',
       base_url: 'https://api.groq.com/openai/v1',
       api_key: 'new-secret',

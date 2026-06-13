@@ -520,7 +520,8 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 	ctx := context.Background()
 	fixture := newProcessorFixture(t)
 	stats := repository.NewResourceStatsRepository(fixture.conn)
-	resources := resource.NewService(fixture.links, fixture.files, stats)
+	resourceIndex := repository.NewResourceIndexRepository(fixture.conn)
+	resources := resource.NewService(fixture.links, fixture.files, stats, resourceIndex)
 	processor := NewProcessor(ProcessorOptions{
 		DB:        fixture.conn,
 		Channels:  fixture.channels,
@@ -555,6 +556,13 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 	}
 	if !found || grouped["_total"] != 2 {
 		t.Fatalf("grouped stats = %+v found=%v, want _total=2", grouped, found)
+	}
+	indexed, err := resources.List(ctx, resource.Query{Keyword: "资源", Limit: 10})
+	if err != nil {
+		t.Fatalf("indexed resources List returned error: %v", err)
+	}
+	if indexed.Total != 2 {
+		t.Fatalf("indexed total = %d items=%+v, want link and file", indexed.Total, indexed.Items)
 	}
 	stored, err := fixture.files.FindByMessageID(ctx, 1)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"tg-search/internal/model"
 	"tg-search/internal/repository"
 	"tg-search/internal/searchrank"
 )
@@ -144,19 +145,118 @@ type Service struct {
 	links *repository.LinkRepository
 	files *repository.FileRepository
 	stats *repository.ResourceStatsRepository
+	index *repository.ResourceIndexRepository
 }
 
 var ErrInvalidResourceID = errors.New("invalid resource id")
 
-func NewService(links *repository.LinkRepository, files *repository.FileRepository, stats ...*repository.ResourceStatsRepository) *Service {
+func NewService(links *repository.LinkRepository, files *repository.FileRepository, extras ...any) *Service {
 	service := &Service{links: links, files: files}
-	if len(stats) > 0 {
-		service.stats = stats[0]
+	for _, extra := range extras {
+		switch repo := extra.(type) {
+		case *repository.ResourceStatsRepository:
+			service.stats = repo
+		case *repository.ResourceIndexRepository:
+			service.index = repo
+		}
 	}
 	return service
 }
 
+func (s *Service) indexedList(ctx context.Context, query Query) (ListResult, bool, error) {
+	if s.index == nil {
+		return ListResult{}, false, nil
+	}
+	result, err := s.index.List(ctx, model.ResourceIndexQuery{
+		Keyword:   query.Keyword,
+		Type:      query.Type,
+		Category:  query.Category,
+		AccountID: query.AccountID,
+		ChannelID: query.ChannelID,
+		Extension: query.Extension,
+		Sort:      query.Sort,
+		DateFrom:  query.DateFrom,
+		DateTo:    query.DateTo,
+		Limit:     query.Limit,
+		Offset:    query.Offset,
+		MaxLimit:  query.MaxLimit,
+	})
+	if err != nil {
+		return ListResult{}, true, err
+	}
+	items := make([]Item, 0, len(result.Items))
+	now := time.Now().UTC()
+	for _, indexed := range result.Items {
+		items = append(items, itemFromIndex(indexed, now))
+	}
+	return ListResult{Items: items, Total: result.Total, Grouped: normalizeGrouped(result.Grouped)}, true, nil
+}
+
+func itemFromIndex(indexed model.ResourceIndexItem, now time.Time) Item {
+	item := Item{
+		ID:                indexed.ResourceID,
+		Kind:              indexed.Kind,
+		Type:              indexed.Type,
+		Category:          indexed.Category,
+		URL:               indexed.URL,
+		Password:          indexed.Password,
+		TelegramFileID:    indexed.TelegramFileID,
+		FileName:          indexed.FileName,
+		Extension:         indexed.Extension,
+		MimeType:          indexed.MimeType,
+		SizeBytes:         indexed.SizeBytes,
+		Note:              indexed.Note,
+		Title:             indexed.Title,
+		SourceSnippet:     indexed.SourceSnippet,
+		MediaTitle:        indexed.MediaTitle,
+		MediaYear:         indexed.MediaYear,
+		MediaSeason:       indexed.MediaSeason,
+		MediaEpisode:      indexed.MediaEpisode,
+		MediaQuality:      indexed.MediaQuality,
+		MediaSize:         indexed.MediaSize,
+		MediaTMDBID:       indexed.MediaTMDBID,
+		MediaCategory:     indexed.MediaCategory,
+		MediaTags:         indexed.MediaTags,
+		Datetime:          indexed.Datetime,
+		AccountID:         indexed.AccountID,
+		ChannelID:         indexed.ChannelID,
+		TelegramChannelID: indexed.TelegramChannelID,
+		ChannelTitle:      indexed.ChannelTitle,
+		ChannelUsername:   indexed.ChannelUsername,
+		TelegramMessageID: indexed.TelegramMessageID,
+		MessageType:       indexed.MessageType,
+		MediaSummary:      indexed.MediaSummary,
+	}
+	item.SetMediaMetadata(indexed.MediaTitle, indexed.MediaYear, indexed.MediaSeason, indexed.MediaEpisode, indexed.MediaQuality, indexed.MediaSize, indexed.MediaTMDBID, indexed.MediaCategory, indexed.MediaTags, indexed.MediaSummary)
+	item.Score, item.ScoreExplain = itemScore(item, resourceScoreStats{
+		SourceChannelCount: indexed.SourceChannelCount,
+		MessageCount:       indexed.MessageCount,
+		ProviderCount:      indexed.ProviderCount,
+	}, now)
+	return item
+}
+
+func (s *Service) ListIndexed(ctx context.Context, query model.ResourceIndexQuery) (ListResult, bool, error) {
+	if s.index == nil {
+		return ListResult{}, false, nil
+	}
+	result, err := s.index.List(ctx, query)
+	if err != nil {
+		return ListResult{}, true, err
+	}
+	items := make([]Item, 0, len(result.Items))
+	now := time.Now().UTC()
+	for _, indexed := range result.Items {
+		items = append(items, itemFromIndex(indexed, now))
+	}
+	return ListResult{Items: items, Total: result.Total, Grouped: normalizeGrouped(result.Grouped)}, true, nil
+}
+
 func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
+	if result, ok, err := s.indexedList(ctx, query); ok || err != nil {
+		return result, err
+	}
+
 	limit := normalizedLimit(query.Limit, query.MaxLimit)
 	offset := normalizedOffset(query.Offset)
 	fetchLimit := offset + limit
@@ -314,7 +414,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	if !deleted {
 		return sql.ErrNoRows
 	}
-	return s.RefreshGlobalGrouped(ctx)
+	return s.RebuildIndex(ctx)
 }
 
 func (s *Service) DeleteMany(ctx context.Context, ids []string) (DeleteManyResult, error) {
@@ -347,7 +447,7 @@ func (s *Service) DeleteMany(ctx context.Context, ids []string) (DeleteManyResul
 		}
 	}
 	if result.Deleted > 0 {
-		if err := s.RefreshGlobalGrouped(ctx); err != nil {
+		if err := s.RebuildIndex(ctx); err != nil {
 			return result, err
 		}
 	}
@@ -490,6 +590,50 @@ func (s *Service) RefreshGlobalGrouped(ctx context.Context) error {
 		return err
 	}
 	return s.stats.SaveGrouped(ctx, grouped)
+}
+
+func (s *Service) RefreshMessage(ctx context.Context, messageID int64) error {
+	if s.index != nil {
+		if err := s.index.RefreshMessage(ctx, messageID); err != nil {
+			return err
+		}
+	}
+	return s.RefreshGlobalGrouped(ctx)
+}
+
+func (s *Service) RefreshMessages(ctx context.Context, messageIDs []int64) error {
+	if s.index != nil {
+		if err := s.index.RefreshMessages(ctx, messageIDs); err != nil {
+			return err
+		}
+	}
+	return s.RefreshGlobalGrouped(ctx)
+}
+
+func (s *Service) DeleteMessageResources(ctx context.Context, messageID int64) error {
+	if s.index != nil {
+		if err := s.index.DeleteMessage(ctx, messageID); err != nil {
+			return err
+		}
+	}
+	return s.RefreshGlobalGrouped(ctx)
+}
+
+func (s *Service) RebuildIndex(ctx context.Context) error {
+	if s.index == nil {
+		return nil
+	}
+	if err := s.index.Rebuild(ctx); err != nil {
+		return err
+	}
+	return s.RefreshGlobalGrouped(ctx)
+}
+
+func (s *Service) IndexStats(ctx context.Context) (model.ResourceIndexStats, error) {
+	if s.index == nil {
+		return model.ResourceIndexStats{}, nil
+	}
+	return s.index.Stats(ctx)
 }
 
 func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, error) {

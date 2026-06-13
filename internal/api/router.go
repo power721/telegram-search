@@ -222,6 +222,7 @@ func NewRouter(deps Dependencies) *gin.Engine {
 	adminOnly.GET("/links", h.links)
 	adminOnly.POST("/maintenance/sqlite", h.maintenanceSQLite)
 	adminOnly.POST("/maintenance/backup", h.maintenanceBackup)
+	adminOnly.POST("/maintenance/resource-index/rebuild", h.rebuildResourceIndex)
 
 	resourceAccess := api.Group("")
 	resourceAccess.Use(h.requireAdminSession())

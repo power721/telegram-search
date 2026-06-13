@@ -2763,6 +2763,23 @@ func (h handlers) maintenanceBackup(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"path": path})
 }
 
+func (h handlers) rebuildResourceIndex(c *gin.Context) {
+	if h.deps.Resources == nil {
+		errorText(c, http.StatusServiceUnavailable, "resources are unavailable")
+		return
+	}
+	if err := h.deps.Resources.RebuildIndex(c.Request.Context()); err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	stats, err := h.deps.Resources.IndexStats(c.Request.Context())
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"rebuilt": true, "indexed_rows": stats.IndexedRows, "updated_at": stats.UpdatedAt})
+}
+
 func (h handlers) updateAccountProfile(c *gin.Context, account model.Account, profile telegram.Profile) {
 	account.TelegramUserID = profile.TelegramUserID
 	if profile.Phone != "" {

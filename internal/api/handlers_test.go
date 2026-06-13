@@ -1460,6 +1460,55 @@ func TestExternalSearchRequiresAPIKeyAndReturnsPublicResourcesOnly(t *testing.T)
 	}
 }
 
+func TestExternalSearchUsesIndexedQueryForDefaultCloudTypes(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	index := repository.NewResourceIndexRepository(deps.BackupDB)
+	deps.Resources = resource.NewService(deps.Links, deps.Files, repository.NewResourceStatsRepository(deps.BackupDB), index)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Public", Type: model.ChannelTypeChannel})
+	now := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu quark", RawJSON: "{}", Date: now},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "ubuntu magnet", RawJSON: "{}", Date: now.Add(-time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu Quark"}}); err != nil {
+		t.Fatalf("save quark: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "magnet", Category: "magnet", URL: "magnet:?xt=urn:btih:ubuntu", Note: "Ubuntu Magnet"}}); err != nil {
+		t.Fatalf("save magnet: %v", err)
+	}
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("rebuild index: %v", err)
+	}
+	router := NewRouter(deps)
+	key := createTestAPIKey(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/search?kw=ubuntu&limit=10", nil)
+	req.Header.Set("Authorization", key)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var body struct {
+		Code int `json:"code"`
+		Data struct {
+			Total        int                             `json:"total"`
+			MergedByType map[string][]externalMergedLink `json:"merged_by_type"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if body.Code != 0 || body.Data.Total != 2 || len(body.Data.MergedByType["quark"]) != 1 || len(body.Data.MergedByType["magnet"]) != 1 {
+		t.Fatalf("body = %+v raw=%s, want quark and magnet results", body, w.Body.String())
+	}
+}
+
 func TestExternalSearchWritesAccessLog(t *testing.T) {
 	core, observed := observer.New(zapcore.DebugLevel)
 	deps := testDeps(t)
@@ -4224,6 +4273,41 @@ func TestMaintenanceBackupAPI(t *testing.T) {
 	}
 	if _, err := os.Stat(body.Path); err != nil {
 		t.Fatalf("backup path stat: %v", err)
+	}
+}
+
+func TestResourceIndexMaintenanceRebuild(t *testing.T) {
+	ctx := context.Background()
+	deps := testDeps(t)
+	index := repository.NewResourceIndexRepository(deps.BackupDB)
+	deps.Resources = resource.NewService(deps.Links, deps.Files, repository.NewResourceStatsRepository(deps.BackupDB), index)
+	accountID, _ := deps.Accounts.Save(ctx, model.Account{Phone: "+10000000000", Username: "main", Status: model.AccountStatusOnline})
+	channelID, _ := deps.Channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 1, Title: "Public", Type: model.ChannelTypeChannel})
+	stored, err := deps.Messages.SaveBatch(ctx, []model.Message{{
+		AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1,
+		Text: "ubuntu", RawJSON: "{}", Date: time.Now().UTC(),
+	}})
+	if err != nil {
+		t.Fatalf("save message: %v", err)
+	}
+	if _, err := deps.Links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu"}}); err != nil {
+		t.Fatalf("save link: %v", err)
+	}
+
+	router := NewRouter(deps)
+	req := httptest.NewRequest(http.MethodPost, "/api/maintenance/resource-index/rebuild", nil)
+	withAdminSession(t, deps, req)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	result, err := deps.Resources.List(ctx, resource.Query{Keyword: "ubuntu", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("total = %d, want rebuilt resource", result.Total)
 	}
 }
 

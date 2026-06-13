@@ -449,6 +449,90 @@ CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expir
 CREATE INDEX IF NOT EXISTS idx_admin_sessions_user_id ON admin_sessions(user_id);
 `,
 	},
+	{
+		version: 14,
+		name:    "telegram_links_url_index",
+		sql: `
+CREATE INDEX IF NOT EXISTS idx_telegram_links_url ON telegram_links(url);
+`,
+	},
+	{
+		version: 15,
+		name:    "resource_index_read_model",
+		sql: `
+CREATE TABLE IF NOT EXISTS resource_index (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  resource_id TEXT NOT NULL UNIQUE,
+  kind TEXT NOT NULL,
+  source_key TEXT NOT NULL UNIQUE,
+  source_message_id INTEGER NOT NULL DEFAULT 0,
+  url TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL,
+  password TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  title TEXT NOT NULL DEFAULT '',
+  source_snippet TEXT NOT NULL DEFAULT '',
+  telegram_file_id INTEGER NOT NULL DEFAULT 0,
+  file_name TEXT NOT NULL DEFAULT '',
+  extension TEXT NOT NULL DEFAULT '',
+  mime_type TEXT NOT NULL DEFAULT '',
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  media_title TEXT NOT NULL DEFAULT '',
+  media_year TEXT NOT NULL DEFAULT '',
+  media_season TEXT NOT NULL DEFAULT '',
+  media_episode TEXT NOT NULL DEFAULT '',
+  media_quality TEXT NOT NULL DEFAULT '',
+  media_size TEXT NOT NULL DEFAULT '',
+  media_tmdb_id TEXT NOT NULL DEFAULT '',
+  media_category TEXT NOT NULL DEFAULT '',
+  media_tags TEXT NOT NULL DEFAULT '',
+  media_summary TEXT NOT NULL DEFAULT '',
+  datetime DATETIME NOT NULL,
+  account_id INTEGER NOT NULL,
+  channel_id INTEGER NOT NULL,
+  telegram_channel_id INTEGER NOT NULL,
+  channel_title TEXT NOT NULL DEFAULT '',
+  channel_username TEXT NOT NULL DEFAULT '',
+  telegram_message_id INTEGER NOT NULL,
+  message_type TEXT NOT NULL DEFAULT '',
+  source_channel_count INTEGER NOT NULL DEFAULT 1,
+  message_count INTEGER NOT NULL DEFAULT 1,
+  provider_count INTEGER NOT NULL DEFAULT 1,
+  score INTEGER NOT NULL DEFAULT 0,
+  updated_at DATETIME NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_resource_index_category_datetime ON resource_index(category, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_type_datetime ON resource_index(type, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_datetime ON resource_index(datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_channel_datetime ON resource_index(channel_id, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_account_datetime ON resource_index(account_id, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_score_datetime ON resource_index(score DESC, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_kind_datetime ON resource_index(kind, datetime DESC, resource_id DESC);
+CREATE INDEX IF NOT EXISTS idx_resource_index_source_message ON resource_index(source_message_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS resource_index_fts
+USING fts5(title, note, source_snippet, url, type, category, media_title, media_tags, file_name, content='resource_index', content_rowid='id');
+
+CREATE TRIGGER IF NOT EXISTS resource_index_ai AFTER INSERT ON resource_index BEGIN
+  INSERT INTO resource_index_fts(rowid, title, note, source_snippet, url, type, category, media_title, media_tags, file_name)
+  VALUES (new.id, new.title, new.note, new.source_snippet, new.url, new.type, new.category, new.media_title, new.media_tags, new.file_name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS resource_index_ad AFTER DELETE ON resource_index BEGIN
+  INSERT INTO resource_index_fts(resource_index_fts, rowid, title, note, source_snippet, url, type, category, media_title, media_tags, file_name)
+  VALUES ('delete', old.id, old.title, old.note, old.source_snippet, old.url, old.type, old.category, old.media_title, old.media_tags, old.file_name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS resource_index_au AFTER UPDATE ON resource_index BEGIN
+  INSERT INTO resource_index_fts(resource_index_fts, rowid, title, note, source_snippet, url, type, category, media_title, media_tags, file_name)
+  VALUES ('delete', old.id, old.title, old.note, old.source_snippet, old.url, old.type, old.category, old.media_title, old.media_tags, old.file_name);
+  INSERT INTO resource_index_fts(rowid, title, note, source_snippet, url, type, category, media_title, media_tags, file_name)
+  VALUES (new.id, new.title, new.note, new.source_snippet, new.url, new.type, new.category, new.media_title, new.media_tags, new.file_name);
+END;
+`,
+	},
 }
 
 func Migrate(ctx context.Context, conn *sql.DB) error {

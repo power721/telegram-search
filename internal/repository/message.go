@@ -312,6 +312,18 @@ WHERE channel_id = ? AND telegram_message_id = ?`, time.Now().UTC(), channelID, 
 	return requireRows(res, "message not found")
 }
 
+func (r *MessageRepository) FindIDByTelegramMessageID(ctx context.Context, channelID int64, telegramMessageID int64) (int64, error) {
+	var id int64
+	err := r.db.QueryRowContext(ctx, `
+SELECT id
+FROM telegram_messages
+WHERE channel_id = ? AND telegram_message_id = ?`, channelID, telegramMessageID).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 func (r *MessageRepository) MarkDeletedTx(ctx context.Context, tx *sql.Tx, channelID int64, telegramMessageID int64) error {
 	res, err := tx.ExecContext(ctx, `
 UPDATE telegram_messages

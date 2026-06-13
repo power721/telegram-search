@@ -31,6 +31,8 @@ func TestMigrationsAreIdempotentAndCreateFTS(t *testing.T) {
 	assertTableExists(t, conn, "telegram_links")
 	assertTableExists(t, conn, "telegram_files")
 	assertTableExists(t, conn, "telegram_messages_fts")
+	assertTableExists(t, conn, "resource_index")
+	assertTableExists(t, conn, "resource_index_fts")
 	assertColumnExists(t, conn, "telegram_channels", "web_access")
 	assertColumnExists(t, conn, "telegram_channels", "web_access_checked_at")
 	assertColumnExists(t, conn, "telegram_links", "note")
@@ -145,6 +147,14 @@ func TestPerformanceIndexesExist(t *testing.T) {
 		"idx_telegram_messages_channel_date_id",
 		"idx_telegram_links_url",
 		"idx_telegram_links_type_message_id",
+		"idx_resource_index_category_datetime",
+		"idx_resource_index_type_datetime",
+		"idx_resource_index_datetime",
+		"idx_resource_index_channel_datetime",
+		"idx_resource_index_account_datetime",
+		"idx_resource_index_score_datetime",
+		"idx_resource_index_kind_datetime",
+		"idx_resource_index_source_message",
 	} {
 		assertIndexExists(t, conn, name)
 	}

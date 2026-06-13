@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,7 @@ type Config struct {
 	Sync     SyncConfig     `yaml:"sync" json:"sync"`
 	Storage  StorageConfig  `yaml:"storage" json:"storage"`
 	Telegram TelegramConfig `yaml:"telegram" json:"telegram"`
+	AI       AIConfig       `yaml:"ai" json:"ai"`
 	Bot      BotConfig      `yaml:"bot" json:"bot"`
 }
 
@@ -66,6 +68,17 @@ type TelegramStreamConfig struct {
 
 type TelegramMediaConfig struct {
 	Concurrency int `yaml:"concurrency" json:"concurrency"`
+}
+
+type AIConfig struct {
+	MediaMetadata AIMediaMetadataSettings `yaml:"media_metadata" json:"media_metadata"`
+}
+
+type AIMediaMetadataSettings struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	BaseURL string `yaml:"base_url" json:"base_url"`
+	APIKey  string `yaml:"api_key" json:"api_key,omitempty"`
+	Model   string `yaml:"model" json:"model"`
 }
 
 type BotConfig struct {
@@ -337,6 +350,17 @@ func validate(cfg Config) error {
 	}
 	if cfg.Telegram.Media.Concurrency <= 0 {
 		return errors.New("telegram.media.concurrency must be greater than zero")
+	}
+	if cfg.AI.MediaMetadata.Enabled {
+		if strings.TrimSpace(cfg.AI.MediaMetadata.BaseURL) == "" {
+			return errors.New("ai.media_metadata.base_url is required when ai.media_metadata.enabled is true")
+		}
+		if strings.TrimSpace(cfg.AI.MediaMetadata.APIKey) == "" {
+			return errors.New("ai.media_metadata.api_key is required when ai.media_metadata.enabled is true")
+		}
+		if strings.TrimSpace(cfg.AI.MediaMetadata.Model) == "" {
+			return errors.New("ai.media_metadata.model is required when ai.media_metadata.enabled is true")
+		}
 	}
 	if cfg.Bot.Enabled && cfg.Bot.Token == "" {
 		return errors.New("bot.token is required when bot.enabled is true")

@@ -2184,6 +2184,91 @@ func TestRuntimeSettings(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettingsRedactsAIMediaMetadataAPIKeyAndPreservesExistingKey(t *testing.T) {
+	deps := testDeps(t)
+	deps.RuntimeConfig.Sync.Workers = 5
+	deps.RuntimeConfig.Sync.HistoryBatchSize = 100
+	deps.RuntimeConfig.Sync.TelegramRequestInterval = config.Duration(2 * time.Second)
+	deps.RuntimeConfig.Storage.MaxDBSize = config.Size(10 * 1024 * 1024 * 1024)
+	deps.RuntimeConfig.Storage.MaxMediaCache = config.Size(20 * 1024 * 1024 * 1024)
+	deps.RuntimeConfig.Telegram.ReconnectTimeout = config.Duration(5 * time.Minute)
+	deps.RuntimeConfig.Telegram.DialTimeout = config.Duration(10 * time.Second)
+	deps.RuntimeConfig.Telegram.RateLimit = config.TelegramRateLimitConfig{Enabled: true, RatePerSecond: 10, Burst: 5}
+	deps.RuntimeConfig.Telegram.Stream = config.TelegramStreamConfig{Concurrency: 2, Buffers: 4, ChunkTimeout: config.Duration(20 * time.Second)}
+	deps.RuntimeConfig.Telegram.Media = config.TelegramMediaConfig{Concurrency: 2}
+	existing := config.RuntimeSettingsFromConfig(deps.RuntimeConfig)
+	existing.AI.MediaMetadata = config.AIMediaMetadataSettings{
+		Enabled: true,
+		BaseURL: "https://api.example.com/v1",
+		APIKey:  "secret-key",
+		Model:   "media-model",
+	}
+	if err := deps.Settings.SaveRuntimeSettings(context.Background(), existing); err != nil {
+		t.Fatalf("save runtime settings: %v", err)
+	}
+	router := NewRouter(deps)
+	cookie := createAdminSession(t, router)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/runtime", nil)
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("get runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("secret-key")) {
+		t.Fatalf("runtime settings response leaked api key: %s", w.Body.String())
+	}
+	var redacted struct {
+		AI struct {
+			MediaMetadata struct {
+				Enabled   bool   `json:"enabled"`
+				BaseURL   string `json:"base_url"`
+				Model     string `json:"model"`
+				APIKeySet bool   `json:"api_key_set"`
+			} `json:"media_metadata"`
+		} `json:"ai"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &redacted); err != nil {
+		t.Fatalf("decode runtime settings response: %v", err)
+	}
+	if !redacted.AI.MediaMetadata.Enabled || redacted.AI.MediaMetadata.BaseURL != "https://api.example.com/v1" || redacted.AI.MediaMetadata.Model != "media-model" || !redacted.AI.MediaMetadata.APIKeySet {
+		t.Fatalf("redacted ai media metadata = %+v", redacted.AI.MediaMetadata)
+	}
+
+	body := `{
+		"sync":{"workers":5,"history_batch_size":100,"telegram_request_interval":"2s"},
+		"storage":{"max_db_size":10737418240,"max_media_cache":21474836480},
+		"telegram":{
+			"proxy":"",
+			"reconnect_timeout":"5m",
+			"dial_timeout":"10s",
+			"rate_limit":{"enabled":true,"rate_per_second":10,"burst":5},
+			"stream":{"concurrency":2,"buffers":4,"chunk_timeout":"20s"},
+			"media":{"concurrency":2}
+		},
+		"ai":{"media_metadata":{"enabled":true,"base_url":"https://api.example.com/v1","api_key":"","model":"better-model"}}
+	}`
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPut, "/api/settings/runtime", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("put runtime settings code = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	if bytes.Contains(w.Body.Bytes(), []byte("secret-key")) {
+		t.Fatalf("put runtime settings response leaked api key: %s", w.Body.String())
+	}
+	stored, err := deps.Settings.LoadRuntimeSettings(context.Background(), deps.RuntimeConfig)
+	if err != nil {
+		t.Fatalf("load saved runtime settings: %v", err)
+	}
+	if stored.AI.MediaMetadata.APIKey != "secret-key" || stored.AI.MediaMetadata.Model != "better-model" {
+		t.Fatalf("stored ai media metadata = %+v", stored.AI.MediaMetadata)
+	}
+}
+
 func TestRuntimeSettingsRejectInvalidValues(t *testing.T) {
 	deps := testDeps(t)
 	router := NewRouter(deps)

@@ -469,14 +469,20 @@ func (h handlers) getRuntimeSettings(c *gin.Context) {
 		errorJSON(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, config.RedactRuntimeSettings(settings))
 }
 
 func (h handlers) updateRuntimeSettings(c *gin.Context) {
+	existing, err := h.deps.Settings.LoadRuntimeSettings(c.Request.Context(), h.deps.RuntimeConfig)
+	if err != nil {
+		errorJSON(c, http.StatusInternalServerError, err)
+		return
+	}
 	var settings config.RuntimeSettings
 	if !bindJSON(c, &settings) {
 		return
 	}
+	settings = config.PreserveRuntimeSecrets(settings, existing)
 	if _, err := config.ApplyRuntimeSettings(h.deps.RuntimeConfig, settings); err != nil {
 		errorText(c, http.StatusBadRequest, err.Error())
 		return
@@ -488,7 +494,7 @@ func (h handlers) updateRuntimeSettings(c *gin.Context) {
 	if h.deps.MediaLimiter != nil {
 		h.deps.MediaLimiter.Update(settings.Telegram.Media.Concurrency)
 	}
-	c.JSON(http.StatusOK, settings)
+	c.JSON(http.StatusOK, config.RedactRuntimeSettings(settings))
 }
 
 func readTelegramAPISettingsRequest(c *gin.Context, requireHash bool) (model.TelegramAPISettings, bool) {

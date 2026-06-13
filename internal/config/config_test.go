@@ -223,6 +223,50 @@ func TestApplyRuntimeSettingsOverridesOperationalConfig(t *testing.T) {
 	}
 }
 
+func TestRuntimeSettingsPreserveAIMediaMetadataAPIKey(t *testing.T) {
+	defaults := Config{}
+	applyDefaults(&defaults)
+	existing := RuntimeSettingsFromConfig(defaults)
+	existing.AI.MediaMetadata = AIMediaMetadataSettings{
+		Enabled: true,
+		BaseURL: "https://api.example.com/v1",
+		APIKey:  "stored-key",
+		Model:   "movie-model",
+	}
+	incoming := existing
+	incoming.AI.MediaMetadata.APIKey = ""
+
+	merged := PreserveRuntimeSecrets(incoming, existing)
+
+	if merged.AI.MediaMetadata.APIKey != "stored-key" {
+		t.Fatalf("api key = %q, want stored-key", merged.AI.MediaMetadata.APIKey)
+	}
+}
+
+func TestApplyRuntimeSettingsRejectsEnabledAIMediaMetadataWithoutRequiredFields(t *testing.T) {
+	cfg := defaultConfig()
+	settings := RuntimeSettingsFromConfig(cfg)
+	settings.AI.MediaMetadata.Enabled = true
+
+	_, err := ApplyRuntimeSettings(cfg, settings)
+
+	if err == nil || !strings.Contains(err.Error(), "ai.media_metadata.base_url") {
+		t.Fatalf("ApplyRuntimeSettings error = %v, want base_url validation", err)
+	}
+
+	settings.AI.MediaMetadata.BaseURL = "https://api.example.com/v1"
+	_, err = ApplyRuntimeSettings(cfg, settings)
+	if err == nil || !strings.Contains(err.Error(), "ai.media_metadata.api_key") {
+		t.Fatalf("ApplyRuntimeSettings error = %v, want api_key validation", err)
+	}
+
+	settings.AI.MediaMetadata.APIKey = "secret"
+	_, err = ApplyRuntimeSettings(cfg, settings)
+	if err == nil || !strings.Contains(err.Error(), "ai.media_metadata.model") {
+		t.Fatalf("ApplyRuntimeSettings error = %v, want model validation", err)
+	}
+}
+
 func TestRuntimeSettingsFromConfigExcludesStartupOnlyFields(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Server.Host = "127.0.0.1"

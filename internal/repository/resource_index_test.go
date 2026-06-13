@@ -1,0 +1,162 @@
+package repository
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"tg-search/internal/db"
+	"tg-search/internal/model"
+)
+
+func TestResourceIndexRebuildDeduplicatesLinksAndExcludesImages(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	files := NewFileRepository(conn)
+	index := NewResourceIndexRepository(conn)
+
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "VIP", Username: "vip", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "old ubuntu", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "new ubuntu", RawJSON: "{}", Date: newDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 3, Text: "image only", RawJSON: "{}", Date: newDate.Add(time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored[:2] {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{
+			Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/same", Note: "Ubuntu 24.04", MediaTitle: "Ubuntu",
+		}}); err != nil {
+			t.Fatalf("save link: %v", err)
+		}
+	}
+	if _, err := files.SaveBatch(ctx, stored[2].ID, []model.File{{TelegramFileID: 33, FileName: "poster.jpg", Extension: ".jpg", MimeType: "image/jpeg", Category: "image"}}); err != nil {
+		t.Fatalf("save image: %v", err)
+	}
+
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("Rebuild returned error: %v", err)
+	}
+	result, err := index.List(ctx, model.ResourceIndexQuery{Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 {
+		t.Fatalf("result total=%d items=%+v, want one deduped link", result.Total, result.Items)
+	}
+	item := result.Items[0]
+	if item.URL != "https://pan.quark.cn/s/same" || item.SourceMessageID != stored[1].ID {
+		t.Fatalf("indexed item = %+v, want newest source message", item)
+	}
+	if item.MessageCount != 2 || item.SourceChannelCount != 1 || item.ProviderCount != 1 {
+		t.Fatalf("stats = channels:%d messages:%d providers:%d, want 1/2/1", item.SourceChannelCount, item.MessageCount, item.ProviderCount)
+	}
+}
+
+func TestResourceIndexListSearchesFTSAndFiltersProvider(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	index := NewResourceIndexRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "VIP", Type: model.ChannelTypeChannel})
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "ubuntu", RawJSON: "{}", Date: time.Now().UTC()},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "debian", RawJSON: "{}", Date: time.Now().UTC().Add(-time.Minute)},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[0].ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/ubuntu", Note: "Ubuntu 24.04"}}); err != nil {
+		t.Fatalf("save ubuntu link: %v", err)
+	}
+	if _, err := links.SaveBatch(ctx, stored[1].ID, []model.Link{{Type: "baidu", Category: "cloud_drive", URL: "https://pan.baidu.com/s/debian", Note: "Debian"}}); err != nil {
+		t.Fatalf("save debian link: %v", err)
+	}
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("Rebuild returned error: %v", err)
+	}
+	result, err := index.List(ctx, model.ResourceIndexQuery{Keyword: "ubuntu", Type: "quark", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 || len(result.Items) != 1 || result.Items[0].Type != "quark" {
+		t.Fatalf("result = %+v, want one quark ubuntu result", result)
+	}
+}
+
+func TestResourceIndexRefreshAfterSoftDeleteSelectsNextNewestLink(t *testing.T) {
+	ctx := context.Background()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer conn.Close()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	accounts := NewAccountRepository(conn)
+	channels := NewChannelRepository(conn)
+	messages := NewMessageRepository(conn)
+	links := NewLinkRepository(conn)
+	index := NewResourceIndexRepository(conn)
+	accountID, _ := accounts.Save(ctx, model.Account{Phone: "+10000000000", Status: model.AccountStatusOnline})
+	channelID, _ := channels.Save(ctx, model.Channel{AccountID: accountID, TelegramChannelID: 100, Title: "VIP", Type: model.ChannelTypeChannel})
+	oldDate := time.Date(2026, 6, 12, 10, 0, 0, 0, time.UTC)
+	newDate := time.Date(2026, 6, 13, 10, 0, 0, 0, time.UTC)
+	stored, err := messages.SaveBatch(ctx, []model.Message{
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 1, Text: "same", RawJSON: "{}", Date: oldDate},
+		{AccountID: accountID, ChannelID: channelID, TelegramMessageID: 2, Text: "same", RawJSON: "{}", Date: newDate},
+	})
+	if err != nil {
+		t.Fatalf("save messages: %v", err)
+	}
+	for _, msg := range stored {
+		if _, err := links.SaveBatch(ctx, msg.ID, []model.Link{{Type: "quark", Category: "cloud_drive", URL: "https://pan.quark.cn/s/same", Note: "same resource"}}); err != nil {
+			t.Fatalf("save link: %v", err)
+		}
+	}
+	if err := index.Rebuild(ctx); err != nil {
+		t.Fatalf("Rebuild returned error: %v", err)
+	}
+	if err := messages.MarkDeleted(ctx, channelID, 2); err != nil {
+		t.Fatalf("MarkDeleted returned error: %v", err)
+	}
+	if err := index.RefreshMessage(ctx, stored[1].ID); err != nil {
+		t.Fatalf("RefreshMessage returned error: %v", err)
+	}
+	result, err := index.List(ctx, model.ResourceIndexQuery{Keyword: "same", Limit: 10})
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if result.Total != 1 || result.Items[0].SourceMessageID != stored[0].ID {
+		t.Fatalf("result = %+v, want old source after new source deleted", result)
+	}
+}

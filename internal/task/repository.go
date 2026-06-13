@@ -159,6 +159,31 @@ func (r *Repository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// DeleteOldTasks deletes tasks of the specified status older than the given days.
+// Returns the number of deleted rows.
+// Running and canceling tasks are never deleted regardless of age.
+func (r *Repository) DeleteOldTasks(ctx context.Context, status string, olderThanDays int) (int64, error) {
+	cutoff := time.Now().UTC().AddDate(0, 0, -olderThanDays)
+
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM sync_tasks
+		WHERE status = ?
+		  AND updated_at < ?
+		  AND status NOT IN (?, ?)`,
+		status, cutoff, model.TaskStatusRunning, model.TaskStatusCanceling)
+
+	if err != nil {
+		return 0, fmt.Errorf("delete old tasks: %w", err)
+	}
+
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("get rows affected: %w", err)
+	}
+
+	return deleted, nil
+}
+
 func taskListWhere(filter ListFilter) ([]string, []any) {
 	where := []string{"1=1"}
 	args := []any{}

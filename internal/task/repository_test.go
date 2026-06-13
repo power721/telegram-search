@@ -2,9 +2,13 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"tg-search/internal/db"
 	"tg-search/internal/model"
@@ -213,4 +217,95 @@ func createTaskForRestart(t *testing.T, ctx context.Context, repo *Repository, s
 
 func ptrTime(value time.Time) *time.Time {
 	return &value
+}
+
+func TestRepository_DeleteOldTasks(t *testing.T) {
+	db := testDB(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+
+	now := time.Now().UTC()
+	old := now.AddDate(0, 0, -10)
+	recent := now.AddDate(0, 0, -3)
+
+	// Create test tasks with different statuses and ages
+	oldSucceeded := createTaskWithTimestamp(t, repo, model.TaskStatusSucceeded, old)
+	recentSucceeded := createTaskWithTimestamp(t, repo, model.TaskStatusSucceeded, recent)
+	oldRunning := createTaskWithTimestamp(t, repo, model.TaskStatusRunning, old)
+	oldCanceling := createTaskWithTimestamp(t, repo, model.TaskStatusCanceling, old)
+	oldFailed := createTaskWithTimestamp(t, repo, model.TaskStatusFailed, old)
+
+	// Test: Delete succeeded tasks older than 7 days
+	deleted, err := repo.DeleteOldTasks(ctx, model.TaskStatusSucceeded, 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted, "should delete 1 old succeeded task")
+
+	// Verify old succeeded is gone
+	_, err = repo.FindByID(ctx, oldSucceeded.ID)
+	assert.Equal(t, sql.ErrNoRows, err, "old succeeded should be deleted")
+
+	// Verify recent succeeded still exists
+	_, err = repo.FindByID(ctx, recentSucceeded.ID)
+	assert.NoError(t, err, "recent succeeded should remain")
+
+	// Test: Running and canceling tasks are never deleted
+	deleted, err = repo.DeleteOldTasks(ctx, model.TaskStatusRunning, 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted, "should not delete running tasks")
+
+	_, err = repo.FindByID(ctx, oldRunning.ID)
+	assert.NoError(t, err, "old running task should remain")
+
+	deleted, err = repo.DeleteOldTasks(ctx, model.TaskStatusCanceling, 7)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted, "should not delete canceling tasks")
+
+	_, err = repo.FindByID(ctx, oldCanceling.ID)
+	assert.NoError(t, err, "old canceling task should remain")
+
+	// Test: Delete failed tasks older than 15 days
+	deleted, err = repo.DeleteOldTasks(ctx, model.TaskStatusFailed, 15)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), deleted, "10 day old failed task is within 15 day retention")
+
+	deleted, err = repo.DeleteOldTasks(ctx, model.TaskStatusFailed, 5)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), deleted, "should delete failed task older than 5 days")
+
+	_, err = repo.FindByID(ctx, oldFailed.ID)
+	assert.Equal(t, sql.ErrNoRows, err, "old failed should be deleted")
+}
+
+func createTaskWithTimestamp(t *testing.T, repo *Repository, status string, updatedAt time.Time) model.Task {
+	task := model.Task{
+		Type:        model.TaskTypeHistorySync,
+		Status:      status,
+		PayloadJSON: "{}",
+	}
+	created, err := repo.Create(context.Background(), task)
+	require.NoError(t, err)
+
+	// Backdate the updated_at timestamp
+	_, err = repo.db.ExecContext(context.Background(),
+		`UPDATE sync_tasks SET updated_at = ? WHERE id = ?`,
+		updatedAt, created.ID)
+	require.NoError(t, err)
+
+	// Re-fetch to get updated timestamp
+	result, err := repo.FindByID(context.Background(), created.ID)
+	require.NoError(t, err)
+	return result
+}
+
+func testDB(t *testing.T) *sql.DB {
+	t.Helper()
+	conn, err := db.Open(filepath.Join(t.TempDir(), "telegram.db"))
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	if err := db.Migrate(context.Background(), conn); err != nil {
+		t.Fatalf("Migrate returned error: %v", err)
+	}
+	return conn
 }

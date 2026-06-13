@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import type { GlobalSearchResult, MediaURLs, RemoteSearchItem } from '@/api/types'
 import { telegramChannelHref, telegramMessageHref } from '@/utils/telegramLinks'
+import { vLazyLoad } from '@/directives/lazyLoad'
 
 defineProps<{
   result: GlobalSearchResult | null
@@ -123,13 +124,19 @@ function linkMetaParts(item: {
           <div class="result-content">
             <span v-if="showImageThumb('message', item)" class="search-thumb-frame">
               <img
+                v-lazy-load
                 class="search-thumb"
-                :src="item.media?.image_url"
+                :data-src="item.media?.image_url"
                 alt=""
-                loading="lazy"
                 @error="markImageThumbFailed('message', item)"
               />
-              <img class="search-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+              <img
+                v-lazy-load
+                class="search-thumb-preview"
+                :data-src="item.media?.image_url"
+                alt=""
+                aria-hidden="true"
+              />
             </span>
             <video
               v-else-if="showVideoThumb(item)"
@@ -177,13 +184,19 @@ function linkMetaParts(item: {
           <div class="result-content">
             <span v-if="showImageThumb('remote', item)" class="search-thumb-frame">
               <img
+                v-lazy-load
                 class="search-thumb"
-                :src="item.media?.image_url"
+                :data-src="item.media?.image_url"
                 alt=""
-                loading="lazy"
                 @error="markImageThumbFailed('remote', item)"
               />
-              <img class="search-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+              <img
+                v-lazy-load
+                class="search-thumb-preview"
+                :data-src="item.media?.image_url"
+                alt=""
+                aria-hidden="true"
+              />
             </span>
             <video
               v-else-if="showVideoThumb(item)"
@@ -249,13 +262,19 @@ function linkMetaParts(item: {
           <div class="result-content">
             <span v-if="showImageThumb('link', item)" class="search-thumb-frame">
               <img
+                v-lazy-load
                 class="search-thumb"
-                :src="item.media?.image_url"
+                :data-src="item.media?.image_url"
                 alt=""
-                loading="lazy"
                 @error="markImageThumbFailed('link', item)"
               />
-              <img class="search-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+              <img
+                v-lazy-load
+                class="search-thumb-preview"
+                :data-src="item.media?.image_url"
+                alt=""
+                aria-hidden="true"
+              />
             </span>
             <video
               v-else-if="showVideoThumb(item)"
@@ -309,13 +328,19 @@ function linkMetaParts(item: {
           <div class="result-content">
             <span v-if="showImageThumb('file', item)" class="search-thumb-frame">
               <img
+                v-lazy-load
                 class="search-thumb"
-                :src="item.media?.image_url"
+                :data-src="item.media?.image_url"
                 alt=""
-                loading="lazy"
                 @error="markImageThumbFailed('file', item)"
               />
-              <img class="search-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+              <img
+                v-lazy-load
+                class="search-thumb-preview"
+                :data-src="item.media?.image_url"
+                alt=""
+                aria-hidden="true"
+              />
             </span>
             <video
               v-else-if="showVideoThumb(item)"

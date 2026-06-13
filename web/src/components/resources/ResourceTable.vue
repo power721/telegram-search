@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ResourceItem } from '@/api/types'
 import { telegramMessageHref } from '@/utils/telegramLinks'
+import { vLazyLoad } from '@/directives/lazyLoad'
 
 const props = withDefaults(defineProps<{
   items: ResourceItem[]
@@ -222,16 +223,17 @@ function formatDate(value?: string) {
           >
             <img
               v-if="showImageThumb(item)"
+              v-lazy-load
               class="resource-thumb"
-              :src="item.media?.image_url"
+              :data-src="item.media?.image_url"
               alt=""
-              loading="lazy"
               @error="markImageThumbFailed(item)"
             />
             <img
               v-if="showImageThumb(item)"
+              v-lazy-load
               class="resource-thumb-preview"
-              :src="item.media?.image_url"
+              :data-src="item.media?.image_url"
               alt=""
               aria-hidden="true"
             />
@@ -239,13 +241,19 @@ function formatDate(value?: string) {
           </button>
           <span v-else-if="showImageThumb(item)" class="resource-thumb-frame">
             <img
+              v-lazy-load
               class="resource-thumb"
-              :src="item.media?.image_url"
+              :data-src="item.media?.image_url"
               alt=""
-              loading="lazy"
               @error="markImageThumbFailed(item)"
             />
-            <img class="resource-thumb-preview" :src="item.media?.image_url" alt="" aria-hidden="true" />
+            <img
+              v-lazy-load
+              class="resource-thumb-preview"
+              :data-src="item.media?.image_url"
+              alt=""
+              aria-hidden="true"
+            />
           </span>
           <div class="resource-copy">
             <strong>

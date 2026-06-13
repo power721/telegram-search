@@ -12,6 +12,7 @@ import (
 
 	"tg-search/internal/model"
 	"tg-search/internal/storage"
+	"tg-search/internal/telegram"
 )
 
 func (h handlers) serveChannelAvatar(c *gin.Context) {
@@ -35,6 +36,17 @@ func (h handlers) serveChannelAvatar(c *gin.Context) {
 	}
 
 	cacheKey := channelAvatarCacheKey(channel)
+
+	// Set ETag based on photo ID for efficient browser caching
+	etag := fmt.Sprintf(`"ch-%d-%d"`, channel.ID, channel.PhotoID)
+	c.Header("ETag", etag)
+
+	// Check If-None-Match header for 304 Not Modified response
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
 	if entry, hit := h.avatarCacheGet(c.Request.Context(), cacheKey); hit {
 		serveAvatarData(c, http.DetectContentType(entry.Data), entry.Data)
 		return
@@ -49,7 +61,9 @@ func (h handlers) serveChannelAvatar(c *gin.Context) {
 
 	var imageData []byte
 	var imageMIME string
-	downloadErr := h.runMediaDownload(c.Request.Context(), func() error {
+	// Avatars are small (~10KB), download directly without MediaLimiter
+	// to avoid queuing behind large media downloads.
+	downloadErr := h.downloadAvatar(c.Request.Context(), session, cacheKey, func() error {
 		if entry, hit := h.avatarCacheGet(c.Request.Context(), cacheKey); hit {
 			imageData = entry.Data
 			imageMIME = http.DetectContentType(entry.Data)
@@ -120,4 +134,14 @@ func (h handlers) avatarCacheSet(ctx context.Context, key string, data []byte) {
 	if err := h.deps.AvatarCache.Set(ctx, key, data); err != nil {
 		h.deps.Logger.Warn("write avatar cache failed", zap.Error(err))
 	}
+}
+
+// downloadAvatar downloads small images (avatars, thumbnails) using a
+// dedicated AvatarLimiter with higher concurrency than MediaLimiter,
+// so they don't queue behind large media downloads like video streams.
+func (h handlers) downloadAvatar(ctx context.Context, _ telegram.AccountSession, _ string, fn func() error) error {
+	if h.deps.AvatarLimiter != nil {
+		return h.deps.AvatarLimiter.Run(ctx, fn)
+	}
+	return fn()
 }

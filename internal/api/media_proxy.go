@@ -131,8 +131,11 @@ func (h handlers) serveTelegramImage(c *gin.Context) {
 		h.serveImageData(c, media, http.DetectContentType(entry.Data), entry.Data)
 		return
 	}
+
 	var image telegram.ImageFile
-	err := h.runMediaDownload(c.Request.Context(), func() error {
+	// Thumbnails are small, download directly without MediaLimiter
+	// to avoid queuing behind large media downloads.
+	err := h.downloadAvatar(c.Request.Context(), media.session, cacheKey, func() error {
 		if entry, hit := h.mediaImageCacheGet(c.Request.Context(), cacheKey); hit {
 			image = telegram.ImageFile{Data: entry.Data, MIMEType: http.DetectContentType(entry.Data)}
 			return nil

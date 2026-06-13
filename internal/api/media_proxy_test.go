@@ -424,7 +424,7 @@ func TestServeTelegramImageUsesLocalCache(t *testing.T) {
 	}
 }
 
-func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
+func TestServeTelegramImageDoesNotBlockOnMediaLimiter(t *testing.T) {
 	deps := testDeps(t)
 	png := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a}
 	ctx := context.Background()
@@ -445,6 +445,7 @@ func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save file: %v", err)
 	}
+	// Images bypass the MediaLimiter, so even with concurrency=1 both requests run concurrently.
 	fake := &mediaProxyClient{image: telegram.ImageFile{Data: png, MIMEType: "image/png"}, delay: 20 * time.Millisecond}
 	deps.Telegram = fake
 	deps.MediaLimiter = medialimit.New(1)
@@ -469,8 +470,9 @@ func TestServeTelegramImageLimitsConcurrentDownloads(t *testing.T) {
 	close(start)
 	wg.Wait()
 
-	if got := fake.maxActive(); got != 1 {
-		t.Fatalf("max active media downloads = %d, want 1", got)
+	// Both image requests ran concurrently (bypassing the limiter), so max active should be 2.
+	if got := fake.maxActive(); got != 2 {
+		t.Fatalf("max active image downloads = %d, want 2 (images bypass MediaLimiter)", got)
 	}
 }
 

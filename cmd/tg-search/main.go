@@ -133,6 +133,7 @@ func run(configPath string) error {
 	retryPolicy := retry.DefaultPolicy()
 	telegramGovernor := telegramguard.New(telegramguard.Options{Interval: cfg.Sync.TelegramRequestInterval.Std()})
 	mediaLimiter := medialimit.New(cfg.Telegram.Media.Concurrency)
+	avatarLimiter := medialimit.New(20) // Higher concurrency for small images
 	syncQueue := scheduler.NewRetryQueue(scheduler.RetryQueueOptions{Policy: retryPolicy, Logger: logs.SyncLog})
 	resourceService := resource.NewService(links, files, resourceStats)
 	notificationService := notification.NewService(notification.Options{
@@ -264,7 +265,7 @@ func run(configPath string) error {
 		BackupDB: conn, BackupDir: filepath.Join(cfg.Storage.Path, "backup"),
 		SyncQueue: syncQueue, Search: searchService, History: historyService, Resources: resourceService, Notifications: notificationService, ChannelSync: channelService, ChannelWebAccess: channelWebAccessService, AccountRuntime: accountManager,
 		Tasks: taskService, TaskRepository: taskRepository, Events: eventBroker,
-		Telegram: tgClient, MediaLimiter: mediaLimiter, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
+		Telegram: tgClient, MediaLimiter: mediaLimiter, AvatarLimiter: avatarLimiter, Sessions: sessions, CodeStore: telegram.NewCodeStore(),
 	})
 	server := &http.Server{
 		Addr:              config.Address(cfg),

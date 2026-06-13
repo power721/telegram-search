@@ -72,6 +72,7 @@ type Dependencies struct {
 	AccountRuntime   AccountRuntime
 	Telegram         telegram.Client
 	MediaLimiter     *medialimit.Limiter
+	AvatarLimiter    *medialimit.Limiter
 	Sessions         *session.Manager
 	CodeStore        *telegram.CodeStore
 	QRLogins         *QRLoginStore

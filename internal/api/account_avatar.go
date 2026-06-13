@@ -32,6 +32,17 @@ func (h handlers) serveAccountAvatar(c *gin.Context) {
 	}
 
 	cacheKey := accountAvatarCacheKey(account)
+
+	// Set ETag based on photo ID for efficient browser caching
+	etag := fmt.Sprintf(`"acc-%d-%d"`, account.ID, account.PhotoID)
+	c.Header("ETag", etag)
+
+	// Check If-None-Match header for 304 Not Modified response
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+
 	if entry, hit := h.avatarCacheGet(c.Request.Context(), cacheKey); hit {
 		serveAvatarData(c, http.DetectContentType(entry.Data), entry.Data)
 		return
@@ -41,7 +52,7 @@ func (h handlers) serveAccountAvatar(c *gin.Context) {
 
 	var imageData []byte
 	var imageMIME string
-	downloadErr := h.runMediaDownload(c.Request.Context(), func() error {
+	downloadErr := h.downloadAvatar(c.Request.Context(), session, cacheKey, func() error {
 		if entry, hit := h.avatarCacheGet(c.Request.Context(), cacheKey); hit {
 			imageData = entry.Data
 			imageMIME = http.DetectContentType(entry.Data)

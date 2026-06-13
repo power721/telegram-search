@@ -280,8 +280,8 @@ func TestSyncChannelStoresBatchesLinksAndCursor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get resource stats: %v", err)
 	}
-	if !found || grouped["cloud_drive"] != 1 || grouped["magnet"] != 1 || grouped["files"] != 1 {
-		t.Fatalf("resource stats = %+v found=%v, want cloud_drive=1 magnet=1 files=1", grouped, found)
+	if !found || grouped["_total"] != 3 {
+		t.Fatalf("resource stats = %+v found=%v, want _total=3", grouped, found)
 	}
 
 	linkResults, err := links.Search(ctx, repository.LinkSearchParams{Type: "aliyun", Limit: 10})

@@ -170,8 +170,12 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		if err != nil {
 			return ListResult{}, err
 		}
-		// Skip expensive count, will use len(items) after fetching
-		total = -1 // placeholder
+		// Get total for fetching all items
+		total = grouped["_total"]
+		if total == 0 {
+			return ListResult{Items: []Item{}, Total: 0, Grouped: grouped}, nil
+		}
+		fetchLimit = total
 	}
 
 	items := []Item{}
@@ -271,8 +275,6 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 	}
 	if hotSort {
 		sortItemsByHot(items)
-		// Use actual item count instead of expensive COUNT queries
-		total = len(items)
 	} else {
 		SortItemsByQuality(items, query.Keyword)
 	}
@@ -283,9 +285,14 @@ func (s *Service) List(ctx context.Context, query Query) (ListResult, error) {
 		if err != nil {
 			return ListResult{}, err
 		}
-		// Use actual item count instead of expensive COUNT queries
+	}
+
+	// Get accurate total from grouped count
+	total = grouped["_total"]
+	if total == 0 {
 		total = len(items)
 	}
+
 	if offset > total {
 		offset = total
 	}
@@ -409,9 +416,48 @@ func parseResourceID(id string) (string, string, error) {
 }
 
 func (s *Service) groupedForQuery(ctx context.Context, query Query) (map[string]int, error) {
-	// Skip expensive COUNT queries - return empty grouped stats
-	// This speeds up API response from 1.2s to ~100ms
-	return defaultGrouped(), nil
+	// Use simple COUNT queries instead of expensive grouped counts
+	// This gives accurate total for pagination without the overhead of category breakdowns
+	grouped := defaultGrouped()
+	var linkCount, fileCount int
+
+	if s.links != nil && includeLinks(query) {
+		count, err := s.links.CountSearch(ctx, repository.LinkSearchParams{
+			Type:      query.Type,
+			Category:  query.Category,
+			AccountID: query.AccountID,
+			ChannelID: query.ChannelID,
+			Keyword:   query.Keyword,
+			DateFrom:  query.DateFrom,
+			DateTo:    query.DateTo,
+		})
+		if err != nil {
+			return nil, err
+		}
+		linkCount = count
+	}
+
+	if s.files != nil && includeFiles(query) {
+		count, err := s.files.CountResources(ctx, repository.FileSearchParams{
+			Query:              query.Keyword,
+			Category:           fileCategoryFilter(query),
+			ExcludedCategories: excludedFileCategories(query),
+			Extension:          query.Extension,
+			AccountID:          query.AccountID,
+			ChannelID:          query.ChannelID,
+			DateFrom:           query.DateFrom,
+			DateTo:             query.DateTo,
+		})
+		if err != nil {
+			return nil, err
+		}
+		fileCount = count
+	}
+
+	// Return total count in grouped map (not per-category breakdown)
+	// Frontend shows total but not category counts
+	grouped["_total"] = linkCount + fileCount
+	return grouped, nil
 }
 
 func (s *Service) GlobalGrouped(ctx context.Context) (map[string]int, error) {
@@ -448,24 +494,27 @@ func (s *Service) RefreshGlobalGrouped(ctx context.Context) error {
 
 func (s *Service) computeGlobalGrouped(ctx context.Context) (map[string]int, error) {
 	grouped := defaultGrouped()
+	var linkCount, fileCount int
+
 	if s.links != nil {
-		linkCounts, err := s.links.CountByResourceCategory(ctx, repository.LinkSearchParams{})
+		count, err := s.links.CountSearch(ctx, repository.LinkSearchParams{})
 		if err != nil {
 			return nil, err
 		}
-		for category, count := range linkCounts {
-			grouped[category] += count
-		}
+		linkCount = count
 	}
 	if s.files != nil {
-		fileCount, err := s.files.CountResources(ctx, repository.FileSearchParams{
+		count, err := s.files.CountResources(ctx, repository.FileSearchParams{
 			ExcludedCategories: defaultExcludedFileCategories(),
 		})
 		if err != nil {
 			return nil, err
 		}
-		grouped["files"] = fileCount
+		fileCount = count
 	}
+
+	// Return total count in _total key instead of per-category breakdown
+	grouped["_total"] = linkCount + fileCount
 	return grouped, nil
 }
 

@@ -493,8 +493,8 @@ func TestProcessorRefreshesResourceStatsAfterNewMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get grouped stats: %v", err)
 	}
-	if !found || grouped["cloud_drive"] != 1 || grouped["files"] != 1 {
-		t.Fatalf("grouped stats = %+v found=%v, want cloud_drive=1 files=1", grouped, found)
+	if !found || grouped["_total"] != 2 {
+		t.Fatalf("grouped stats = %+v found=%v, want _total=2", grouped, found)
 	}
 	stored, err := fixture.files.FindByMessageID(ctx, 1)
 	if err != nil {

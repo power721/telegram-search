@@ -194,8 +194,9 @@ LIMIT ? OFFSET ?`
 
 func (r *LinkRepository) CountSearch(ctx context.Context, params LinkSearchParams) (int, error) {
 	where, args := linkSearchWhere(params)
+	// Use COUNT(DISTINCT url) for deduplication - much faster than window functions
 	query := `
-SELECT count(*)
+SELECT count(DISTINCT l.url)
 FROM telegram_links l
 JOIN telegram_messages m ON m.id = l.message_id
 JOIN telegram_message_contents mc ON mc.message_id = m.id

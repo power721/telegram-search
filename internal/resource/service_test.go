@@ -77,8 +77,8 @@ func TestResourceLibraryDeduplicatesLinks(t *testing.T) {
 	if fileItem == nil || fileItem.Category != "files" || fileItem.Type != "software" {
 		t.Fatalf("file item = %+v, want category files and concrete type software", fileItem)
 	}
-	if result.Grouped["http"] != 1 || result.Grouped["files"] != 1 {
-		t.Fatalf("grouped = %+v, want http=1 files=1", result.Grouped)
+	if result.Grouped["_total"] != 2 {
+		t.Fatalf("grouped = %+v, want _total=2", result.Grouped)
 	}
 }
 
@@ -401,8 +401,8 @@ func TestResourceLibraryExcludesImageFilesByDefault(t *testing.T) {
 	if len(result.Items) != 1 || result.Items[0].Kind != "link" {
 		t.Fatalf("items = %+v, want only the link resource", result.Items)
 	}
-	if result.Grouped["cloud_drive"] != 1 || result.Grouped["files"] != 0 {
-		t.Fatalf("grouped = %+v, want cloud_drive=1 files=0", result.Grouped)
+	if result.Grouped["_total"] != 1 {
+		t.Fatalf("grouped = %+v, want _total=1", result.Grouped)
 	}
 }
 
@@ -456,7 +456,7 @@ func TestResourceLibraryCountsAndPagesBeyondInitialLinkBatch(t *testing.T) {
 	if len(result.Items) != 50 {
 		t.Fatalf("items len = %d, want final page of 50 resources", len(result.Items))
 	}
-	if result.Grouped["http"] != 250 {
-		t.Fatalf("grouped = %+v, want http=250", result.Grouped)
+	if result.Grouped["_total"] != 250 {
+		t.Fatalf("grouped = %+v, want _total=250", result.Grouped)
 	}
 }

@@ -332,7 +332,7 @@ func TestResourcesAPI(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if body.Total != 2 || body.Grouped["http"] != 1 || body.Grouped["files"] != 1 {
+	if body.Total != 2 || body.Grouped["_total"] != 2 {
 		t.Fatalf("resources body = %+v, want link and file", body)
 	}
 	var linkItem *resource.Item
@@ -644,8 +644,8 @@ func TestResourcesGroupedReturnsGlobalCountsOutsideListWindow(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
-		t.Fatalf("grouped = %+v, want http=201 cloud_drive=1", body.Grouped)
+	if body.Grouped["_total"] != 202 {
+		t.Fatalf("grouped = %+v, want _total=202", body.Grouped)
 	}
 }
 
@@ -751,8 +751,8 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithoutKeyword(t *testing.T) {
 	if body.Total != 202 {
 		t.Fatalf("total = %d, want complete resource count", body.Total)
 	}
-	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
-		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
+	if body.Grouped["_total"] != 202 {
+		t.Fatalf("grouped = %+v, want complete _total=202", body.Grouped)
 	}
 }
 
@@ -809,8 +809,8 @@ func TestResourcesAPIUsesCompleteGroupedCountsWithKeyword(t *testing.T) {
 	if body.Total != 202 {
 		t.Fatalf("total = %d, want complete resource count", body.Total)
 	}
-	if body.Grouped["http"] != 201 || body.Grouped["cloud_drive"] != 1 {
-		t.Fatalf("grouped = %+v, want complete http=201 cloud_drive=1", body.Grouped)
+	if body.Grouped["_total"] != 202 {
+		t.Fatalf("grouped = %+v, want complete _total=202", body.Grouped)
 	}
 }
 
